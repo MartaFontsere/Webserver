@@ -15,7 +15,7 @@ private:
     int setNonBlocking(int fd);
 
     int _listenFd;
-    std::string _port;
+    std::string _port; // el file descriptor del socket de escucha (el que usaremos con listen() y accept())
 };
 
 /*
@@ -57,6 +57,13 @@ Explicación de cada método privado:
 
     _listenFd: el descriptor del socket que escucha conexiones entrantes.
     Piensa en él como “la oreja” del servidor: se queda esperando conexiones nuevas.
+    _listenFd termina siendo el “enchufe” del servidor, ya listo para recibir conexiones.
 
     _port: el puerto en el que escuchamos (por ejemplo "8080"). Guardarlo como string facilita las llamadas a funciones del sistema que lo esperan así.
+    Significa que tu puerto está guardado como texto, no como número.
+        Esto es útil porque muchas veces los parámetros vienen de la línea de comandos: "8080"
+
+        O de un archivo de configuración: "3000"
+
+        Pero bind() y el resto de funciones de sockets necesitan un número entero, no un string.
 */
