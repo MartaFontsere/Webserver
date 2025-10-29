@@ -63,7 +63,17 @@ Llama a createAndBind() → que crea el socket y lo asocia a una dirección IP y
 
 Llama a setNonBlocking() → para que las llamadas accept(), recv(), send() no bloqueen.
 
-Luego hace listen() → el servidor empieza a “escuchar” nuevas conexiones entrantes.
+Luego hace listen() → el servidor empieza a “escuchar” nuevas conexiones entrantes. Este paso convierte el socket en servidor pasivo. El listen le dice al Kernel que ese socket ya no va a iniciar conexiones (deja de ser cliente), ahora va a escucharlas y aceptarlas (socket de escucha).
+    listen(server_fd, backlog); -> El segundo argumento (backlog) define el número máximo de conexiones pendientes que el kernel puede mantener en cola antes de que tú las aceptes.
+        SOMAXCONN es una constante del sistema (normalmente 128 o más).
+
+        Si 150 clientes intentan conectarse al mismo tiempo y tú solo has aceptado 100, los 50 restantes esperan en esa cola.
+
+        Si se llena, el resto recibirán un error tipo connection refused.
+
+    listen() no acepta conexiones.
+    Solo prepara al kernel para recibirlas y meterlas en cola.
+    accept() es la que realmente crea un nuevo socket para hablar con cada cliente.
 
 Si cualquiera de estas partes falla, devuelve false.
 
@@ -241,8 +251,176 @@ Se llena la estructura sockaddr_in con:
 
     sin_port: htons() → convierte el número de puerto al formato de red (big endian).
 
-
 bind() → asocia el socket al puerto del sistema operativo.
 
 💡 Si bind() falla, puede ser porque ya hay otro programa usando ese puerto.
+
+
+*** Explicación más en profundidad:
+
+sockaddr_in es una estructura de C (no de C++) que describe una dirección de red IPv4.
+Está definida en el archivo: #include <netinet/in.h>
+Su definición simplificada es más o menos así:
+    struct sockaddr_in {
+        sa_family_t    sin_family; // Familia de direcciones (AF_INET)
+        in_port_t      sin_port;   // Puerto (en formato network byte order)
+        struct in_addr sin_addr;   // Dirección IP (también en formato network byte order)
+        unsigned char  sin_zero[8]; // Relleno (no se usa, pero mantiene el tamaño)
+    };
+
+
+🔹 Qué representa
+    Piensa que un socket es como un enchufe universal, pero para que el sistema operativo sepa a qué puerto y a qué IP quieres enchufarte, tienes que darle una dirección completa.
+
+    🧠 Así que sockaddr_in ≈ “tarjeta con la dirección postal del servidor”:
+        sin_family = tipo de dirección (por ejemplo, IPv4 o IPv6).
+        sin_port = puerto donde escuchas (ej. 8080).
+        sin_addr = IP donde quieres escuchar (ej. 127.0.0.1 o 0.0.0.0).
+
+🔹 Por qué la necesitamos
+    Las funciones del sistema (como bind(), connect(), sendto(), etc.) son muy antiguas, vienen del mundo C, y todas esperan recibir un puntero genérico a una dirección:
+        struct sockaddr*
+
+    Pero nosotros usamos la versión más específica:
+        struct sockaddr_in
+
+    Así que cuando la pasamos a una función, tenemos que hacer un cast:
+        (struct sockaddr*)&addr
+                ***Explicación: struct sockaddr_in addr; crea una estructura sockaddr_in, que sirve para guardar la dirección IP y el puerto cuando trabajas con IPv4.
+                Tu variable addr es un sockaddr_in, pero la función espera un sockaddr*. Entonces necesitamos hacer un casteo
+                Esto significa:
+                    &addr → dirección de memoria de la variable addr (un puntero a sockaddr_in)
+                    (struct sockaddr*) → le decimos al compilador:
+                        “Tranquilo, trata este puntero como si apuntara a una sockaddr genérica.”
+                No cambia los datos en memoria, solo la forma en que los interpretamos.
+
+
+    Esto es porque la función no sabe si le estás pasando una dirección IPv4 (sockaddr_in), IPv6 (sockaddr_in6), o Unix domain socket (sockaddr_un).
+    El cast solo le dice: “tranquilo, es del tipo genérico sockaddr*, pero realmente contiene una dirección IPv4”.
+
+
+    🧠 Ejemplo: el bloque real de código
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET; // IPv4
+        addr.sin_addr.s_addr = INADDR_ANY; // Escucha en todas las interfaces
+        addr.sin_port = htons(port); // Puerto (convertido a formato de red)
+
+    🧩 Explicación línea a línea
+        1️⃣ addr.sin_family = AF_INET;
+
+        Le decimos que es una dirección IPv4 (no IPv6).
+        Este valor (AF_INET) está definido en <sys/socket.h>.
+
+        💡 Si usaras IPv6, pondrías AF_INET6.
+
+        2️⃣ addr.sin_addr.s_addr = INADDR_ANY;
+
+        Esto significa:
+            “Escucha en todas las interfaces disponibles.”
+
+        Si tu máquina tiene varias IPs (por ejemplo, una interna y otra externa), con INADDR_ANY el servidor aceptará conexiones desde cualquiera.
+
+        💬 Alternativas:
+            Si quisieras escuchar solo en localhost, pondrías:
+                addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+        Si quisieras una IP concreta, también podrías convertirla con inet_addr("192.168.1.42").
+
+        3️⃣ addr.sin_port = htons(port);
+
+        port aquí es el número de puerto que tú decides (por ejemplo, 8080).
+
+        Pero —muy importante— el sistema operativo no guarda los números igual que tu CPU.
+        Las CPUs pueden ser little endian o big endian, y eso afecta al orden de los bytes.
+
+        💡 Ejemplo:
+            Puerto 8080 = 0x1F90
+
+        En memoria en un Intel (little endian) se guarda como 90 1F.
+        En red (network order, big endian) debe ser 1F 90.
+        Por eso usamos:
+            htons()  // host to network short
+
+        Para convertir automáticamente al formato correcto antes de pasar el valor al sistema.
+
+    4️⃣ ¿Y el bind()?
+
+        Una vez has rellenado addr, haces:
+            bind(sockfd, (struct sockaddr*)&addr, sizeof(addr))
+
+        Esto le dice al sistema operativo:
+            “Asocia mi socket (identificado por sockfd) con esta dirección IP y este puerto.”
+
+        Sin esto, el socket no está “anclado” a ninguna dirección, y el sistema no sabría qué conexiones deben llegarle.
+
 */
+
+int Server::setNonBlocking(int fd)
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1)
+        return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+/*
+Por defecto, un socket en Linux es bloqueante.
+🚫 Qué significa “bloqueante”
+    Un socket bloqueante detiene la ejecución del programa hasta que la operación termina.
+
+    Por ejemplo:
+        int client_fd = accept(server_fd, ...);
+
+    👉 Si no hay ningún cliente intentando conectarse, esta línea se queda esperando indefinidamente.
+
+    Lo mismo ocurre con:
+        recv() → espera hasta que haya datos.
+
+        send() → espera si el buffer está lleno.
+
+    Esto está bien si tu programa solo maneja una conexión a la vez.
+    Pero si estás escribiendo un servidor multipropósito, como tu webserv, eso sería un desastre: mientras una conexión está “esperando”, las demás se quedan congeladas.
+
+⚙️ Qué hace “modo no bloqueante”
+
+    Cuando el socket está en modo no bloqueante, esas funciones (accept, recv, send, etc.) no bloquean el flujo del programa.
+
+        Si no hay nada que aceptar, accept() devuelve -1 e errno se pone en EAGAIN o EWOULDBLOCK.
+
+        Si no hay datos disponibles en recv(), pasa lo mismo.
+
+        Tú puedes seguir ejecutando el resto de tu código (por ejemplo, atender otros sockets).
+
+    Esto es esencial para usar poll, select, o epoll — mecanismos que te dicen cuándo un socket está listo para leer o escribir, sin quedarte bloqueado.
+
+
+
+
+Esta funcion hace que el socket no bloquee.
+
+fcntl(fd, F_GETFL, 0) obtiene las flags actuales del descriptor fd.
+
+fcntl(fd, F_SETFL, flags | O_NONBLOCK) activa la flag O_NONBLOCK.
+    No borra los anteriores.
+    Solo indica que el socket ya no bloqueará el flujo.
+
+Así, si haces accept() y no hay clientes esperando, la llamada no se queda congelada, sino que devuelve inmediatamente con un error controlable (EAGAIN o EWOULDBLOCK).
+
+Esto será esencial más adelante cuando usemos poll().
+*/
+
+/*
+Qué tienes hasta ahora
+
+    Has creado un objeto Server capaz de:
+
+    Crear un socket TCP.
+
+    Asociarlo a un puerto.
+
+    Escuchar conexiones sin bloquear.
+
+    Cerrar todo ordenadamente al destruir el objeto.
+
+➡️ Todavía no acepta clientes ni responde datos, pero ya es un servidor inicializado que escucha.
+Lo siguiente será crear un main.cpp que lo use y añadir el bucle principal (aceptar conexiones y enviar un “Hello world”).*/
