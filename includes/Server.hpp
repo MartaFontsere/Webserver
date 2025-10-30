@@ -8,14 +8,15 @@ public:
     Server(const std::string &port); // puerto a escuchar
     ~Server();
     bool init(); // crea y prepara el socket (bind + listen + non-blocking)
-    int getListenFd() const;
+    int getServerFd() const;
+    void run();
 
 private:
     int createAndBind(const char *port);
     int setNonBlocking(int fd);
 
-    int _listenFd;
     std::string _port; // el file descriptor del socket de escucha (el que usaremos con listen() y accept())
+    int _serverFd;
 };
 
 /*
@@ -37,7 +38,7 @@ Explicación de cada método público:
 
     * bool init() → inicializa todo el sistema de escucha (crea socket, lo enlaza, lo pone a escuchar). Devuelve true si todo salió bien, false si falló.
 
-    * int getListenFd() const → devuelve el file descriptor del socket principal, por si otro componente necesita acceder a él.
+    * int getServerFd() const → devuelve el file descriptor del socket principal, por si otro componente necesita acceder a él.
 
 Explicación de cada método privado:
     ¿Por qué esto es privado?

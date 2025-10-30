@@ -1,52 +1,53 @@
 #include "Server.hpp"
-#include <iostream>     // para imprimir mensajes
-#include <cstring>      // para memset, strerror...
-#include <unistd.h>     // para close()
-#include <fcntl.h>      // para fcntl() → modo no bloqueante
+#include <iostream> // para imprimir mensajes
+#include <cstring>  // para memset, strerror, strlen...
+#include <unistd.h> // para close(), read, write
+#include <fcntl.h>  // para fcntl() → modo no bloqueante
+// CUAL DE LAS DOS? #include <netinet/in.h> // sockaddr_in, htons, etc.
 #include <arpa/inet.h>  // para sockaddr_in, htons, INADDR_ANY
 #include <sys/socket.h> // para socket(), bind(), listen()
 
 // Constructor: guarda el puerto que usaremos
-Server::Server(const std::string &port) : _port(port), _listenFd(-1)
+Server::Server(const std::string &port) : _port(port), _serverFd(-1)
 {
 }
 
 // Destructor: si el socket está abierto, lo cerramos
 Server::~Server()
 {
-    if (_listenFd != -1)
-        close(_listenFd);
+    if (_serverFd != -1)
+        close(_serverFd);
 }
 
 /*
 Un socket es un descriptor de archivo especial (como un int) que representa una conexión de red.
 
 En el constructor, solo guardamos el puerto (aún no creamos el socket).
-_listenFd se inicializa con -1 para indicar “no hay socket abierto todavía”.
+_serverFd se inicializa con -1 para indicar “no hay socket abierto todavía”.
 
-En el destructor, comprobamos si el socket se creó (_listenFd != -1), y lo cerramos para liberar recursos del sistema.
+En el destructor, comprobamos si el socket se creó (_serverFd != -1), y lo cerramos para liberar recursos del sistema.
     Los recursos (como sockets) deben liberarse automáticamente cuando el objeto se destruye.
 */
 
 bool Server::init()
 {
     // Creamos y asociamos el socket al puerto
-    _listenFd = createAndBind(_port.c_str()); //_port.c_str() significa que le estás pasando el puerto como cadena de caracteres erminado en \0, es decir, un const char* al estilo C.
-    if (_listenFd == -1)
+    _serverFd = createAndBind(_port.c_str()); //_port.c_str() significa que le estás pasando el puerto como cadena de caracteres erminado en \0, es decir, un const char* al estilo C.
+    if (_serverFd == -1)
     {
         std::cerr << "❌ Error: no se pudo crear el socket." << std::endl;
         return false;
     }
 
     // Lo ponemos en modo no bloqueante
-    if (setNonBlocking(_listenFd) == -1)
+    if (setNonBlocking(_serverFd) == -1)
     {
         std::cerr << "❌ Error: no se pudo poner el socket en modo no bloqueante." << std::endl;
         return false;
     }
 
     // Empezamos a escuchar
-    if (listen(_listenFd, 10) == -1)
+    if (listen(_serverFd, SOMAXCONN) == -1)
     {
         std::cerr << "❌ Error en listen()." << std::endl;
         return false;
@@ -129,7 +130,7 @@ Por qué recibe un const char *port en lugar de std::string
 
     atoi() (convertir cadena a número) espera un const char *.
 
-    Así que cuando en el constructor del servidor hacemos _listenFd = createAndBind(_port.c_str());
+    Así que cuando en el constructor del servidor hacemos _serverFd = createAndBind(_port.c_str());
     ... lo que estamos haciendo es convertir el std::string a const char* para que lo pueda usar atoi().
 
 
@@ -424,3 +425,194 @@ Qué tienes hasta ahora
 
 ➡️ Todavía no acepta clientes ni responde datos, pero ya es un servidor inicializado que escucha.
 Lo siguiente será crear un main.cpp que lo use y añadir el bucle principal (aceptar conexiones y enviar un “Hello world”).*/
+
+int Server::getServerFd() const
+{
+    return _serverFd;
+}
+
+void Server::run()
+{
+    while (true)
+    {
+        sockaddr_in clientAddr;
+        socklen_t clientLen = sizeof(clientAddr);
+
+        int clientFd = accept(_serverFd, (struct sockaddr *)&clientAddr, &clientLen);
+        if (clientFd < 0)
+        {
+            // No hay conexión nueva (puede pasar si el socket es non-blocking)
+            continue;
+        }
+
+        std::cout << "Nueva conexión aceptada!" << std::endl;
+
+        // Mensaje HTTP de respuesta
+        const char *response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: 12\r\n"
+            "\r\n"
+            "Hello world!";
+
+        // Enviamos la respuesta al cliente
+        send(clientFd, response, strlen(response), 0);
+
+        // Cerrar la conexión con el cliente -> Osea cerramos el socket del cliente (ya terminamos con él)
+        close(clientFd);
+    }
+}
+
+/*
+1️⃣ while(true)
+    Este es el bucle principal del servidor, el loop infinito del servidor.
+
+    Queremos que siga escuchando y respondiendo sin parar.
+
+    El servidor siempre debe estar escuchando nuevas conexiones.
+    En esta versión básica no tenemos “poll()” ni “threads”, así que el servidor trabaja con una conexión a la vez.
+
+    En una versión más avanzada, usaremos poll() o select() para manejar muchos clientes a la vez,
+    pero de momento este bucle es suficiente para entender el flujo básico.
+
+    clientAddr es donde accept() va a guardar los datos del cliente que se conecta (su IP y puerto).
+
+    clientLen le dice a accept() cuánto espacio tiene para escribir esos datos.
+    Por eso lo inicializas con sizeof(clientAddr) — no porque clientAddr tenga datos, sino para que accept() sepa cuánto puede llenar (el tamaño de la estructura).
+
+
+    sockaddr_in es una estructura de C definida en los headers del sistema, concretamente en:
+        #include <netinet/in.h>
+
+    Su propósito es representar una dirección IPv4 (IP + puerto)
+    para cuando queremos conectar, escuchar o aceptar conexiones.
+        C++ importa esos nombres como tipos propios.
+        Así que ya no hace falta escribir struct cada vez.
+
+        Por eso puedes escribir simplemente:
+
+        sockaddr_in clientAddr;
+
+
+        y es exactamente equivalente a:
+
+        struct sockaddr_in clientAddr;
+
+
+
+2️⃣ accept()
+    int clientFd = accept(_serverFd, (struct sockaddr*)&clientAddr, &clientLen);
+
+    accept() bloquea (espera) hasta que un cliente intenta conectarse a nuestro puerto (por ejemplo, con curl http://localhost:8080).
+
+    Cuando eso ocurre:
+
+        accept() devuelve un nuevo descriptor (clientFd), distinto de _serverFd --> Crea un nuevo socket (el clientFd) exclusivo para hablar con ese cliente.
+            Devuelve la dirección IP y el puerto del cliente en clientAddr.
+            Así el socket _serverFd sigue escuchando nuevas conexiones,
+            y el clientFd se usa solo para atender a esa persona concreta, es la “línea privada” con ese cliente concreto.
+
+    🧠 Piensa: _serverFd es la “recepcionista”, clientFd es la conversación privada.
+
+    if (clientFd < 0)
+        accept() puede devolver -1 si no hay ninguna conexión pendiente todavía.
+        No pasa nada: simplemente seguimos el bucle y volvemos a intentarlo.
+
+        Esto es gracias a haber puesto el socket en modo no bloqueante (setNonBlocking). Hace que las operaciones como accept(), recv() o send() no se queden esperando (bloqueadas) si no hay nada que hacer.
+        En vez de eso, devuelven -1 inmediatamente y ponen errno = EAGAIN o EWOULDBLOCK.
+            …ese if detecta dos posibles casos:
+                Un error real (por ejemplo, algo falló en el sistema).
+                Que no había ninguna conexión lista (lo típico en modo no bloqueante → EAGAIN).
+
+        De lo contrario, accept() se quedará esperando hasta que alguien se conecte.
+
+
+
+3️⃣ response
+
+    Aquí estamos construyendo una respuesta HTTP completa.
+
+    HTTP/1.1 200 OK
+    Content-Type: text/plain
+    Content-Length: 12
+
+    Hello world!
+
+
+    🔸 Primera línea:
+    El estado de la respuesta → “200 OK” significa que todo ha ido bien.
+
+    🔸 Cabeceras (headers):
+    Le dicen al cliente qué tipo de contenido enviamos (text/plain)
+    y cuánto mide (12 bytes en este caso).
+
+    🔸 Línea vacía (\r\n)
+    Obligatoria: separa las cabeceras del contenido.
+
+    🔸 Cuerpo:
+    El texto real que queremos enviar → "Hello world!"
+
+
+    En las respuestas y peticiones HTTP, las líneas no terminan solo con \n,
+    sino con \r\n, que significa:
+
+    \r → carriage return (retorno de carro, mueve el cursor al inicio de la línea)
+
+    \n → line feed (salta a la línea siguiente)
+
+    🔹 Viene del estándar original de los protocolos de red (influenciado por Telnet y por máquinas antiguas).
+    🔹 Es una forma obligatoria en HTTP/1.0 y HTTP/1.1 para marcar los saltos de línea en los headers.
+
+
+3️⃣ send()
+    send(clientFd, response, strlen(response), 0);
+
+    Envía datos al cliente usando el socket recién aceptado.
+
+    Esto envía la cadena completa del mensaje HTTP.
+
+    Aquí estamos mandando un mensaje HTTP completo, aunque muy simple:
+
+        HTTP/1.1 200 OK
+        Content-Type: text/plain
+
+        Hello world!
+
+    Eso permite que si abres el navegador en http://localhost:8080, o haces curl http://localhost:8080
+    veas “Hello world!” directamente en pantalla 🎉
+
+
+4️⃣ close()
+    close(clientFd);
+
+    Cierra el socket del cliente.
+
+    Si no lo cierras, se quedarían conexiones “fantasma” abiertas (lo que provoca TIME_WAIT o fugas de descriptores).
+
+    Esto significa que:
+        Si el cliente (por ejemplo, un navegador) quiere pedir otro recurso,
+        tendrá que abrir una nueva conexión TCP, o sea, un nuevo file descriptor.
+
+    Pero ojo: HTTP tiene dos modos
+        1. HTTP/1.0 (el que usamos aquí)
+
+        → Cada petición usa una conexión nueva.
+        → Servidor responde → se cierra el socket → fin.
+        → El cliente abre otro si necesita más.
+
+        2. HTTP/1.1 (Keep-Alive)
+
+        → Permite mantener la conexión abierta y enviar varias peticiones seguidas.
+        → Esto se indica con el header:
+            Connection: keep-alive
+
+        Entonces el servidor no cierra el socket hasta que:
+            el cliente lo pida,
+            o haya pasado un tiempo de inactividad.
+
+    En tu caso (mini servidor inicial)
+        Cerrar la conexión después de enviar la respuesta está perfecto ✅
+        Más adelante, cuando tengas un bucle con poll() o select(),
+        ya verás cómo mantener conexiones abiertas o detectar cuándo cerrarlas.
+
+*/
