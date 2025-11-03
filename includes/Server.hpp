@@ -1,22 +1,31 @@
 #pragma once
 
 #include <string> //la clase usará std::string (para guardar el puerto, por ejemplo).
+#include "Client.hpp"
+#include <vector>
+#include <map>
 
 class Server
 {
+private:
+    std::string _port; // el file descriptor del socket de escucha (el que usaremos con listen() y accept())
+    int _serverFd;
+    std::vector<struct pollfd> _pollFds;  // lista de FDs (sockets) a vigilar (server + clients)
+    std::map<int, Client *> _clientsByFd; // map fd -> Client*
+
+    int createAndBind(const char *port);
+    int setNonBlocking(int fd);
+    void acceptNewClient();
+    void handleClientEvent(int fd);
+    void cleanupClosedClients();
+
 public:
     Server(const std::string &port); // puerto a escuchar
     ~Server();
+
     bool init(); // crea y prepara el socket (bind + listen + non-blocking)
     int getServerFd() const;
     void run();
-
-private:
-    int createAndBind(const char *port);
-    int setNonBlocking(int fd);
-
-    std::string _port; // el file descriptor del socket de escucha (el que usaremos con listen() y accept())
-    int _serverFd;
 };
 
 /*
@@ -68,3 +77,68 @@ Explicación de cada método privado:
 
         Pero bind() y el resto de funciones de sockets necesitan un número entero, no un string.
 */
+
+/*
+std::map<int, Client> vs std::map<int, Client*>
+
+Las dos opciones son posibles, pero cada una tiene implicaciones distintas 👇
+
+✅ Opción 1 — std::map<int, Client>
+std::map<int, Client> clients;
+
+
+👉 Aquí cada Client se guarda directamente dentro del mapa, como un objeto completo.
+Ventajas:
+
+Gestión automática de memoria (no hay new ni delete).
+
+Más seguro.
+
+Desventajas:
+
+Si necesitas mantener punteros o referencias estables a los Client, puede complicarse, porque el objeto puede moverse internamente si haces inserciones/borrados.
+
+Copiar objetos Client puede ser costoso (si son grandes).
+
+✅ Opción 2 — std::map<int, Client*>
+std::map<int, Client*> clients;
+
+
+👉 Aquí el mapa guarda punteros a objetos Client, no los objetos en sí.
+
+Ventajas:
+
+Puedes crear los clientes dinámicamente (new Client(fd)) y controlar cuándo se destruyen.
+
+El puntero siempre es estable (no cambia aunque el mapa se modifique).
+
+Desventajas:
+
+Tienes que liberar manualmente la memoria (delete clientPtr) o usar punteros inteligentes (std::unique_ptr).
+
+Si olvidas liberar, generas fugas de memoria.
+
+🧭 En tu webserver (proyecto 42)
+
+Normalmente se usa:
+
+std::map<int, Client*> _clients;
+
+
+porque:
+
+cada cliente se asocia a un socket fd (el int),
+
+y el servidor crea un nuevo Client dinámicamente cuando llega una conexión:
+
+_clients[newFd] = new Client(newFd);
+
+
+luego, cuando el cliente se desconecta:
+
+delete _clients[fd];
+_clients.erase(fd);
+
+
+De este modo, cada cliente tiene su propio objeto con su socket, buffer, estado, etc.
+ */

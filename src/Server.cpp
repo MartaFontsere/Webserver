@@ -6,6 +6,7 @@
 // CUAL DE LAS DOS? #include <netinet/in.h> // sockaddr_in, htons, etc.
 #include <arpa/inet.h>  // para sockaddr_in, htons, INADDR_ANY
 #include <sys/socket.h> // para socket(), bind(), listen()
+#include <poll.h>
 
 // Constructor: guarda el puerto que usaremos
 Server::Server(const std::string &port) : _port(port), _serverFd(-1)
@@ -15,6 +16,18 @@ Server::Server(const std::string &port) : _port(port), _serverFd(-1)
 // Destructor: si el socket está abierto, lo cerramos
 Server::~Server()
 {
+    // Cerrar todos los clientes
+    for (std::map<int, Client *>::iterator it = _clientsByFd.begin(); it != _clientsByFd.end(); ++it)
+    {
+        if (it->second) // Recorre _clientsByFd, cierra cada FD y borra los objetos Client*.
+        {
+            close(it->first);  // cierra el descriptor del cliente en el kernel.
+            delete it->second; // libera la memoria del objeto Client.
+        }
+    }
+    _clientsByFd.clear(); // vacía el map (ahora no quedan punteros).
+
+    // Cerrar socket servidor si está abierto
     if (_serverFd != -1)
         close(_serverFd);
 }
@@ -27,6 +40,17 @@ _serverFd se inicializa con -1 para indicar “no hay socket abierto todavía”
 
 En el destructor, comprobamos si el socket se creó (_serverFd != -1), y lo cerramos para liberar recursos del sistema.
     Los recursos (como sockets) deben liberarse automáticamente cuando el objeto se destruye.
+Es la limpieza final: si el servidor se destruye (programa acaba o objeto eliminado), hay que liberar los recursos del sistema: cerrar sockets y liberar memoria de new Client(...).
+
+Cuestiones críticas
+    Si algun Client* ya fue borrado antes en run(), no debería estar en el map. El destructor no comprueba doble-liberación porque supone coherencia.
+
+    Es correcto cerrar FDs antes de delete del objeto cliente porque el objeto cliente podría ya intentar cerrar el FD en su destructor; aquí cerramos por seguridad (si tu Client ya cierra el fd en su destructor, esto podría redundar — pero cerrar dos veces un fd numérico que ya se cerró reapunta a otro descriptor si no manejas bien; por eso la responsabilidad de cerrar debería ser única preferentemente). En nuestro código cerramos el fd en el servidor para evitar fugas si Client no lo cerró.
+
+
+Remember iteradores:
+    it->first → es la clave (por ejemplo, 1, 2, …)
+    it->second → es el valor asociado a esa clave (por ejemplo, "Marta", "Guillem", …)
 */
 
 bool Server::init()
@@ -60,13 +84,13 @@ bool Server::init()
 /*
 Esta es la función principal de inicialización del servidor.
 
-Llama a createAndBind() → que crea el socket y lo asocia a una dirección IP y puerto.
+Llama a createAndBind() → que crea el socket y lo asocia a una dirección IP y puerto. Si falla, no seguimos.
 
-Llama a setNonBlocking() → para que las llamadas accept(), recv(), send() no bloqueen.
+Llama a setNonBlocking() → para que las llamadas accept(), recv(), send() no bloqueen. Si falla, cerramos socket y retornamos false. Si no fuera non-blocking, accept()/recv()/send() podrían bloquear y romper la intención de usar poll().
 
 Luego hace listen() → el servidor empieza a “escuchar” nuevas conexiones entrantes. Este paso convierte el socket en servidor pasivo. El listen le dice al Kernel que ese socket ya no va a iniciar conexiones (deja de ser cliente), ahora va a escucharlas y aceptarlas (socket de escucha).
     listen(server_fd, backlog); -> El segundo argumento (backlog) define el número máximo de conexiones pendientes que el kernel puede mantener en cola antes de que tú las aceptes.
-        SOMAXCONN es una constante del sistema (normalmente 128 o más).
+        SOMAXCONN es una constante del sistema (normalmente 128 o más) que indica el backlog máximo recomendado por el sistema..
 
         Si 150 clientes intentan conectarse al mismo tiempo y tú solo has aceptado 100, los 50 restantes esperan en esa cola.
 
@@ -136,9 +160,12 @@ Por qué recibe un const char *port en lugar de std::string
 
 
 La función crea y configura el socket para escuchar conexiones:
+    Crear socket(), configurar SO_REUSEADDR, preparar sockaddr_in y bind() al puerto solicitado. Devuelve el descriptor o -1 en error.
+
+Explicacion línea por línea:
 
 socket(AF_INET, SOCK_STREAM, 0)
-→ Crea un socket TCP (orientado a conexión).
+→ Crea un socket TCP IPv4 (orientado a conexión).
     AF_INET = familia de direcciones IPv4.
     SOCK_STREAM = tipo de socket orientado a conexión (TCP).
     0: protocolo por defecto (TCP).
@@ -402,12 +429,33 @@ Esta funcion hace que el socket no bloquee.
 fcntl(fd, F_GETFL, 0) obtiene las flags actuales del descriptor fd.
 
 fcntl(fd, F_SETFL, flags | O_NONBLOCK) activa la flag O_NONBLOCK.
-    No borra los anteriores.
+    No borra los anteriores. F_SETFL escribe los flags combinados con O_NONBLOCK
     Solo indica que el socket ya no bloqueará el flujo.
+    Retorna el valor de fcntl (0 en éxito, -1 en fallo).
 
 Así, si haces accept() y no hay clientes esperando, la llamada no se queda congelada, sino que devuelve inmediatamente con un error controlable (EAGAIN o EWOULDBLOCK).
+    Osea, en modo non-blocking, accept(), recv() y send() no bloquearán. En su lugar devolverán -1 y errno en EAGAIN/EWOULDBLOCK si no hay datos/disponibilidad. poll() se usa para evitar llamadas en momentos con posibilidad de bloqueo.
 
 Esto será esencial más adelante cuando usemos poll().
+
+
+******Profundización:
+    Qué es fcntl
+        fcntl significa file control → control de archivos.
+
+        Es una función del sistema POSIX (Unix/Linux/macOS) que sirve para modificar el comportamiento de un descriptor de archivo (file descriptor, o fd).
+
+        Y recuerda que en Unix todo es un archivo:
+            un archivo normal (de disco),
+
+            un socket de red,
+
+            una tubería (pipe),
+
+            incluso el teclado o la pantalla…
+
+    Todos se manejan con descriptores de archivo (int).
+
 */
 
 /*
@@ -431,6 +479,379 @@ int Server::getServerFd() const
     return _serverFd;
 }
 
+// VERSION 2 DEL BUCLE RUN
+void Server::run()
+{
+    // ESTO IGUAL MOVERLO A INIT, ENTRE LISTEN Y EL MENSAJE DE SERVIDOR ESCUCHANDO
+
+    // Añadimos el socket del servidor (el que hace listen) a la lista de Fds a vigilar
+    pollfd serverPollFd;
+    serverPollFd.fd = _serverFd;
+    serverPollFd.events = POLLIN; // queremos saber cuándo hay una nueva conexión entrante
+    serverPollFd.revents = 0;
+    _pollFds.push_back(serverPollFd); // añadimos
+
+    // SI SE MUEVE, HASTA AQUI
+
+    std::cout << "Servidor corriendo con poll()..." << std::endl;
+
+    while (true)
+    {
+        int ready = poll(_pollFds.data(), _pollFds.size(), -1); // el -1 significa que espera indefinidamente hasta que algo ocurra
+        if (ready < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            perror("poll");
+            break;
+        }
+
+        // Nueva conexión entrante - Revisamos el servidor
+        if (_pollFds.size() > 0 && (_pollFds[0].revents & POLLIN))
+            acceptNewClient();
+
+        // Actividad en clientes existentes - Recorremos el resto revisando todos los clientes
+        for (size_t i = 1; i < _pollFds.size(); ++i)
+        {
+            if (_pollFds[i].revents & POLLIN)
+                handleClientEvent(_pollFds[i].fd);
+        }
+
+        // Limpiar clientes cerrados
+        cleanupClosedClients();
+    }
+}
+
+/* EXPLICACION
+
+Actualizar la clase Server
+Hasta ahora, tu Server:
+    Crea el socket.
+    Lo asocia a un puerto (bind).
+    Empieza a escuchar (listen).
+    Acepta conexiones (accept).
+
+Pero solo acepta una conexión y no gestiona múltiples clientes simultáneamente. Si aceptas un cliente, hasta que no terminas con él no puedes aceptar otro.
+Si dos clientes se conectan casi a la vez, el segundo tendrá que esperar hasta que termines con el primero.
+Mientras tanto, tu servidor no hace nada más: no puede recibir otros mensajes ni atender más sockets, porque estás bloqueada en el flujo “uno a uno”.
+    Aunque tenga el socket como no bloqueante y el accept() no se queda colgado esperando, porque tienes el continue, aun así tu código no atenderá a más de un cliente a la vez porque:
+        No guardas los clientFd para seguir leyendo de ellos.
+        No tienes ninguna lógica que diga: “ahora voy a leer del cliente 1”, “ahora del cliente 2”.
+    Solo haces accept → send → close.
+    Aunque no te bloquees esperando conexiones, tampoco gestionas múltiples clientes simultáneamente.
+Así que ahora toca hacerlo capaz de manejar varios clientes a la vez, sin que uno bloquee a los demás.
+
+Para eso lo que haremos ahora es pasar el servidor a usar poll().
+
+pollfd es una estructura definida en <poll.h> que contiene:
+
+struct pollfd
+{
+    int fd;        // el descriptor de socket
+    short events;  // qué eventos queremos vigilar (lectura, escritura...)
+    short revents; // qué eventos ocurrieron realmente
+};
+
+Qué significa “usar poll()”
+
+    poll() permite vigilar varios file descriptors (FDs) a la vez:
+
+    uno para el socket del servidor (esperando nuevas conexiones),
+
+    y varios para los clientes (esperando datos que leer o que enviar).
+
+Piensa en poll() como un vigilante que está atento a varios sockets a la vez y te avisa cuando ocurre algo interesante:
+
+    alguien quiere conectarse,
+
+    un cliente ha mandado datos,
+
+    un cliente se ha desconectado…
+
+Entonces tú puedes actuar sin quedarte bloqueada esperando.
+
+
+Así, en cada ciclo:
+
+    Si el socket del servidor tiene actividad → significa que hay un nuevo cliente que quiere conectarse→ haces accept() y lo añades a tu lista de pollfd.
+
+    Si un cliente tiene actividad → lees su petición con readRequest().
+
+    Si la petición está completa → generas una respuesta y se la envías con sendResponse().
+
+
+👉 el socket (la puerta real de comunicación)
+👉 y poll() (el vigilante que observa esas puertas).
+
+
+Vamos a crear:
+
+    Un std::vector<pollfd> pollFds; → lista de sockets que estamos vigilando.
+        En el índice 0 pondremos el socket del servidor (el que hace listen()).
+        En los siguientes, los clientes aceptados.
+
+Cada iteración del bucle:
+
+    Llamamos a poll(pollFds.data(), pollFds.size(), -1)
+    (espera indefinidamente hasta que haya algo que hacer).
+    Recorremos pollFds:
+        Si el fd es el del servidor → hay una nueva conexión (accept()).
+        Si es otro → ese cliente ha mandado algo o está listo para recibir respuesta.
+
+
+**** CÓDIGO: Explicación línea a línea (lo esencial)
+
+1.
+Creamos un pollfd para el socket del servidor y registramos POLLIN (nos interesa cuando haya nuevas conexiones).
+
+Guardamos ese pollfd en _pollFds en la posición 0: convenimos que índice 0 será siempre socket servidor.
+
+
+2.
+poll(_pollFds.data(), _pollFds.size(), -1)
+→ le pasamos todos los fds a vigilar y -1 indica “esperar indefinidamente”.
+bloquea hasta que haya eventos en alguno de los fds o hasta que una señal interrumpa (EINTR).
+
+Si errno == EINTR → reacción adecuada: volver a llamar a poll() (esto evita terminar por un SIGALRM u otra señal).
+    EINTR significa “Interrupted system call” → una llamada al sistema fue interrumpida por una señal antes de completarse (por ejemplo, accept(), read(), poll(), etc.).
+    Normalmente solo implica volver a intentarla.
+
+Si hay otro error → imprimimos y salimos del bucle.
+
+ready indica cuántos fds tienen revents no nulos, pero no lo usamos directamente para optimizar el escaneo.
+
+
+3. if (_pollFds.size() > 0 && (_pollFds[0].revents & POLLIN))
+            acceptNewClient();
+
+Asegura que el vector _pollFds no esté vacío (que haya al menos un socket registrado).
+
+_pollFds[0] → el primer elemento del vector (tu socket del servidor).
+
+.revents → campo que poll() rellena con los eventos que han ocurrido.
+        Cuando haces poll(_pollFds.data(), _pollFds.size(), -1); el kernel rellena el campo revents de cada pollfd con los eventos que han sucedido (por ejemplo, si hay datos para leer, una desconexión, un error, etc).
+        Events lo pone el programador, es lo que quiere vigilar ej. POLLIN para lectura, POLLOUT para escritura). Revents lo rellena el propio poll(), significa qué ha pasado de verdad (ej. si llega POLLIN, hay datos listos).
+
+        En el caso del servidor, estás preguntando: “¿Hay algo que pueda leer ahora en el socket del servidor?”
+        Para un socket de servidor eso no significa “hay datos de texto o HTML”, sino si hay una nueva conexión pendiente que puedo aceptar con accept()
+
+POLLIN → bandera que indica “hay datos para leer” (en este caso, una nueva conexión entrante).
+
+El operador & (AND bit a bit) sirve para comprobar si el bit de POLLIN está activado.
+
+significa:
+👉 “Si hay al menos un socket registrado y el socket del servidor tiene un evento POLLIN (una nueva conexión entrante), entonces acepto esa conexión.”
+
+
+
+***Duda:  pero como se llega a saber que alguien se quiere conectar? como llega esa información al fd del servidor?
+    Cuando creas un socket de servidor, _serverFd no es solo un número cualquiera, es un descriptor de archivo que el kernel asocia con tu aplicación.
+    listen() le dice al kernel:
+        “Todas las nuevas conexiones que lleguen al puerto X, guárdalas aquí en una cola, y cuando el programa pregunte, se la damos”.
+    Cuando un cliente hace:
+        connect(server_ip, port);
+
+    Se inicia el handshake TCP (SYN → SYN-ACK → ACK).
+    Una vez completado, el kernel del servidor crea una entrada en la cola de conexiones pendientes.
+    _serverFd sigue siendo el mismo descriptor, pero ahora el kernel sabe que hay algo “listo para leer” en ese descriptor: una conexión que se puede aceptar.
+
+💡 Por eso, en poll(), _pollFds[0].revents & POLLIN se activa:
+    “el socket tiene algo que ‘leer’ → hay una conexión esperando que aceptes”
+
+Al llamar accept():
+    Saca la primera conexión de la cola.
+    Crea un nuevo socket (clientFd) dedicado a ese cliente.
+    _serverFd sigue existiendo y puede aceptar más conexiones nuevas.
+
+Es decir:
+    _serverFd → puerta de entrada general (escucha nuevas conexiones)
+    clientFd → puerta de entrada personalizada para ese cliente concreto
+
+***Fin duda****
+
+Si hay un nuevo cliente esperando a ser aceptado, entramos en acceptNewClient()
+
+
+
+4.
+for (size_t i = 1; i < _pollFds.size(); ++i)
+{
+    if (_pollFds[i].revents & POLLIN)
+        handleClientEvent(_pollFds[i].fd);
+
+Despues se recorren el resto de índices de la lista _pollFds, que son los clientes ya conectados, para evaluar si hay algun revent tipo Pollin (peticiones que haya pendientes de leer). En tal caso, se llama a handleClientEvent
+
+
+5.
+
+
+
+}
+
+*/
+
+void Server::acceptNewClient()
+{
+    while (true)
+    {
+        sockaddr_in clientAddr;                   // almacena IP y puerto del cliente que se conecta.
+        socklen_t clientLen = sizeof(clientAddr); // tamaño de esa estructura, necesario para accept()
+        int clientFd = accept(_serverFd, (struct sockaddr *)&clientAddr, &clientLen);
+        if (clientFd == -1)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break; // ya no hay más conexiones pendientes
+            perror("accept");
+            break;
+        }
+
+        if (setNonBlocking(clientFd) == -1)
+        {
+            close(clientFd);
+            continue;
+        }
+
+        Client *client = new Client(clientFd, clientAddr);
+        _clientsByFd[clientFd] = client;
+
+        struct pollfd clientPollFd;
+        clientPollFd.fd = clientFd;
+        clientPollFd.events = POLLIN;
+        clientPollFd.revents = 0;
+        _pollFds.push_back(clientPollFd);
+
+        std::cout << "Nueva conexión (fd: " << clientFd
+                  << ", IP: " << client->getIp() << ")" << std::endl;
+    }
+}
+
+/*
+¿Por qué un bucle accept()?
+    poll() te dice "hay conexiones pendientes", pero puede haber más de una esperando, por eso es un bucle infinito. En non-blocking debes accept() en bucle hasta que accept() devuelva -1 con EAGAIN (ya no hay más conexiones pendientes). Si no haces el bucle, te quedarías con conexiones sin aceptar hasta la próxima llamada a poll().
+
+Pasos por nuevo cliente:
+    accept() → crea un nuevo socket (fd nuevo) para hablar con ese cliente. Lo que hace accept() internamente es tomar la conexión pendiente de la cola del kernel y rellenar clientAddr con la dirección del cliente que se conectó (dirección IPv4, la IP del cliente y el puerto del cliente) y ajustar el clientLen al tamaño real de los datos escritos en clientAddr
+        _serverFd → descriptor del socket del servidor, escuchando en algún puerto (ej. 8080).
+        (struct sockaddr*)&clientAddr → cast porque accept espera un puntero a sockaddr genérico.
+        clientLen → indica el tamaño de la estructura de dirección.
+
+        Resultado:
+            Si hay una conexión pendiente → devuelve un nuevo fd (clientFd) para hablar con ese cliente.
+            Si no hay → devuelve -1 y se setea errno.
+                Si clientFd == -1 y errno es EAGAIN/EWOULDBLOCK → significa "no hay más conexiones ahora" → rompemos el accept-loop. Puede dar esto gracias a que está en modo no bloqueante.
+                Por el contrario, perror("accept") → cualquier otro error real lo imprime en consola.
+
+    Convertimos clientFd a non-blocking.
+        Esto permite que no se bloquee cuando intentemos leer o escribir datos en ese socket más adelante.
+        Fundamental para poder atender muchos clientes a la vez con un solo hilo.
+
+    Creamos Client* c = new Client(clientFd); y lo guardamos en _clientsByFd[clientFd].
+        Client → clase que encapsula información del cliente (fd, IP, buffer de lectura, etc.).
+        Se guarda en _clientsByFd con clave clientFd.
+        Así puedes acceder rápidamente al cliente según su descriptor de socket.
+        💡 Nota: se usa puntero (Client*) para no copiar la clase y poder manejarla dinámicamente.
+
+    struct pollfd pfd = {clientFd, POLLIN, 0};
+    _pollFds.push_back(pfd);
+        pollfd → estructura que poll() necesita.
+        fd → el descriptor del cliente.
+        events → eventos que queremos vigilar, aquí POLLIN (datos listos para leer).
+        revents → inicializado a 0, lo rellena poll() luego.
+        Añadimos el nuevo socket (fd) a la lista _pollFds para que poll() empiece a vigilar este cliente también.
+
+
+*/
+
+void Server::handleClientEvent(int fd)
+{
+    Client *client = _clientsByFd[fd];
+    if (!client)
+        return;
+
+    if (!client->readRequest())
+        return; // aún no ha llegado todo
+
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 15\r\n"
+        "\r\n"
+        "Hello world!!!!";
+
+    client->sendResponse(response);
+}
+
+/*
+Para que sea mas sencillo, asignamos un puntero client que señala al objeto Client correspondiente al fd que llega como argumento. Si el cliente con ese fd existe, se guarda su puntero en client*
+
+if (!client->readRequest()) return;
+Esta línea es clave, se llama a readRequest para:
+    Se lee del socket del cliente (recv) todo lo que ha llegado hasta ahora.
+    Se acumula en un buffer interno (_requestBuffer).
+    Si todavía no ha llegado todo el mensaje (por ejemplo, si el cliente no ha enviado aún todo el encabezado HTTP), devolvemos false y esperamos a la próxima vez que poll() diga que hay más datos.
+    Cuando la petición está completa (por ejemplo, ya se recibió el doble salto de línea \r\n\r\n que marca el final de los headers HTTP), devuelve true.
+
+    👉 Si devuelve false, el servidor no responde todavía, sale y solo espera más datos la próxima vez.
+
+
+***DUDA: PERO SI AUN FALTA POR LLEGAR, NO TENEMOS QUE ENTRAR MAS A READREQUEST, POR SI VENIA POR PARTES O NO HA PODIDO LEERLO TODO PORQUE EL BUFFER ERA MAS PEQUEÑO QUE EL TAMAÑO DE LA PETICION?
+    Tu intuición es totalmente correcta: el servidor no se queda bloqueado esperando a que llegue el resto, sino que vuelve al bucle principal. Pero eso no significa que la petición se “olvide”: el cliente sigue registrado y poll() lo volverá a despertar cuando haya más datos disponibles.
+
+    if (!client->readRequest())
+        return; // aún no ha llegado todo
+    … significa:
+        “Aún no tengo toda la petición, así que no hago nada más por ahora”.
+
+    Luego el flujo continúa:
+        Sales de handleClientEvent().
+        El bucle principal (poll()) sigue iterando y escuchando todos los descriptores (server y clientes).
+        En la siguiente vuelta, cuando el cliente mande más datos, poll() marcará su socket con POLLIN.
+        Entonces handleClientEvent(fd) se volverá a llamar automáticamente para ese cliente, y esta vez readRequest() añadirá el nuevo trozo a _request.
+
+    Así, poco a poco se va completando la petición.
+
+    👉 Esto es no bloqueante y reactivo: nunca te quedas “esperando dentro” de una función.
+***FIN DUDA
+
+
+*/
+
+void Server::cleanupClosedClients()
+{
+    for (size_t i = 1; i < _pollFds.size();)
+    {
+        int fd = _pollFds[i].fd;
+        Client *client = _clientsByFd[fd];
+        if (client && client->isClosed())
+        {
+            close(fd);
+            delete client;
+            _clientsByFd.erase(fd);
+            _pollFds.erase(_pollFds.begin() + i);
+        }
+        else
+        {
+            ++i;
+        }
+    }
+}
+
+/*
+Recorre los clientes y elimina los que marcaron _closed = true.
+
+También los saca de _pollFds para que poll() no siga vigilando sockets cerrados.
+
+_closed se pone a true solo si:
+    send() falla
+    El cliente cierra la conexión (recv() devuelve 0)
+    O hay un timeout en tu servidor
+
+En el resto de situaciones se deja el cliente abierto para más requests
+
+*/
+
+// VERSION 1 DEL BUCLE RUN
+/*
 void Server::run()
 {
     while (true)
@@ -463,7 +884,7 @@ void Server::run()
     }
 }
 
-/*
+
 1️⃣ while(true)
     Este es el bucle principal del servidor, el loop infinito del servidor.
 
