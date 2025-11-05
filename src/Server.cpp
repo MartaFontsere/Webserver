@@ -21,8 +21,8 @@ Server::~Server()
     {
         if (it->second) // Recorre _clientsByFd, cierra cada FD y borra los objetos Client*.
         {
-            close(it->first);  // cierra el descriptor del cliente en el kernel.
-            delete it->second; // libera la memoria del objeto Client.
+            // close(it->first);   cierra el descriptor del cliente (el socket) en el kernel. ESTO LO QUITAMOS, PORQUE ES RESPONSABILIDAD DEL DESTRUCTOR DEL CLIENTE
+            delete it->second; // libera la memoria del objeto Client y ademas llama al destructor de client para cerrar el fd.
         }
     }
     _clientsByFd.clear(); // vacía el map (ahora no quedan punteros).
@@ -41,6 +41,86 @@ _serverFd se inicializa con -1 para indicar “no hay socket abierto todavía”
 En el destructor, comprobamos si el socket se creó (_serverFd != -1), y lo cerramos para liberar recursos del sistema.
     Los recursos (como sockets) deben liberarse automáticamente cuando el objeto se destruye.
 Es la limpieza final: si el servidor se destruye (programa acaba o objeto eliminado), hay que liberar los recursos del sistema: cerrar sockets y liberar memoria de new Client(...).
+
+
+El dueño del file descriptor (FD) debe ser el objeto Client.
+El Server crea y destruye clientes, pero no cierra sockets directamente, solo borra los objetos Client.
+
+Entonces:
+    Client se encarga de cerrar su propio _clientFd.
+    Server solo llama delete it->second;.
+    No debe llamar a close() sobre los FDs.
+
+Cuando haces:
+    delete client;
+ocurre exactamente esto, en orden:
+    Se llama al destructor del objeto Client.
+    Es decir, se ejecuta Client::~Client().
+    El objeto sigue existiendo completamente durante la ejecución del destructor — puedes leer _clientFd, _closed, etc.
+
+    Dentro del destructor, tú puedes:
+        Cerrar el socket (close(_clientFd)),
+        Imprimir mensajes,
+        Cambiar flags (_closed = true),
+        O liberar recursos adicionales (memoria, ficheros, etc).
+
+    Cuando termina el destructor,
+    el compilador libera la memoria ocupada por el objeto.
+    Solo en ese momento el puntero client ya no apunta a memoria válida.
+
+Qué pasa con el FD después de close()
+
+    Cuando haces close(_clientFd):
+        El descriptor de archivo (número entero en el kernel) se libera.
+        El sistema operativo puede reutilizarlo más tarde para otro socket.
+        Pero tu variable _clientFd sigue existiendo en el objeto Client (con el mismo número) hasta que el destructor termina.
+
+    Por eso es buena práctica hacer:
+        close(_clientFd);
+        _clientFd = -1;
+
+Así evitas “doble cierre” accidental.
+
+DUDA:
+Si el flujo es:
+    Detectas que un Client está cerrado.
+    Haces delete client.
+    El destructor cierra el fd (si no se cerró antes).
+    El objeto desaparece.
+
+Entonces sí: nadie más debería acceder a ese objeto ni a ese fd.
+En ese flujo limpio y lineal, no haría falta ni poner closed = true ni clientFd = -1.
+
+⚠️ Pero en la práctica...
+El problema es que, en servidores no bloqueantes y con múltiples pasos, no siempre el flujo es tan lineal o “perfecto”.
+
+Ejemplos reales:
+
+1. El Client puede seguir referenciado
+    Aunque hagas delete client, puede que en otro punto del loop o en otra estructura aún haya punteros colgantes (por ejemplo, si tenías un std::vector<Client*> y no limpiaste bien los iteradores).
+    👉 Si el fd se marca a -1, evitas intentar usar un descriptor ya cerrado.
+
+2. close(fd) no borra el número
+    El sistema operativo reutiliza números de file descriptor.
+    Eso significa que si cierras el fd = 4, luego el accept() siguiente podría devolverte otro socket distinto pero también fd = 4.
+    Si por error alguien aún tiene un puntero a ese antiguo Client, podría acabar escribiendo en un socket que ya es de otra conexión 😬.
+
+    Por eso muchos desarrolladores hacen:
+        close(_clientFd);
+        _clientFd = -1;
+        _closed = true;
+
+Así, si algo intenta usarlo luego, falla de manera predecible en lugar de provocar un bug difícil de detectar.
+
+3. Defensa contra dobles cierres o dobles deletes
+    En sistemas complejos (timeouts, desconexiones abruptas, señales de error, etc.), pueden producirse varios caminos que intenten cerrar el mismo cliente.
+    Si ya marcaste _closed = true, el destructor sabe que no tiene que volver a hacerlo.
+
+
+
+
+
+
 
 Cuestiones críticas
     Si algun Client* ya fue borrado antes en run(), no debería estar en el map. El destructor no comprueba doble-liberación porque supone coherencia.
@@ -758,8 +838,6 @@ Pasos por nuevo cliente:
         events → eventos que queremos vigilar, aquí POLLIN (datos listos para leer).
         revents → inicializado a 0, lo rellena poll() luego.
         Añadimos el nuevo socket (fd) a la lista _pollFds para que poll() empiece a vigilar este cliente también.
-
-
 */
 
 void Server::handleClientEvent(int fd)
@@ -824,8 +902,7 @@ void Server::cleanupClosedClients()
         Client *client = _clientsByFd[fd];
         if (client && client->isClosed())
         {
-            close(fd);
-            delete client;
+            delete client; // esto llama al destructor de Client, por lo que dentro tambien se cerrara el fd
             _clientsByFd.erase(fd);
             _pollFds.erase(_pollFds.begin() + i);
         }

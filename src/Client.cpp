@@ -13,14 +13,24 @@ La clase Client sirve justo para eso: encapsula todo lo que pasa con un cliente 
 Así evitamos caos y código duplicado dentro del servidor.
 */
 
-Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _headersComplete(false), _requestComplete(false), _contentLength(0)
+Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _headersComplete(false), _requestComplete(false), _contentLength(-1)
 {
 }
+
+/*
+ _contentLength(0) podría interpretarse como “esperamos 0 bytes de body” — mejor usar -1 para decir “no hay Content-Length definido”.
+*/
 
 Client::~Client()
 {
     if (!_closed)
-        close(_clientFd);
+    {
+        std::cout << "[Client] Cerrando conexión con " << getIp() << std::endl;
+        if (_clientFd != -1)
+            close(_clientFd);
+        _closed = true;
+        _clientFd = -1;
+    }
 }
 
 /*
@@ -40,6 +50,18 @@ El destructor se encarga de cerrar el socket cuando el cliente ya no se usa, evi
 
 Cada cliente tiene su propio descriptor, y si no lo cierras correctamente cuando termina, el servidor se llenaría de conexiones abiertas y acabaría petando.
 El destructor garantiza limpieza automática.
+
+Explicación:
+    if (!_closed) → Evita que se cierre dos veces.
+
+    if (_clientFd != -1) → Asegura que no se llame a close() con un fd inválido (aunque no crashearía, es más limpio).
+
+    close(_clientFd) → Cierra el socket si aún está abierto.
+
+    _closed = true; → Marca el objeto como cerrado para evitar dobles acciones.
+
+    _clientFd = -1; → Evita que este número se use accidentalmente si el fd se reutiliza en el sistema.
+
 */
 
 int Client::getFd() const
@@ -60,10 +82,17 @@ Gracias a este método, puede hacerlo sin exponer directamente los miembros inte
 
 std::string Client::getIp() const
 {
-    return inet_ntoa(_addr.sin_addr);
+    char ipStr[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &_addr.sin_addr, ipStr, sizeof(ipStr)) != NULL)
+        return std::string(ipStr);
+    return "Unknown IP";
 }
 
 /*
+
+ return inet_ntoa(_addr.sin_addr);
+
+OBSOLETO
 _addr.sin_addr → es un campo de tipo struct in_addr dentro de la estructura sockaddr_in.
 Contiene la IP en formato binario (4 bytes para IPv4).
 
@@ -125,7 +154,9 @@ bool Client::readRequest()
     if (bytesRead <= 0)
     {
         if (bytesRead == 0)
-            std::cout << "Cliente cerró la conexión\n";
+            std::cout << "[Info] Cliente (fd: " << _clientFd << ") cerró la conexión normalmente.\n";
+        else
+            std::cerr << "[Error] Fallo al leer del cliente (fd: " << _clientFd << ")\n";
         _closed = true;
         return false;
     }
@@ -151,6 +182,57 @@ bool Client::readRequest()
 }
 
 /*
+4.11.25
+
+Ahora mismo tu flujo es así:
+
+recv() → procesas → send() → cliente cierra → servidor marca _closed → cleanup lo borra
+
+
+✅ Funciona, pero es HTTP/1.0 style: cada petición = nueva conexión.
+
+En HTTP/1.1, por defecto las conexiones son persistentes (keep-alive),
+lo que significa que el cliente puede mandar varias peticiones seguidas por el mismo socket sin cerrarlo.
+
+Ahora, cuando ya no hay bytes que mandar (bytes = 0)
+
+Qué significa bytesRead == 0
+        Cuando recv() devuelve 0, no es que haya terminado de mandar la petición, sino que el cliente ha cerrado su socket TCP.
+        👉 Es decir: ya no hay canal abierto para seguir comunicándose.
+
+        Esto pasa típicamente en dos casos:
+            Cliente desconecta (por ejemplo, el navegador cierra la pestaña o la conexión HTTP/1.0 no mantiene keep-alive).
+
+            Cliente ha terminado la comunicación y cierra el socket voluntariamente.
+
+        Por tanto, sí:
+            Cuando bytesRead == 0, hay que marcar el cliente como cerrado (_closed = true), porque el socket ya no sirve para nada más.
+
+        ¿por qué parece que “cerramos siempre todos”?
+            Porque en el flujo actual estás probablemente haciendo HTTP/1.0 o HTTP/1.1 sin keep-alive, y en ambos casos el cliente cierra la conexión tras cada petición (salvo que explícitamente indique Connection: keep-alive).
+            Así que el servidor recibe la petición → responde → el cliente cierra → bytesRead == 0 → cerramos el cliente.
+
+            👉 En ese flujo es normal que se cierren “todos”, uno por petición.
+
+            Y si quiero mantener viva la conexión?
+                Para que no se cierre el cliente después de cada petición, hay que comprobar si el cliente quiere mantener la conexión viva.
+                Eso se indica en la cabecera:
+
+                Connection: keep-alive
+
+                Entonces podrías cambiar el comportamiento de readRequest()
+
+
+Entonces tu servidor debería:
+    Detectar si el cliente quiere mantener la conexión viva.
+    No marcar _closed = true en ese caso.
+    Esperar más datos en el mismo poll().
+
+*/
+
+/*
+3.11.25
+
 readRequest() lee bytes y acumula.
 
 ➤ Qué hace:
@@ -372,11 +454,18 @@ bool Client::sendResponse(const std::string &msg)
 {
     if (send(_clientFd, msg.c_str(), msg.size(), 0) < 0)
     {
+        std::cerr << "[Error] Fallo al enviar respuesta al cliente (fd: " << _clientFd << ")\n";
+
         _closed = true; // Marcamos al cliente como cerrado para que el servidor deje de usarlo
         return false;
     }
+    std::cout << "[Info] Respuesta enviada al cliente (fd: " << _clientFd << ")\n";
     return true;
 }
+
+/*
+
+*/
 
 /*
 ➤ Qué hace:

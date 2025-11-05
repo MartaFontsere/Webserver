@@ -22,12 +22,12 @@ private:
     int _clientFd;     // file descriptor del socket del cliente
     sockaddr_in _addr; // dirección IP y puerto del cliente   *****SI DEJO ESTE PONER IGUAL EN EL SERVER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool _closed;      // indica si la conexión está cerrada
-
     bool _headersComplete;
     bool _requestComplete;
     int _contentLength;
     std::string _request; // buffer con los datos recibidos del header
     std::string _body;    // buffer con los datos recibidos del body
+    // bool _keepAlive;      // para saber si la conexión se debe mantener viva después de mandar una petición o no
 
     bool parseHeaders();
     bool parseBody();
