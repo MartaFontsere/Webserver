@@ -18,10 +18,17 @@ public:
     bool sendResponse(const std::string &msg); // envía respuesta
     bool isClosed() const;
 
+    // nuevo: encolar respuesta y vaciar buffer progresivamente
+    bool queueResponse(const std::string &msg); // añade msg a _writeBuffer y llama a flushWrite()
+    bool flushWrite();                          // intenta enviar bytes pendientes (usa send())
+    bool hasPendingWrite() const;               // true si queda data por enviar
+
 private:
     int _clientFd;     // file descriptor del socket del cliente
     sockaddr_in _addr; // dirección IP y puerto del cliente   *****SI DEJO ESTE PONER IGUAL EN EL SERVER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool _closed;      // indica si la conexión está cerrada
+
+    // lectura/parseo
     bool _headersComplete;
     bool _requestComplete;
     int _contentLength;
@@ -29,6 +36,12 @@ private:
     std::string _body;    // buffer con los datos recibidos del body
     // bool _keepAlive;      // para saber si la conexión se debe mantener viva después de mandar una petición o no
 
+    //  salida (write buffering)
+    std::string _writeBuffer; // todo lo pendiente por enviar
+    size_t _writeOffset;      // bytes ya enviados desde el inicio de _writeBuffer. indica cuánto ya has enviado — así no reenvías bytes ya enviados.
+    time_t _lastActivity;     // timestamp del último recv/send exitoso. te permitirá implementar timeouts (más tarde)
+
+    // parsing helpers
     bool parseHeaders();
     bool parseBody();
 };

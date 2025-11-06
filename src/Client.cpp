@@ -13,7 +13,7 @@ La clase Client sirve justo para eso: encapsula todo lo que pasa con un cliente 
 Así evitamos caos y código duplicado dentro del servidor.
 */
 
-Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _headersComplete(false), _requestComplete(false), _contentLength(-1)
+Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _headersComplete(false), _requestComplete(false), _contentLength(-1), _writeBuffer(), _writeOffset(0), _lastActivity(time(NULL))
 {
 }
 
@@ -452,6 +452,278 @@ if (bodyBytes < static_cast<size_t>(_contentLength))
 
 bool Client::sendResponse(const std::string &msg)
 {
+    // 1. Encolar respuesta
+    if (!_closed && !msg.empty())
+        _writeBuffer.append(msg);
+
+    // 2. Intentar enviar lo que haya
+    if (!flushWrite())
+        return false; // flushWrite() ya marcará closed = true si hubo error
+
+    // 3. Si todavía hay bytes pendientes, el servidor deberá activar POLLOUT
+    if (hasPendingWrite())
+    {
+        return true; // todo correcto, pero falta enviar
+    }
+
+    // 4. Si no queda nada pendiente, todo enviado -> según keep-alive, marcar cerrado o dejar abierto
+    // if (!_keepAlive)
+    //{
+    // cerrar la conexión limpiamente (marcar para que cleanup la borre)
+    //   _closed = true;
+    //   std::cout << "[Client] Respuesta completa, cerrando conexión con " << getIp() << std::endl;
+    //}
+    // else
+    //{
+    // mantener la conexión abierta para próximas peticiones
+    // además limpiar buffers de request si quieres reutilizar
+    _request.clear();
+    _headersComplete = false;
+    _requestComplete = false;
+    _contentLength = -1;
+    std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive)" << std::endl;
+    //}
+
+    return true;
+}
+
+/*
+Principios sencillos antes de tocar código
+    send() en sockets no-bloqueantes puede:
+        devolver >0 (n bytes enviados),
+        devolver 0 (peer cerró la conexión),
+        devolver -1 con errno == EAGAIN/EWOULDBLOCK (no se puede escribir ahora; no es error grave),
+        devolver -1 con otro errno (error grave).
+
+    Por eso hay que acumular la respuesta en un buffer y reenviar hasta que esté todo escrito.
+
+    POLLOUT es la notificación de poll() que te dice “esto ahora es escribible”; la activas cuando tienes datos pendientes y la desactivas cuando acabas.
+
+
+
+Queremos mantener un método intuitivo como:
+
+    bool Client::sendResponse(const std::string &msg);
+
+
+Y que dentro se encargue de:
+    añadir al buffer (_writeBuffer),
+    intentar enviar (flushWrite()),
+    decidir si marcar POLLOUT o si ya está todo enviado,
+    marcar el cliente cerrado si no tiene keep-alive, etc.
+
+Explicación de flujo (paso a paso):
+    Se llama sendResponse() desde el servidor cuando ya tienes la respuesta generada.
+    → Añade esa respuesta al buffer (_writeBuffer).
+
+    Llama a flushWrite() para intentar enviarla inmediatamente.
+    → Si la conexión está lista para escribir, se mandará parte o todo.
+    → Si el socket está lleno (EAGAIN), no pasa nada: el resto queda en _writeBuffer.
+
+    Comprueba si quedan bytes pendientes.
+        Si sí → se devolverá true y el servidor sabrá que debe activar POLLOUT para seguir enviando.
+
+        Si no → ya se ha enviado todo, limpia buffer y decide:
+            Si no hay keep-alive, marcar _closed = true para que cleanupClosedClients() lo borre.
+
+            Si hay keep-alive, mantener la conexión abierta.
+
+
+
+Qué pasa con poll() y POLLOUT
+    Esto lo entenderás mejor ahora que tienes clara la separación:
+        El servidor principal tiene una lista de clientes y hace poll() sobre sus sockets.
+
+        Cuando a un cliente se le activa el bit POLLOUT, eso significa:
+            “El kernel te avisa que el socket puede aceptar más datos para escribir”.
+
+    En ese momento, el servidor llama de nuevo a flushWrite() para continuar enviando lo que quedaba pendiente.
+
+    Así que flushWrite() se usa tanto:
+        Cuando tú generas la respuesta por primera vez (intento inicial).
+        Como cuando el socket avisa que ya puede seguir escribiendo.
+
+*/
+
+bool Client::hasPendingWrite() const
+{
+    return (_writeOffset < _writeBuffer.size());
+}
+
+/*
+indica si hay bytes pendientes por enviar en el cliente.
+
+Server necesita saber si activar POLLOUT para un cliente; si hay datos pendientes, activa POLLOUT, si no, no.
+*/
+
+bool Client::flushWrite()
+{
+    if (_writeOffset >= _writeBuffer.size())
+    {
+        _writeBuffer.clear();
+        _writeOffset = 0;
+        std::cout << "[Info] Respuesta completa enviada al cliente (fd: " << _clientFd << ")\n";
+        return true;
+    }
+
+    const char *buf = _writeBuffer.data() + _writeOffset;
+    size_t remaining = _writeBuffer.size() - _writeOffset;
+
+    ssize_t s = send(_clientFd, buf, remaining, 0);
+    if (s > 0)
+    {
+        _writeOffset += static_cast<size_t>(s);
+        _lastActivity = time(NULL);
+        std::cout << "[Info] Enviando respuesta al cliente (fd: " << _clientFd << ")\n";
+        if (_writeOffset >= _writeBuffer.size())
+        {
+            _writeBuffer.clear();
+            _writeOffset = 0;
+            std::cout << "[Info] Respuesta completa enviada al cliente (fd: " << _clientFd << ")\n";
+        }
+        return true;
+    }
+    else if (s == -1)
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            // Temporarily cannot write: no es error fatal.
+            return true;
+        }
+        // Error serio: marca cerrado para cleanup
+        std::cerr << "[Error] send() fallo (fd: " << _clientFd << "): " << strerror(errno) << "\n";
+        _closed = true;
+        return false;
+    }
+    else
+    { // s == 0
+        // peer cerró la conexión
+        _closed = true;
+        return false;
+    }
+}
+
+/*
+flushWrite() es clave en el manejo del envío no bloqueante
+
+Objetivo: intentar enviar (una llamada a send()) los datos pendientes del _writeBuffer del cliente, en varias tandas si hace falta, y de mantener el estado correcto (qué parte ya se envió, si el socket está listo, si hay que cerrar...). Manejar EAGAIN y errores. Actualizar _writeOffset y _lastActivity.
+
+Devuelve true si no hubo error fatal (aunque quede pendiente). Devuelve false si ocurrió un error grave y el cliente queda marcado _closed = true.
+
+1.
+if (_writeOffset >= _writeBuffer.size())
+{
+    _writeBuffer.clear();
+    _writeOffset = 0;
+    return true;
+}
+👉 Significa: “Si ya envié todo lo que había en el buffer…”
+
+Entonces:
+    Limpia el buffer (ya no necesitamos guardar nada).
+    Resetea _writeOffset (la posición dentro del buffer).
+    Devuelve true → “todo enviado correctamente”.
+
+🧩 Esto evita que intentes enviar cuando ya no hay nada pendiente.
+
+
+2.
+const char *buf = _writeBuffer.data() + _writeOffset;
+size_t remaining = _writeBuffer.size() - _writeOffset;
+
+👉 Aquí se calculan los datos que faltan por enviar:
+    data() te da un puntero al contenido del std::string (en este caso, usado como buffer).
+    Sumamos _writeOffset → saltamos los bytes ya enviados.
+    remaining = cuántos bytes quedan.
+
+    Ejemplo:
+        _writeBuffer = "HTTP/1.1 200 OK\r\n..."
+        _writeOffset = 10
+        → buf apunta al byte 10
+        → remaining = tamaño_total - 10
+
+
+3.
+ssize_t s = send(_clientFd, buf, remaining, 0);
+
+👉 send() intenta escribir esos bytes en el socket del cliente.
+Pero en modo no bloqueante, send() puede:
+    devolver >0 → se enviaron s bytes;
+
+    devolver -1 con errno = EAGAIN o EWOULDBLOCK → el socket no está listo para escribir (tendrás que esperar a POLLOUT);
+
+    devolver -1 con otro errno → error grave;
+
+    devolver 0 → el cliente cerró la conexión.
+
+
+4.
+Si se enviaron bytes...alignas
+
+if (s > 0) {
+    _writeOffset += static_cast<size_t>(s);
+    _lastActivity = time(NULL);
+    if (_writeOffset >= _writeBuffer.size()) {
+        _writeBuffer.clear();
+        _writeOffset = 0;
+    }
+    return true;
+}
+
+👉 Se actualiza el progreso:
+    Avanza _writeOffset tantos bytes como se enviaron.
+
+    Actualiza _lastActivity (último uso → útil para timeout).
+        _lastActivity Es un timestamp (marca de tiempo) que guarda el último momento en que el cliente hizo algo “activo”:
+            envió datos (lectura en readRequest)
+            o recibió datos (envío en flushWrite)
+        ¿Por qué time(NULL)? time(NULL) devuelve el tiempo actual en segundos desde 1970 (epoch).
+            “Actualiza el reloj interno de este cliente: acaba de hacer algo.”
+        El servidor lo usa para detectar clientes inactivos (idle connections).
+        Por ejemplo, si un cliente se conecta y nunca termina de enviar su petición, o mantiene viva la conexión sin actividad, queremos cerrarla después de cierto tiempo.
+
+    Si ya se envió todo → limpia el buffer.
+
+    Devuelve true: “todo bien, seguimos”.
+
+🧩 Esto permite enviar la respuesta en trozos, si el sistema solo deja enviar parte (por ejemplo, 4 KB cada vez).
+
+
+5.
+Si send() devuelve error temporal...
+
+else if (s == -1) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Temporarily cannot write
+        return true;
+    }
+
+    👉 No es un error “mortal”:
+    simplemente significa que el socket no puede enviar ahora (el buffer de salida del kernel está lleno).
+    El poll() volverá a despertar este cliente cuando se pueda escribir (POLLOUT).
+
+6.
+Error real o cierre remoto...
+
+std::cerr << "[Error] send() fallo (fd: " << _clientFd << "): " << strerror(errno) << "\n";
+_closed = true;
+return false;
+
+👉 En cualquier otro caso, send() falló por una razón seria (cliente desconectado, error de red, etc.),
+o devolvió 0 → el peer cerró la conexión.
+
+Entonces marcamos _closed = true para que el servidor lo elimine más tarde.
+
+
+Nota: flushWrite() solo hace una llamada a send() por invocación en esta versión (podrías hacer un while para intentar mandar todo en loops, pero con non-blocking es suficiente intentar una vez; si queda, poll te avisará con POLLOUT).
+
+*/
+
+/*
+VERSIÓN ANTIGUA
+
+bool Client::sendResponse(const std::string &msg)
+{
     if (send(_clientFd, msg.c_str(), msg.size(), 0) < 0)
     {
         std::cerr << "[Error] Fallo al enviar respuesta al cliente (fd: " << _clientFd << ")\n";
@@ -463,11 +735,7 @@ bool Client::sendResponse(const std::string &msg)
     return true;
 }
 
-/*
 
-*/
-
-/*
 ➤ Qué hace:
     Llama a send() para escribir el mensaje en el socket del cliente
     Devuelve true si todo fue bien, false si hubo error (socket cerrado o fallo del sistema).
@@ -480,7 +748,7 @@ bool Client::sendResponse(const std::string &msg)
     send() es la versión de write() para sockets.
     La cabecera Content-Length debe coincidir con el tamaño del cuerpo (13 en “Hello, world!”).
     Si quisieras mandar más datos, podrías fragmentarlos y seguir mandando.
-*/
+FIN VERSION ANTIGUA*/
 
 bool Client::isClosed() const
 {

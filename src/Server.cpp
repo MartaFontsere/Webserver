@@ -593,6 +593,14 @@ void Server::run()
         // Actividad en clientes existentes - Recorremos el resto revisando todos los clientes
         for (size_t i = 1; i < _pollFds.size(); ++i)
         {
+            int fd = _pollFds[i].fd;
+            Client *client = _clientsByFd[fd];
+            if (!client)
+            {
+                continue;
+            }
+            // ESTE TROZO DE ARRIBA PUEDE SER UN POCO REDUNDANTE, PORQUE TEORICAMENTE YA ESTA CONTROLADO EN CLEANUPCLOSEDCLIENTS, pero se supone que por doble seguridad. igual Quitamos???
+
             if (_pollFds[i].revents & POLLIN)
                 handleClientEvent(_pollFds[i].fd);
         }
@@ -601,6 +609,246 @@ void Server::run()
         cleanupClosedClients();
     }
 }
+/*
+ACTUALIZACIÓN 2 información:
+
+    for (size_t i = 1; i < _pollFds.size(); ++i)
+    {
+        int fd = _pollFds[i].fd;
+        Client *client = _clientsByFd[fd];
+        if (!client)
+            continue;
+
+Aunque ya está bien protegido en cleanupClosedClients, no debería haber fds sin un cliente activo asociado, lo ponemos por doble seguridad.
+En sistemas de red, puede haber pequeñas desincronizaciones:
+
+    si un cliente se borra justo después de un poll() pero antes de procesar sus eventos;
+
+    si ocurre un error no controlado entre readRequest() y cleanupClosedClients();
+
+    o si en el futuro agregas threads o funciones que manipulan _clientsByFd fuera del bucle principal.
+
+Si entras en ese caso, es porque tienes una incoherencia:
+hay un fd en _pollFds que ya no tiene su Client en _clientsByFd.
+Y si simplemente haces continue, ese fd se quedará en _pollFds para siempre,
+ocupando espacio y haciendo que poll() lo siga vigilando inútilmente.
+
+Así que sí ✅ — lo correcto es eliminarlo en ese punto.
+*/
+
+/*
+ACTUALIZACIÓN información:
+
+Tienes un poll() configurado solo con POLLIN, algo como esto:
+    pfds[i].events = POLLIN;
+
+
+Entonces:
+    poll() te avisa solo cuando hay algo que leer (datos entrantes).
+
+    Si haces un send() parcial (no todo el buffer se envía) dentro de handleClientEvent(),
+    y te queda algo pendiente en _writeBuffer, no volverás a saber cuándo continuar.
+
+👉 Porque poll() solo te despierta con POLLIN, y no con POLLOUT
+
+Qué pasa si un cliente tiene escritura pendiente
+
+Imagina esto:
+    El cliente envía una petición → poll() te despierta con POLLIN.
+
+    En handleClientEvent() lees todo, generas respuesta, llamas a sendResponse().
+
+    flushWrite() intenta enviar los bytes.
+        Si todo sale, genial, fin.
+
+        Pero si send() devuelve EAGAIN → guardas el resto en _writeBuffer.
+
+Ahora tienes datos pendientes…
+Pero el socket no se marca solo como POLLOUT.
+Así que no volverás a entrar para terminar de enviar hasta que el cliente vuelva a escribir algo.
+Y probablemente no lo hará → se queda colgado esperando tu respuesta completa.
+
+Qué debería pasar (con POLLOUT activado)
+    Cuando detectas que una respuesta ha quedado pendiente (hasPendingWrite() == true),
+    le dices al poll():
+
+    “Oye, también avísame cuando este socket esté listo para escribir.”
+
+    En código:
+        pfds[i].events |= POLLOUT;
+
+    Así, en la siguiente iteración de poll(), el kernel te despertará cuando el socket tenga espacio libre en su buffer y puedas continuar enviando.
+
+        if (pfds[i].revents & POLLIN)
+        handleClientEvent(clients[i]);   // leer y preparar respuesta
+
+        if (pfds[i].revents & POLLOUT)
+        handleWriteEvent(clients[i]);    // terminar de enviar lo pendiente
+
+Duda común:
+    “¿No entrará dos veces (una por POLLIN y otra por POLLOUT) en la misma vuelta?”
+
+        Sí, puede ocurrir — y de hecho es lo correcto ✅
+
+        Porque un socket puede estar listo para leer y escribir al mismo tiempo.
+
+        Por ejemplo:
+            POLLIN: el cliente envió otra petición.
+
+            POLLOUT: todavía tienes datos pendientes de la respuesta anterior.
+
+        👉 Pero eso no es un problema.
+        En esa iteración simplemente procesas ambos eventos:
+            lees lo que haya (handleClientEvent) y luego intentas escribir (flushWrite).
+
+        Lo que debes cuidar es el orden lógico:
+            Siempre lee primero (POLLIN) — así vacías el buffer de entrada.
+
+            Luego escribe (POLLOUT) — así respondes cuando haya espacio libre.
+
+Qué pasa cuando terminas de escribir todo
+    En cuanto flushWrite() termina y ya no hay nada pendiente:
+
+    if (!client.hasPendingWrite())
+        pfds[i].events &= ~POLLOUT; // desactiva interés en escritura
+
+    Así, el poll() ya no seguirá avisándote por POLLOUT,
+    hasta que haya una nueva respuesta por enviar.
+
+    Esto mantiene el bucle eficiente y evita que poll() te despierte sin necesidad.
+
+
+****DUDA: En el caso de una sola peticion, eso activa pollin, luego envio respuesta y se queda a medias, para la siguiente vuelta sigue activo pollin de esa misma petición o se desactiva si no hay mas peticiones y entonces como hay cosas pendientes se activa solo el pollout y tengo que detectarlo?
+
+Caso: llega una única petición
+    Supón este flujo paso a paso:
+        Cliente conecta y envía su petición HTTP.
+        → El kernel marca el socket con POLLIN porque hay datos listos para leer.
+
+        Tu poll() despierta (por ese POLLIN).
+        → En tu bucle lo detectas y llamas a handleClientEvent().
+        → Lees todo con recv(), generas la respuesta y llamas a sendResponse().
+
+        sendResponse() intenta enviar con send().
+            Si se envía todo, no pasa nada raro: limpias buffer, fin.
+
+            Si se queda a medias (EAGAIN / EWOULDBLOCK) → guardas el resto en _writeBuffer.
+
+    Hasta aquí bien, pero ahora pasa lo que tú preguntas 👇
+
+¿Qué pasa con los eventos pollin y pollout después de eso?
+
+🟩 POLLIN
+
+    Una vez que tú lees todo lo que había del socket (con recv() hasta que devuelve EAGAIN o 0),
+    entonces ya no queda nada en el buffer de lectura.
+
+    Por tanto:
+        El kernel deja de marcar POLLIN automáticamente.
+
+        Tu poll() ya no te avisará más por ese socket hasta que el cliente envíe más datos.
+
+    👉 Es decir: si no hay más peticiones, no volverás a entrar por POLLIN.
+
+🟥 POLLOUT
+
+    Por otro lado, si en el paso anterior tu send() devolvió EAGAIN,
+    el kernel te está diciendo básicamente:
+
+        “No puedo escribir ahora, el buffer de salida del socket está lleno.
+        Avísame cuando haya espacio libre.”
+
+    Pero ojo: el kernel no activa automáticamente POLLOUT.
+    Tienes que decírselo tú, añadiéndolo al events de ese socket:
+        pfds[i].events |= POLLOUT;
+
+    Entonces, en la próxima llamada a poll(),
+    el kernel te despertará cuando el socket vuelva a estar listo para escribir.
+
+
+Qué ocurre en la siguiente vuelta del bucle
+    Como ya no hay nada que leer (no más POLLIN),
+    el único motivo por el que poll() te despertará será:
+
+    ➡️ porque el socket ahora tiene espacio libre para escribir (POLLOUT).
+
+    Entonces tú detectas:
+        if (pfds[i].revents & POLLOUT)
+            client->flushWrite();
+
+
+    Y ahí envías lo que te quedaba pendiente en _writeBuffer.
+    Cuando terminas (ya se envió todo), haces:
+
+        pfds[i].events &= ~POLLOUT;
+
+    Y el socket vuelve a estar solo con POLLIN activado,
+    esperando nuevas peticiones.
+
+
+
+Entonces, si se queda a medias, ¿el pollin se desactiva y se activa pollout?
+    ✅ Exactamente.
+    El kernel deja de marcar POLLIN porque ya leíste todo,
+    y tú, manualmente, activas POLLOUT para que te avise cuando puedas seguir enviando.
+
+
+Resumen rápido
+
+No, no todo lo hace el kernel automáticamente.
+👉 El kernel activa o desactiva dinámicamente los “revents”,
+pero no cambia tu configuración “events”.
+Tú tienes que decidir qué tipo de eventos quieres monitorizar en cada momento.
+
+🧠 Diferencia entre events y revents
+
+| Campo     | Quién lo maneja | Qué significa                                                                        |
+| --------- | --------------- | ------------------------------------------------------------------------------------ |
+| `events`  | Tú (tu código)  | Qué condiciones quieres que `poll()` vigile (por ejemplo: `POLLIN`, `POLLOUT`, etc.) |
+| `revents` | El kernel       | Qué condiciones **se cumplieron realmente** cuando `poll()` despertó.                |
+
+
+Cuando el socket se queda sin datos (ya leíste todo)
+    Después de hacer recv() y vaciar el buffer,
+    el kernel simplemente ya no marcará POLLIN en el próximo revents.
+
+    Pero no tienes que quitar POLLIN de events.
+    ¿Por qué?
+    Porque si luego el cliente te manda otra petición,
+    el kernel lo detectará automáticamente y pondrá revents |= POLLIN otra vez.
+
+    👉 Así que mantener POLLIN siempre activo es normal.
+
+Cuando el socket se llena al enviar (EAGAIN)
+    Si haces send() y devuelve EAGAIN, significa:
+        “No hay espacio ahora en el buffer de salida.”
+
+    Aquí sí tienes que actuar tú:
+    añadir POLLOUT a events para que el kernel te avise cuando el socket vuelva a estar listo.
+        pfds[i].events |= POLLOUT;
+
+    Entonces, cuando el socket tenga espacio libre, en la siguiente vuelta de poll() el kernel pondrá:
+        pfds[i].revents |= POLLOUT;
+
+Cuando terminas de enviar todo
+    En flushWrite(), cuando confirmas que ya no queda nada pendiente (!hasPendingWrite()):
+
+    Tú misma debes quitar el flag POLLOUT de events:
+        pfds[i].events &= ~POLLOUT;
+
+    ¿Por qué?
+        Porque si lo dejas activo, el kernel te seguirá “despertando” por POLLOUT todo el rato,
+        ya que los sockets TCP casi siempre están listos para escribir.
+        Te haría gastar CPU innecesariamente.
+
+Entonces…
+    👉 POLLIN: lo activas una vez y lo dejas siempre.
+    El kernel decide si hay algo que leer o no, y pone/quita en revents según toque.
+    No tienes que cambiarlo tú.
+
+    👉 POLLOUT: lo activas y desactivas manualmente según el estado de tu _writeBuffer.
+
+*/
 
 /* EXPLICACION
 
@@ -762,10 +1010,7 @@ for (size_t i = 1; i < _pollFds.size(); ++i)
 Despues se recorren el resto de índices de la lista _pollFds, que son los clientes ya conectados, para evaluar si hay algun revent tipo Pollin (peticiones que haya pendientes de leer). En tal caso, se llama a handleClientEvent
 
 
-5.
-
-
-
+5. Revisar si en el proceso ha habido clientes que se han cerrado y hay que limpiar
 }
 
 */
@@ -838,6 +1083,25 @@ Pasos por nuevo cliente:
         events → eventos que queremos vigilar, aquí POLLIN (datos listos para leer).
         revents → inicializado a 0, lo rellena poll() luego.
         Añadimos el nuevo socket (fd) a la lista _pollFds para que poll() empiece a vigilar este cliente también.
+
+
+***DUDA: _clientsByFd y _pollFds sirven para cosas distintas y complementarias.
+    Cuando aceptas un cliente
+        accept() te da un clientFd
+        Lo guardas en _pollFds para que poll() lo vigile
+        Lo guardas también en _clientsByFd para poder acceder a su objeto después
+
+Cuando poll() te dice “hay algo en fd = 7”, solo sabes que ahí hay datos, pero ú necesitas el objeto cliente que representa ese fd, para llamar a sus funciones. Por eso en handleClientEvent(fd) haces Client* client = _clientsByFd[fd];
+Y ahora puedes:
+    leer del socket (client->readRequest())
+    enviar respuesta (client->sendResponse())
+    actualizar _lastActivity
+    etc.
+
+Cuando detectas que un cliente cerró su conexión o que hay error, tienes que eliminarlo de ambos sitios
+
+Así liberas memoria y evitas que poll() siga vigilando un socket muerto.
+
 */
 
 void Server::handleClientEvent(int fd)
@@ -856,7 +1120,21 @@ void Server::handleClientEvent(int fd)
         "\r\n"
         "Hello world!!!!";
 
-    client->sendResponse(response);
+    if (!client->sendResponse(response))
+        return; // Error, el cliente se cerrará solo
+
+    // Activar POLLOUT solo si hay datos pendientes
+    if (client->hasPendingWrite())
+    {
+        for (size_t i = 1; i < _pollFds.size(); ++i)
+        {
+            if (_pollFds[i].fd == fd)
+            {
+                _pollFds[i].events |= POLLOUT;
+                break;
+            }
+        }
+    }
 }
 
 /*
@@ -902,8 +1180,8 @@ void Server::cleanupClosedClients()
         Client *client = _clientsByFd[fd];
         if (client && client->isClosed())
         {
-            delete client; // esto llama al destructor de Client, por lo que dentro tambien se cerrara el fd
-            _clientsByFd.erase(fd);
+            delete client;          // esto llama al destructor de Client, por lo que dentro tambien se cerrara el fd
+            _clientsByFd.erase(fd); // erase borra el par con clave fd
             _pollFds.erase(_pollFds.begin() + i);
         }
         else
@@ -922,6 +1200,11 @@ _closed se pone a true solo si:
     send() falla
     El cliente cierra la conexión (recv() devuelve 0)
     O hay un timeout en tu servidor
+
+Osea: Eso significa:
+    si el cliente se cierra → lo quitas del mapa
+    y además → lo quitas del vector _pollFds
+✅ En este escenario, no habría ningún fd en _pollFds sin Client, en el siguiente run no hará falta protegerlo. Pero muchos servidores dejan la protección al recorrer la lista de fds del poll por segridad extra
 
 En el resto de situaciones se deja el cliente abierto para más requests
 
