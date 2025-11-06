@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📥 GET Testing - Webserver</title>
+    <link rel="stylesheet" href="../css/get_styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <h1>📥 GET Request Testing</h1>
+            <p class="subtitle">Test HTTP GET requests to various endpoints and analyze responses</p>
+
+            <!-- Navigation -->
+            <nav class="nav-links">
+                <a href="../index.html" class="nav-button">🏠 Home</a>
+                <a href="../upload/upload.html" class="nav-button">📁 Upload</a>
+                <a href="../cgi/test_cgi.html" class="nav-button">⚙️ CGI</a>
+                <a href="../post/test_post.html" class="nav-button">📝 POST</a>
+                <a href="../delete/test_delete.html" class="nav-button">🗑️ DELETE</a>
+                <a href="../directory/explorer.html" class="nav-button">📂 EXPLORER</a>
+                <a href="../about.html" class="nav-button">ℹ️ About</a>
+            </nav>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main>
+            <!-- GET TESTING INTERFACE -->
+            <section class="get-section">
+                <div class="get-container">
+
+                    <!-- URL INPUT SECTION -->
+                    <div class="url-input-section">
+                        <h2>🌐 Request Configuration</h2>
+                        <div class="input-group">
+                            <label for="request-url">URL to Test:</label>
+                            <div class="url-input-container">
+                                <select id="method-select" class="method-select">
+                                    <option value="GET" selected>GET</option>
+                                </select>
+                                <input type="text" id="request-url" class="url-input"
+                                    placeholder="Enter URL (e.g., /api/status, /files/index.html)" value="/">
+                                <button id="send-request" class="send-button">📤 Send Request</button>
+                            </div>
+                        </div>
+
+                        <!-- QUICK TESTS -->
+                        <div class="quick-tests">
+                            <h3>⚡ Quick Tests</h3>
+                            <div class="quick-buttons">
+                                <button class="quick-btn" data-url="/">🏠 Homepage</button>
+                                <button class="quick-btn" data-url="/about.html">ℹ️ About Page</button>
+                                <button class="quick-btn" data-url="/upload/upload.html">📁 Upload Page</button>
+                                <button class="quick-btn" data-url="/api/status">📊 Server Status</button>
+                                <button class="quick-btn" data-url="/files/">📂 Files Directory</button>
+                                <button class="quick-btn" data-url="/nonexistent">❌ 404 Test</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RESPONSE SECTION -->
+                    <div class="response-section">
+                        <h2>📋 Response Details</h2>
+
+                        <!-- STATUS INFO -->
+                        <div class="status-info">
+                            <div class="status-item">
+                                <span class="label">Status:</span>
+                                <span id="response-status" class="status-code">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Time:</span>
+                                <span id="response-time" class="response-time">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Size:</span>
+                                <span id="response-size" class="response-size">-</span>
+                            </div>
+                        </div>
+
+                        <!-- HEADERS -->
+                        <div class="headers-section">
+                            <h3>📄 Response Headers</h3>
+                            <div id="response-headers" class="headers-container">
+                                <p class="no-data">No request sent yet</p>
+                            </div>
+                        </div>
+
+                        <!-- BODY PREVIEW -->
+                        <div class="body-section">
+                            <h3>📝 Response Body</h3>
+                            <div class="body-controls">
+                                <button id="view-raw" class="view-btn active">📄 Raw</button>
+                                <button id="view-formatted" class="view-btn">🎨 Formatted</button>
+                                <button id="view-preview" class="view-btn">👁️ Preview</button>
+                            </div>
+                            <div id="response-body" class="body-container">
+                                <p class="no-data">No request sent yet</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- REQUEST HISTORY -->
+                    <div class="history-section">
+                        <h2>📚 Request History</h2>
+                        <div class="history-controls">
+                            <button id="clear-history" class="clear-btn">🗑️ Clear History</button>
+                            <button id="export-history" class="export-btn">💾 Export</button>
+                        </div>
+                        <div id="history-list" class="history-list">
+                            <p class="no-data">No requests in history</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STATUS INDICATORS -->
+            <div class="status-indicators">
+                <div id="loading-indicator" class="indicator loading hidden">
+                    <span class="spinner"></span>
+                    <span>Sending request...</span>
+                </div>
+                <div id="success-indicator" class="indicator success hidden">
+                    <span>✅</span>
+                    <span>Request completed successfully</span>
+                </div>
+                <div id="error-indicator" class="indicator error hidden">
+                    <span>❌</span>
+                    <span>Request failed</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>© 2025 - HTTP GET Testing Interface | 42 Barcelona Webserver Project</p>
+            <p>Developed with ❤️ and lots of ☕</p>
+        </footer>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="js/get_config.js"></script>
+    <script src="js/get_handlers.js"></script>
+    <script src="js/get_utils.js"></script>
+    <script src="js/get_history.js"></script>
+    <script src="js/get_main.js"></script>
+</body>
+
+</html>

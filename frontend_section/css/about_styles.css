@@ -1,0 +1,267 @@
+/* Reset y configuración básica */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    color: white;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header styles */
+
+header {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+h1 {
+    font-size: 3.5em;
+    margin-bottom: 10px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.subtitle {
+    font-size: 1.2em;
+    opacity: 0.9;
+    margin-bottom: 30px;
+}
+
+/* Navigation buttons */
+.nav-links {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.nav-button {
+    display: inline-block;
+    padding: 10px 20px;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    text-decoration: none;
+    border-radius: 25px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.nav-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Sections */
+.info-section,
+.team-section,
+.specs-section {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 30px;
+    border-radius: 15px;
+    margin-bottom: 40px;
+    backdrop-filter: blur(10px);
+}
+
+.info-section h2,
+.team-section h2,
+.specs-section h2 {
+    margin-bottom: 25px;
+    color: #FFE135;
+    text-align: center;
+}
+
+/* Section action with documentation button */
+.section-action {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.doc-button {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    padding: 8px 16px;
+    font-size: 0.9em;
+    font-weight: bold;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.doc-button:hover {
+    background: linear-gradient(45deg, #218838, #1ba085);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+/* Project info grid */
+.project-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 25px;
+    margin-bottom: 20px;
+}
+
+.info-card {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 25px;
+    border-radius: 10px;
+    transition: transform 0.3s ease;
+}
+
+.info-card:hover {
+    transform: translateY(-5px);
+}
+
+.info-card h3 {
+    margin-bottom: 15px;
+    font-size: 1.4em;
+    color: #FFE135;
+}
+
+/* Team section */
+.team-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 25px;
+    margin-bottom: 25px;
+}
+
+.team-details {
+    margin-top: 25px;
+}
+
+.team-card {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 25px;
+    border-radius: 10px;
+    transition: transform 0.3s ease;
+}
+
+.team-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.team-card:hover {
+    transform: translateY(-5px);
+}
+
+.team-card h3 {
+    margin-bottom: 15px;
+    font-size: 1.4em;
+    color: #66FF66;
+}
+
+/* GitHub links styling */
+.github-link {
+    color: #66FF66;
+    text-decoration: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+}
+
+.github-link:hover {
+    background: rgba(102, 255, 102, 0.1);
+    border: 1px solid #66FF66;
+    text-decoration: none;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 255, 102, 0.2);
+}
+
+.github-link:visited {
+    color: #66FF66;
+}
+
+/* Specifications grid */
+.specs-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+}
+
+.spec-item {
+    flex: 0 1 250px;
+    min-width: 250px;
+    max-width: 300px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 15px 20px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    transition: background 0.3s ease;
+}
+
+.spec-item:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.spec-label {
+    font-weight: bold;
+    color: #FFE135;
+}
+
+.spec-value {
+    color: #66FF66;
+    font-weight: 500;
+}
+
+
+
+/* Footer */
+footer {
+    text-align: center;
+    margin-top: 50px;
+    opacity: 0.8;
+    padding: 20px 0;
+}
+
+footer p {
+    margin: 5px 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 2.5em;
+    }
+
+    .container {
+        padding: 15px;
+    }
+
+    .project-info {
+        grid-template-columns: 1fr;
+    }
+
+    .team-info {
+        grid-template-columns: 1fr;
+    }
+
+    .specs-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .nav-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .nav-button {
+        width: 100%;
+        max-width: 300px;
+        text-align: center;
+    }
+}

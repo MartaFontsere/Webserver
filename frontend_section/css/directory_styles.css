@@ -1,0 +1,814 @@
+/* ============================================================================
+ * 📂 DIRECTORY EXPLORER STYLES - MODERN DESIGN
+ * Following the same visual pattern as about.html and upload.html
+ * ============================================================================ */
+
+/* Reset y configuración básica */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    color: white;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header styles */
+.explorer-header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.explorer-header h1 {
+    font-size: 3.5em;
+    margin-bottom: 10px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.subtitle {
+    font-size: 1.2em;
+    opacity: 0.9;
+    margin-bottom: 30px;
+}
+
+/* Navigation */
+.nav-links {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.nav-button {
+    display: inline-block;
+    padding: 10px 20px;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    text-decoration: none;
+    border-radius: 25px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.nav-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Main sections - Glass morphism style */
+.navigation-section,
+.content-section {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 30px;
+    border-radius: 15px;
+    margin-bottom: 40px;
+    backdrop-filter: blur(10px);
+}
+
+.navigation-section h2,
+.content-section h2 {
+    margin-bottom: 25px;
+    color: #FFE135;
+    text-align: center;
+    font-size: 1.8em;
+}
+
+/* Navigation Controls */
+.nav-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.nav-control-button {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 16px;
+}
+
+.nav-control-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.25);
+    transform: translateY(-2px);
+}
+
+.nav-control-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Address Bar */
+.address-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.address-label {
+    font-weight: bold;
+    min-width: 120px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.address-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 14px;
+}
+
+.address-input:focus {
+    outline: none;
+    border-color: #FFE135;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.address-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.navigate-button {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+.navigate-button:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: translateY(-2px);
+}
+
+/* Breadcrumb */
+.breadcrumb-container {
+    margin-bottom: 15px;
+}
+
+.breadcrumb-list {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-wrap: wrap;
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+}
+
+.breadcrumb-item:not(:last-child)::after {
+    content: "›";
+    margin-left: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.breadcrumb-link {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    backdrop-filter: blur(10px);
+    min-height: 20px;
+}
+
+.breadcrumb-link:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Directory Header - Integrated controls */
+.directory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 25px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.directory-title-section h3 {
+    font-size: 1.4em;
+    color: #FFE135;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.directory-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.directory-stats span {
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.directory-controls {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+}
+
+/* Integrated View Controls */
+.directory-controls .view-controls {
+    background: none;
+    padding: 0;
+    margin: 0;
+}
+
+.directory-controls .view-controls:hover {
+    transform: none;
+}
+
+.directory-controls .view-buttons {
+    display: flex;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.directory-controls .view-button {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 16px;
+    min-width: 40px;
+}
+
+.directory-controls .view-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    transform: none;
+}
+
+.directory-controls .view-button.active {
+    background: #FFE135;
+    color: #333;
+    font-weight: 600;
+}
+
+/* Integrated Sort Controls */
+.directory-controls .sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    padding: 0;
+    margin: 0;
+    padding-left: 25px;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.directory-controls .sort-controls:hover {
+    transform: none;
+}
+
+.directory-controls .sort-select {
+    width: auto;
+    min-width: 130px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin: 0;
+}
+
+/* Select dropdown options styling */
+.directory-controls .sort-select option,
+.directory-controls .type-filter option {
+    background: #2c3e50;
+    color: white;
+    padding: 8px 12px;
+    border: none;
+}
+
+.directory-controls .sort-select option:hover,
+.directory-controls .type-filter option:hover {
+    background: #34495e;
+}
+
+.directory-controls .sort-select option:checked,
+.directory-controls .type-filter option:checked {
+    background: #FFE135;
+    color: #333;
+    font-weight: bold;
+}
+
+/* Focus states for better accessibility */
+.directory-controls .sort-select:focus,
+.directory-controls .type-filter:focus {
+    outline: none;
+    border-color: #FFE135;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 0 2px rgba(255, 225, 53, 0.3);
+}
+
+.directory-controls .sort-button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    min-width: 40px;
+}
+
+.directory-controls .sort-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Integrated Filter Controls */
+.directory-controls .filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    padding: 0;
+    margin: 0;
+    padding-left: 25px;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.directory-controls .filter-controls:hover {
+    transform: none;
+}
+
+.directory-controls .filter-input {
+    width: 160px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin: 0;
+}
+
+.directory-controls .filter-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.directory-controls .filter-input:focus {
+    outline: none;
+    border-color: #FFE135;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.directory-controls .type-filter {
+    width: auto;
+    min-width: 110px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin: 0;
+}
+
+/* Directory Listing - Main content area */
+.directory-listing {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    min-height: 300px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Directory listing view styles */
+.directory-listing.view-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.directory-listing.view-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px;
+}
+
+.directory-listing.view-details {
+    display: block;
+    padding: 20px;
+}
+
+.directory-listing.view-details table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.directory-listing.view-details th,
+.directory-listing.view-details td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.directory-listing.view-details th {
+    background: rgba(255, 255, 255, 0.1);
+    color: #FFE135;
+    font-weight: bold;
+}
+
+.directory-listing.view-details tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Grid view items */
+.directory-listing.view-grid .file-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.directory-listing.view-grid .file-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.directory-listing.view-grid .file-icon {
+    font-size: 3em;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.directory-listing.view-grid .file-name {
+    font-weight: bold;
+    margin-bottom: 5px;
+    word-break: break-word;
+}
+
+.directory-listing.view-grid .file-details {
+    font-size: 0.9em;
+    opacity: 0.7;
+}
+
+/* List view items */
+.directory-listing.view-list .file-item {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.directory-listing.view-list .file-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(5px);
+}
+
+.directory-listing.view-list .file-icon {
+    font-size: 1.5em;
+    margin-right: 15px;
+    width: 30px;
+    text-align: center;
+}
+
+.directory-listing.view-list .file-info {
+    flex: 1;
+}
+
+.directory-listing.view-list .file-name {
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.directory-listing.view-list .file-details {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+/* Default grid view when no class is specified */
+.directory-listing:not(.view-list):not(.view-details) {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+/* Loading, Empty and Error States */
+.loading-state,
+.empty-state,
+.error-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.loading-state.hidden,
+.empty-state.hidden,
+.error-state.hidden {
+    display: none;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 20px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #FFE135;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.empty-icon,
+.error-icon {
+    font-size: 4em;
+    margin-bottom: 20px;
+    display: block;
+}
+
+.loading-state h3,
+.empty-state h3,
+.error-state h3 {
+    color: #FFE135;
+    margin-bottom: 10px;
+    font-size: 1.5em;
+}
+
+.loading-state p,
+.empty-state p,
+.error-state p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1.1em;
+    line-height: 1.6;
+}
+
+.error-state {
+    border-color: rgba(255, 107, 107, 0.3);
+}
+
+.error-state h3 {
+    color: #FF6B6B;
+}
+
+.retry-button {
+    background: linear-gradient(45deg, #FF6B6B, #FF5252);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 20px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.retry-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    margin-top: 50px;
+    opacity: 0.8;
+    padding: 20px 0;
+}
+
+footer p {
+    margin: 5px 0;
+}
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
+}
+
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+
+    .explorer-header h1 {
+        font-size: 2.5em;
+    }
+
+    .nav-links {
+        gap: 10px;
+    }
+
+    .nav-button {
+        padding: 8px 16px;
+        font-size: 0.9em;
+    }
+
+    .nav-controls {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .view-buttons {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .directory-listing.view-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+
+    .navigation-section,
+    .content-section {
+        padding: 20px;
+    }
+
+    .explorer-header h1 {
+        font-size: 2em;
+    }
+
+    .nav-links {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .nav-button {
+        width: 100%;
+        text-align: center;
+    }
+
+    .directory-listing.view-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Additional responsive styles for integrated controls */
+@media (max-width: 1200px) {
+    .directory-controls {
+        gap: 15px;
+    }
+
+    .directory-controls .filter-input {
+        width: 140px;
+    }
+
+    .directory-controls .sort-select,
+    .directory-controls .type-filter {
+        min-width: 110px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .directory-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .directory-title-section {
+        text-align: center;
+    }
+
+    .directory-controls {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .directory-controls .sort-controls,
+    .directory-controls .filter-controls {
+        padding-left: 15px;
+        border-left: 1px solid rgba(255, 255, 255, 0.2);
+    }
+}
+
+@media (max-width: 900px) {
+    .directory-controls {
+        flex-direction: column;
+        gap: 15px;
+        align-items: center;
+    }
+
+    .directory-controls .sort-controls,
+    .directory-controls .filter-controls {
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        padding-top: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .directory-controls .filter-input {
+        width: 200px;
+    }
+
+    .directory-stats {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+}
+
+/* Animation for smooth transitions */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.directory-content {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.loading-state .state-icon {
+    animation: spin 2s linear infinite;
+}
