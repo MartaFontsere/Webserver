@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📁 Upload - Webserver</title>
+    <link rel="stylesheet" href="../css/upload_styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <!-- <header>
+            <h1>📁 File Upload</h1>
+            <p class="subtitle">Upload files to the server securely and efficiently</p>
+        </header> -->
+
+        <header class="explorer-header">
+            <div class="header-content">
+                <h1>📁 File Upload</h1>
+                <p class="subtitle">Upload files to the server securely and efficiently</p>
+
+                <!-- Navigation -->
+                <nav class="nav-links">
+                    <a href="../index.html" class="nav-button">🏠 Home</a>
+                    <a href="../get/test_get.html" class="nav-button">📥 GET</a>
+                    <a href="../cgi/test_cgi.html" class="nav-button">⚙️ CGI</a>
+                    <a href="../post/test_post.html" class="nav-button">📤 POST</a>
+                    <a href="../delete/test_delete.html" class="nav-button">🗑️ DELETE</a>
+                    <a href="../directory/explorer.html" class="nav-button">📂 EXPLORER</a>
+                    <a href="../about.html" class="nav-button">ℹ️ About</a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- 
+        ============================================================================
+        🔧 BACKEND INTEGRATION: FILE UPLOAD
+        ============================================================================
+        
+        FORM: #uploadForm
+        ACTION: /upload (configure according to backend)
+        METHOD: POST
+        ENCTYPE: multipart/form-data
+        
+        REQUIRED FIELDS:
+        - file: File input to select file(s)
+        - description: Optional field for description
+        
+        EXPECTED RESPONSE:
+        - Success: {"success": true, "message": "File uploaded successfully", "filename": "file.txt"}
+        - Error: {"success": false, "error": "Error message", "code": 400}
+        
+        FRONTEND VALIDATIONS:
+        - Maximum file size
+        - Allowed file types
+        - Multiple files (if required)
+        ============================================================================
+        -->
+
+        <!-- UPLOAD FORM -->
+        <section class="upload-section">
+            <div class="upload-container">
+                <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+
+                    <!-- File drop area -->
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-content">
+                            <div class="upload-icon">📁</div>
+                            <h3>Drag files here</h3>
+                            <p>or</p>
+                            <label for="fileInput" class="file-button">Select Files</label>
+                            <input type="file" id="fileInput" name="file" multiple accept="*/*" hidden>
+                            <p class="file-info">Maximum file size: 10MB</p>
+                        </div>
+                    </div>
+
+                    <!-- Selected files list -->
+                    <div class="file-list" id="fileList" style="display: none;">
+                        <h3>📋 Selected Files</h3>
+                        <div class="files-container" id="filesContainer">
+                            <!-- Files will be added dynamically here -->
+                        </div>
+                    </div>
+
+                    <!-- Optional description field -->
+                    <div class="description-section">
+                        <label for="description">📝 Description (optional):</label>
+                        <textarea id="description" name="description"
+                            placeholder="Describe the content or purpose of the files..." rows="3"></textarea>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div class="actions">
+                        <button type="submit" class="upload-button" id="uploadButton" disabled>
+                            🚀 Upload Files
+                        </button>
+                        <button type="button" class="clear-button" id="clearButton">
+                            🗑️ Clear
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- PROGRESS INFORMATION -->
+        <section class="progress-section" id="progressSection" style="display: none;">
+            <div class="progress-container">
+                <h3>📊 Upload Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-text" id="progressText">0%</p>
+            </div>
+        </section>
+
+        <!-- RESULTS -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <div class="results-container">
+                <div class="result-message" id="resultMessage">
+                    <!-- Success or error messages will appear here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 
+        ============================================================================
+        🔧 BACKEND INTEGRATION: FILE MANAGEMENT
+        ============================================================================
+        
+        ENDPOINTS:
+        - GET /files - List all uploaded files
+        - DELETE /files/{filename} - Delete a specific file
+        - GET /files/{filename} - Download a specific file
+        
+        EXPECTED RESPONSES:
+        - List files: {"success": true, "files": [{"name": "file.txt", "size": 1024, "date": "2025-11-03"}]}
+        - Delete file: {"success": true, "message": "File deleted successfully"}
+        - Error: {"success": false, "error": "Error message", "code": 404}
+        ============================================================================
+        -->
+
+        <!-- SERVER FILES MANAGEMENT -->
+        <section class="server-files-section">
+            <div class="server-files-container">
+                <div class="section-header">
+                    <h2>🗄️ Files on Server</h2>
+                    <button type="button" class="refresh-button" id="refreshFilesButton" title="Refresh file list">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <!-- Server files list -->
+                <div class="server-files-list" id="serverFilesList">
+                    <div class="loading-message" id="loadingFiles">
+                        📡 Loading files from server...
+                    </div>
+                    <div class="no-files-message" id="noFilesMessage" style="display: none;">
+                        📭 No files found on server
+                    </div>
+                    <div class="files-grid" id="serverFilesGrid" style="display: none;">
+                        <!-- Server files will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TECHNICAL INFORMATION -->
+        <section class="info-section">
+            <h2>ℹ️ Technical Information</h2>
+            <div class="info-grid">
+                <div class="info-card">
+                    <h3>📋 Supported Formats</h3>
+                    <p>The server accepts all file types. Caution is recommended with executable files for security
+                        reasons.</p>
+                </div>
+                <div class="info-card">
+                    <h3>📏 Limits</h3>
+                    <p><strong>Maximum size:</strong> 10MB per file<br>
+                        <strong>Multiple files:</strong> Supported<br>
+                        <strong>HTTP Method:</strong> POST
+                    </p>
+                </div>
+                <div class="info-card">
+                    <h3>🔒 Security</h3>
+                    <p>Files are stored securely on the server. Type and size validations are applied to prevent
+                        attacks.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>© 2025 - Upload Module | 42 Barcelona Webserver Project</p>
+            <p>Developed with ❤️ and lots of ☕</p>
+        </footer>
+    </div>
+
+    <!-- 
+    ============================================================================
+    🚀 JAVASCRIPT - FILE UPLOAD FUNCTIONALITY (MODULAR ARCHITECTURE)
+    ============================================================================
+    
+    The JavaScript functionality has been modularized into separate files for better
+    maintainability, readability, and organization. No more "spaghetti code"!
+    
+    MODULE STRUCTURE:
+    1. upload-config.js - Global configuration and constants
+    2. dom-manager.js - DOM element references and validation
+    3. utils.js - Utility functions (formatting, messaging, progress)
+    4. file-manager.js - File handling and UI updates
+    5. upload-handlers.js - Upload operations (individual & collective)
+    6. server-files.js - Server file management (list, download, delete)
+    7. event-listeners.js - Event listeners setup and initialization
+    
+    BENEFITS:
+    ✅ Clean separation of concerns
+    ✅ Easy to maintain and debug
+    ✅ Reusable components
+    ✅ Better code organization
+    ✅ Production-ready architecture
+    
+    PRODUCTION SETUP:
+    - Set CONFIG.SIMULATION_MODE = false in upload-config.js
+    - Configure endpoints in CONFIG object
+    - All production code is ready and documented
+    ============================================================================
+    -->
+
+    <!-- Load JavaScript modules in correct order -->
+    <script src="js/upload_config.js"></script>
+    <script src="js/dom_manager.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/file_manager.js"></script>
+    <script src="js/upload_handlers.js"></script>
+    <script src="js/server_files.js"></script>
+    <script src="js/event_listeners.js"></script>
+</body>
+
+</html>

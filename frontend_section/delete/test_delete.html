@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗑️ DELETE Testing - Webserver</title>
+    <link rel="stylesheet" href="../css/delete_styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <h1><span class="title-emoji">🗑️</span> <span class="title-text">DELETE Request Testing</span></h1>
+            <p class="subtitle">Test HTTP DELETE requests for resource removal and analyze responses</p>
+
+            <!-- Navigation -->
+            <nav class="nav-links">
+                <a href="../index.html" class="nav-button">🏠 Home</a>
+                <a href="../upload/upload.html" class="nav-button">📁 Upload</a>
+                <a href="../get/test_get.html" class="nav-button">📥 GET</a>
+                <a href="../cgi/test_cgi.html" class="nav-button">⚙️ CGI</a>
+                <a href="../post/test_post.html" class="nav-button">📤 POST</a>
+                <a href="../directory/explorer.html" class="nav-button">📂 EXPLORER</a>
+                <a href="../about.html" class="nav-button">ℹ️ About</a>
+            </nav>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main>
+            <!-- 
+            ============================================================================
+            🔧 BACKEND INTEGRATION POINT #1: DELETE REQUEST TESTING
+            ============================================================================
+            
+            DESCRIPTION: Comprehensive DELETE request testing interface for resource removal
+            
+            REQUIRED BACKEND INTEGRATION:
+            📍 Primary endpoint pattern: DELETE /files/{filename}
+            📍 Alternative patterns:
+                - DELETE /api/users/{id}
+                - DELETE /api/products/{id}
+                - DELETE /api/posts/{id}
+                - DELETE /api/comments/{id}
+                - DELETE /test-delete/{resource}
+                - DELETE /resources/{type}/{id}
+            
+            EXPECTED BACKEND BEHAVIOR:
+            - Accept DELETE requests to resource endpoints
+            - Validate resource existence before deletion
+            - Return appropriate HTTP status codes:
+                * 200 OK - Resource deleted successfully
+                * 204 No Content - Resource deleted (no response body)
+                * 404 Not Found - Resource doesn't exist
+                * 403 Forbidden - Deletion not allowed
+                * 409 Conflict - Resource cannot be deleted (dependencies)
+                * 500 Internal Server Error - Server error during deletion
+            - Include response headers (Content-Type, etc.)
+            - Return response body with deletion confirmation or error details
+            
+            FRONTEND IMPLEMENTATION:
+            - JavaScript fetch() API for HTTP DELETE requests
+            - Resource selection and confirmation dialogs
+            - Bulk deletion support for multiple resources
+            - Response analysis and error handling
+            - Delete operation history and undo capabilities
+            
+            CURRENT STATE: Sends real HTTP DELETE requests - ready for backend integration
+            ============================================================================
+            -->
+
+            <!-- DELETE TESTING INTERFACE -->
+            <section class="delete-section">
+                <div class="delete-container">
+
+                    <!-- RESOURCE SELECTION -->
+                    <div class="resource-selection-section">
+                        <h2>🎯 Resource Selection</h2>
+
+                        <!-- SINGLE RESOURCE DELETION -->
+                        <div class="single-delete-section">
+                            <h3>🗂️ Single Resource Deletion</h3>
+                            <div class="input-group">
+                                <label for="resource-url">Resource URL to Delete:</label>
+                                <div class="url-input-container">
+                                    <select id="method-select" class="method-select">
+                                        <option value="DELETE" selected>DELETE</option>
+                                    </select>
+                                    <input type="text" id="resource-url" class="url-input"
+                                        placeholder="Enter resource URL (e.g., /files/document.pdf, /api/users/123)"
+                                        value="/files/example.txt">
+                                    <button id="delete-single" class="delete-button">🗑️ Delete Resource</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 
+                        ============================================================================
+                        🔧 BACKEND INTEGRATION POINT #2: RESOURCE DISCOVERY AND BULK DELETION
+                        ============================================================================
+                        
+                        DESCRIPTION: Resource listing and bulk deletion capabilities
+                        
+                        REQUIRED BACKEND ENDPOINTS:
+                        📍 GET /files - List available files for deletion
+                        📍 GET /api/users - List users (for testing user deletion)
+                        📍 GET /api/products - List products (for testing product deletion)
+                        📍 DELETE /api/bulk - Bulk deletion endpoint (optional)
+                        
+                        EXPECTED RESPONSE FORMAT for listing:
+                        {
+                            "resources": [
+                                {"id": "file1.txt", "name": "file1.txt", "type": "file", "url": "/files/file1.txt"},
+                                {"id": "123", "name": "John Doe", "type": "user", "url": "/api/users/123"}
+                            ]
+                        }
+                        
+                        BULK DELETE REQUEST FORMAT:
+                        POST /api/bulk-delete
+                        {
+                            "resources": ["/files/file1.txt", "/files/file2.txt", "/api/users/123"]
+                        }
+                        
+                        CURRENT STATE: Ready for backend integration with resource discovery
+                        ============================================================================
+                        -->
+
+                        <!-- BULK DELETION SECTION -->
+                        <div class="bulk-delete-section">
+                            <h3>📋 Bulk Resource Deletion</h3>
+
+                            <!-- Resource Discovery -->
+                            <div class="discovery-section">
+                                <div class="discovery-controls">
+                                    <select id="resource-type" class="resource-type-select">
+                                        <option value="files">Files (/files)</option>
+                                        <option value="users">Users (/api/users)</option>
+                                        <option value="products">Products (/api/products)</option>
+                                        <option value="custom">Custom Endpoint</option>
+                                    </select>
+                                    <input type="text" id="custom-endpoint" class="custom-endpoint hidden"
+                                        placeholder="Enter custom endpoint (e.g., /api/posts)">
+                                    <button id="discover-resources" class="discover-button">🔍 Discover
+                                        Resources</button>
+                                </div>
+
+                                <!-- Resource List -->
+                                <div id="resource-list" class="resource-list">
+                                    <p class="empty-resources">Click "Discover Resources" to load available resources
+                                        for deletion.</p>
+                                </div>
+                            </div>
+
+                            <!-- Bulk Actions -->
+                            <div class="bulk-actions">
+                                <button id="select-all" class="bulk-action-button">☑️ Select All</button>
+                                <button id="select-none" class="bulk-action-button">⬜ Select None</button>
+                                <button id="delete-selected" class="delete-selected-button" disabled>🗑️ Delete
+                                    Selected</button>
+                            </div>
+                        </div>
+
+                        <!-- QUICK DELETE TESTS -->
+                        <div class="quick-tests">
+                            <h3>⚡ Quick Delete Tests</h3>
+                            <div class="quick-buttons">
+                                <button class="quick-button" data-test="delete-file">📄 Delete Test File</button>
+                                <button class="quick-button" data-test="delete-user">👤 Delete Test User</button>
+                                <button class="quick-button" data-test="delete-product">📦 Delete Test Product</button>
+                                <button class="quick-button" data-test="delete-nonexistent">❌ Delete
+                                    Non-existent</button>
+                                <button class="quick-button" data-test="delete-protected">🔒 Delete Protected
+                                    Resource</button>
+                                <button class="quick-button" data-test="delete-bulk">📋 Bulk Delete Test</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DELETION CONFIRMATION -->
+                    <div class="confirmation-section">
+                        <h2>⚠️ Deletion Confirmation</h2>
+                        <div class="confirmation-settings">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="require-confirmation" checked>
+                                <span class="checkmark"></span>
+                                Require confirmation before deletion
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show-preview">
+                                <span class="checkmark"></span>
+                                Show resource preview before deletion
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="safe-mode" checked>
+                                <span class="checkmark"></span>
+                                Safe mode (extra validation)
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- CUSTOM HEADERS -->
+                    <div class="headers-section">
+                        <h2>📋 Custom Headers</h2>
+                        <div class="headers-container">
+                            <div class="header-row">
+                                <input type="text" class="header-key" placeholder="Header Name">
+                                <input type="text" class="header-value" placeholder="Header Value">
+                                <button class="remove-header">❌</button>
+                            </div>
+                        </div>
+                        <button id="add-header-row" class="add-button">➕ Add Header</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RESPONSE SECTION -->
+            <section class="response-section">
+                <div class="response-container">
+                    <h2>📨 Deletion Response</h2>
+
+                    <!-- RESPONSE TABS -->
+                    <div class="response-tabs">
+                        <button class="response-tab-button active" data-tab="response-body">📄 Body</button>
+                        <button class="response-tab-button" data-tab="response-headers">📋 Headers</button>
+                        <button class="response-tab-button" data-tab="response-info">ℹ️ Info</button>
+                    </div>
+
+                    <!-- RESPONSE BODY -->
+                    <div id="response-body" class="response-tab-content active">
+                        <div class="response-controls">
+                            <button id="format-response" class="control-button">🎨 Format</button>
+                            <button id="copy-response" class="control-button">📋 Copy</button>
+                            <button id="download-response" class="control-button">💾 Download</button>
+                        </div>
+                        <pre id="response-body-content"
+                            class="response-content">No deletion response yet. Execute a delete operation to see the result.</pre>
+                    </div>
+
+                    <!-- RESPONSE HEADERS -->
+                    <div id="response-headers" class="response-tab-content">
+                        <pre id="response-headers-content" class="response-content">No headers yet.</pre>
+                    </div>
+
+                    <!-- RESPONSE INFO -->
+                    <div id="response-info" class="response-tab-content">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Status:</span>
+                                <span id="response-status" class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Time:</span>
+                                <span id="response-time" class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Size:</span>
+                                <span id="response-size" class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Method:</span>
+                                <span id="response-method" class="info-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DELETION HISTORY -->
+            <section class="history-section">
+                <div class="history-container">
+                    <h2>📚 Deletion History</h2>
+                    <div class="history-controls">
+                        <button id="clear-history" class="control-button">🗑️ Clear History</button>
+                        <button id="export-history" class="control-button">📤 Export</button>
+                        <button id="undo-last" class="control-button" disabled>↶ Undo Last</button>
+                    </div>
+                    <div id="history-list" class="history-list">
+                        <p class="empty-history">No deletions yet. Execute delete operations to start building your
+                            history.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- CONFIRMATION MODAL -->
+        <div id="confirmation-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>⚠️ Confirm Deletion</h3>
+                    <button class="close-modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p id="confirmation-message">Are you sure you want to delete this resource?</p>
+                    <div id="resource-preview" class="resource-preview hidden">
+                        <!-- Resource preview will be inserted here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="confirm-delete" class="confirm-button">🗑️ Confirm Delete</button>
+                    <button id="cancel-delete" class="cancel-button">❌ Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>© 2025 - DELETE Testing Tool | Webserver HTTP Project</p>
+            <p>Developed with ❤️ and lots of ☕</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="js/delete_config.js"></script>
+    <script src="js/delete_utils.js"></script>
+    <script src="js/delete_handlers.js"></script>
+    <script src="js/delete_history.js"></script>
+    <script src="js/delete_main.js"></script>
+</body>
+
+</html>

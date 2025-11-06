@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📂 Directory Explorer - 42 Webserver</title>
+    <link rel="stylesheet" href="../css/directory_styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header class="explorer-header">
+            <div class="header-content">
+                <h1>📂 Directory Explorer</h1>
+                <p class="subtitle">Navigate and manage server directories with autoindex functionality</p>
+
+                <!-- Navigation -->
+                <nav class="nav-links">
+                    <a href="../index.html" class="nav-button">🏠 Home</a>
+                    <a href="../upload/upload.html" class="nav-button">📁 Upload</a>
+                    <a href="../get/test_get.html" class="nav-button">📥 GET</a>
+                    <a href="../cgi/test_cgi.html" class="nav-button">⚙️ CGI</a>
+                    <a href="../post/test_post.html" class="nav-button">📤 POST</a>
+                    <a href="../delete/test_delete.html" class="nav-button">🗑️ DELETE</a>
+                    <a href="../about.html" class="nav-button">ℹ️ About</a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- MAIN EXPLORER INTERFACE -->
+        <main class="explorer-main">
+
+            <!-- 
+            ============================================================================
+            🔧 BACKEND INTEGRATION POINT #1: DIRECTORY NAVIGATION
+            ============================================================================
+            
+            FUNCTIONALITY: Directory browsing and autoindex display
+            
+            REQUIRED BACKEND ENDPOINTS:
+            📍 GET /directory/{path} - List directory contents
+            📍 Response format: JSON array of file/directory objects
+            
+            EXPECTED RESPONSE:
+            {
+              "path": "/uploads",
+              "items": [
+                {
+                  "name": "document.pdf",
+                  "type": "file",
+                  "size": 1024576,
+                  "modified": "2024-01-01T12:00:00Z",
+                  "permissions": "rw-r--r--",
+                  "mime_type": "application/pdf"
+                },
+                {
+                  "name": "images",
+                  "type": "directory",
+                  "size": null,
+                  "modified": "2024-01-01T10:00:00Z",
+                  "permissions": "rwxr-xr-x",
+                  "items_count": 15
+                }
+              ]
+            }
+            
+            CURRENT STATE: Ready for backend integration
+            ============================================================================
+            -->
+
+            <!-- NAVIGATION AND PATH SECTION -->
+            <section class="navigation-section">
+                <div class="nav-container">
+                    <!-- Breadcrumb Navigation -->
+                    <div class="breadcrumb-container">
+                        <nav class="breadcrumb" aria-label="Directory path">
+                            <ol id="breadcrumb-list" class="breadcrumb-list">
+                                <li class="breadcrumb-item">
+                                    <a href="#" data-path="/" class="breadcrumb-link">🏠 Root</a>
+                                </li>
+                            </ol>
+                        </nav>
+                    </div>
+
+                    <!-- Navigation Controls -->
+                    <div class="nav-controls">
+                        <button id="nav-back" class="nav-control-button" title="Go back">⬅️ Back</button>
+                        <button id="nav-forward" class="nav-control-button" title="Go forward">➡️ Forward</button>
+                        <button id="nav-up" class="nav-control-button" title="Go up one level">⬆️ Up</button>
+                        <button id="nav-refresh" class="nav-control-button" title="Refresh current directory">🔄
+                            Refresh</button>
+                    </div>
+
+                    <!-- Address Bar -->
+                    <div class="address-container">
+                        <label for="address-bar" class="address-label">📂 Current Path:</label>
+                        <input type="text" id="address-bar" class="address-input" value="/"
+                            placeholder="Enter directory path...">
+                        <button id="navigate-button" class="navigate-button">→ Go</button>
+                    </div>
+                </div>
+            </section>
+
+
+
+            <!-- 
+            ============================================================================
+            🔧 BACKEND INTEGRATION POINT #2: FILE OPERATIONS
+            ============================================================================
+            
+            FUNCTIONALITY: File download, preview, and basic operations
+            
+            REQUIRED BACKEND ENDPOINTS:
+            📍 GET /files/{path} - Download file
+            📍 GET /preview/{path} - File preview (images, text)
+            📍 DELETE /files/{path} - Delete file (integration with DELETE module)
+            📍 POST /directory - Create new directory
+            
+            INTEGRATION NOTES:
+            - Download links should point to actual file endpoints
+            - Preview functionality for supported file types
+            - Delete operations integrate with existing DELETE module
+            - Directory creation requires proper permissions
+            
+            CURRENT STATE: UI ready, awaiting backend endpoints
+            ============================================================================
+            -->
+
+            <!-- DIRECTORY CONTENT -->
+            <section class="content-section">
+                <div class="content-container">
+                    <!-- Directory Header with integrated controls -->
+                    <div class="directory-header">
+                        <div class="directory-title-section">
+                            <h3 id="current-path-title">📂 /</h3>
+                            <div class="directory-stats">
+                                <span id="items-count">0 items</span>
+                                <span id="total-size">0 B</span>
+                            </div>
+                        </div>
+
+                        <!-- Integrated View and Filter Controls -->
+                        <div class="directory-controls">
+                            <div class="view-controls">
+                                <div class="view-buttons">
+                                    <button id="view-grid" class="view-button active" title="Grid view">⊞</button>
+                                    <button id="view-list" class="view-button" title="List view">☰</button>
+                                    <button id="view-details" class="view-button" title="Details view">📋</button>
+                                </div>
+                            </div>
+
+                            <div class="sort-controls">
+                                <select id="sort-by" class="sort-select">
+                                    <option value="name">📝 Name</option>
+                                    <option value="type">📁 Type</option>
+                                    <option value="size">📏 Size</option>
+                                    <option value="modified">📅 Modified</option>
+                                </select>
+                                <button id="sort-order" class="sort-button" data-order="asc"
+                                    title="Toggle sort order">⬆️</button>
+                            </div>
+
+                            <div class="filter-controls">
+                                <input type="text" id="filter-input" class="filter-input" placeholder="Search files...">
+                                <select id="type-filter" class="type-filter">
+                                    <option value="all">All</option>
+                                    <option value="directory">📁 Dirs</option>
+                                    <option value="file">📄 Files</option>
+                                    <option value="image">🖼️ Images</option>
+                                    <option value="document">📋 Docs</option>
+                                    <option value="archive">📦 Archives</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="loading-state" class="loading-state hidden">
+                        <div class="loading-spinner"></div>
+                        <p>Loading directory contents...</p>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="empty-state" class="empty-state hidden">
+                        <div class="empty-icon">📭</div>
+                        <h3>Empty Directory</h3>
+                        <p>This directory contains no files or subdirectories.</p>
+                    </div>
+
+                    <!-- Error State -->
+                    <div id="error-state" class="error-state hidden">
+                        <div class="error-icon">❌</div>
+                        <h3>Unable to Load Directory</h3>
+                        <p id="error-message">An error occurred while loading the directory contents.</p>
+                        <button id="retry-button" class="retry-button">🔄 Retry</button>
+                    </div>
+
+                    <!-- Directory Listing -->
+                    <div id="directory-listing" class="directory-listing view-grid">
+                        <!-- Items will be populated by JavaScript -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- 
+            ============================================================================
+            🔧 BACKEND INTEGRATION POINT #3: CONTEXT MENU AND ACTIONS
+            ============================================================================
+            
+            FUNCTIONALITY: Right-click context menu with file operations
+            
+            AVAILABLE ACTIONS:
+            📍 Download - GET /files/{path}
+            📍 Preview - GET /preview/{path} or inline preview for supported types
+            📍 Delete - DELETE /files/{path} (uses existing DELETE module)
+            📍 Rename - PUT /files/{old_path} with new name
+            📍 Copy - POST /files/copy with source and destination
+            📍 Move - PUT /files/{path} with new location
+            📍 Properties - GET /files/{path}/info for detailed file information
+            
+            INTEGRATION:
+            - Context menu appears on right-click
+            - Actions execute appropriate backend calls
+            - Integration with existing modules (DELETE, etc.)
+            - Progress feedback for long operations
+            
+            CURRENT STATE: Context menu implemented, backend integration pending
+            ============================================================================
+            -->
+
+            <!-- CONTEXT MENU -->
+            <div id="context-menu" class="context-menu hidden">
+                <ul class="context-menu-list">
+                    <li class="context-menu-item" data-action="download">
+                        <span class="context-icon">📥</span>
+                        <span class="context-text">Download</span>
+                    </li>
+                    <li class="context-menu-item" data-action="preview">
+                        <span class="context-icon">👁️</span>
+                        <span class="context-text">Preview</span>
+                    </li>
+                    <li class="context-menu-separator"></li>
+                    <li class="context-menu-item" data-action="rename">
+                        <span class="context-icon">✏️</span>
+                        <span class="context-text">Rename</span>
+                    </li>
+                    <li class="context-menu-item" data-action="copy">
+                        <span class="context-icon">📋</span>
+                        <span class="context-text">Copy</span>
+                    </li>
+                    <li class="context-menu-item" data-action="move">
+                        <span class="context-icon">✂️</span>
+                        <span class="context-text">Move</span>
+                    </li>
+                    <li class="context-menu-separator"></li>
+                    <li class="context-menu-item" data-action="properties">
+                        <span class="context-icon">ℹ️</span>
+                        <span class="context-text">Properties</span>
+                    </li>
+                    <li class="context-menu-item" data-action="delete">
+                        <span class="context-icon">🗑️</span>
+                        <span class="context-text">Delete</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- PREVIEW MODAL -->
+            <div id="preview-modal" class="preview-modal hidden">
+                <div class="preview-overlay"></div>
+                <div class="preview-container">
+                    <div class="preview-header">
+                        <h3 id="preview-title">File Preview</h3>
+                        <button id="preview-close" class="preview-close">✕</button>
+                    </div>
+                    <div class="preview-content" id="preview-content">
+                        <!-- Preview content will be populated by JavaScript -->
+                    </div>
+                    <div class="preview-actions">
+                        <button id="preview-download" class="preview-action-button">📥 Download</button>
+                        <button id="preview-fullscreen" class="preview-action-button">🔍 Fullscreen</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>© 2025 - Directory Explorer Module | 42 Barcelona Webserver Project</p>
+            <p>Developed with ❤️ and lots of ☕</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Modules -->
+    <script src="js/directory_config.js"></script>
+    <script src="js/directory_utils.js"></script>
+    <script src="js/directory_handlers.js"></script>
+    <script src="js/directory_navigation.js"></script>
+    <script src="js/directory_main.js"></script>
+</body>
+
+</html>

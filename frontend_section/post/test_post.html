@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📝 POST Testing - Webserver</title>
+    <link rel="stylesheet" href="../css/post_styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <h1>📝 POST Request Testing</h1>
+            <p class="subtitle">Test HTTP POST requests with different data formats and analyze responses</p>
+
+            <!-- Navigation -->
+            <nav class="nav-links">
+                <a href="../index.html" class="nav-button">🏠 Home</a>
+                <a href="../upload/upload.html" class="nav-button">📁 Upload</a>
+                <a href="../get/test_get.html" class="nav-button">📥 GET</a>
+                <a href="../cgi/test_cgi.html" class="nav-button">⚙️ CGI</a>
+                <a href="../delete/test_delete.html" class="nav-button">🗑️ DELETE</a>
+                <a href="../directory/explorer.html" class="nav-button">📂 EXPLORER</a>
+                <a href="../about.html" class="nav-button">ℹ️ About</a>
+            </nav>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main>
+            <!-- 
+            ============================================================================
+            🔧 BACKEND INTEGRATION POINT #1: POST REQUEST TESTING
+            ============================================================================
+            
+            DESCRIPTION: Comprehensive POST/PUT/PATCH request testing interface
+            
+            REQUIRED BACKEND INTEGRATION:
+            📍 Primary endpoint: POST /test-post (configurable via URL input)
+            📍 Additional test endpoints for quick tests:
+                - POST /api/users (JSON user data)
+                - POST /auth/login (form login data)
+                - POST /api/products (JSON product data)
+                - POST /contact/submit (form contact data)
+                - POST /api/messages (plain text messages)
+                - POST /api/batch (JSON array data)
+                - PUT /test-put (PUT method testing)
+                - PATCH /test-patch (PATCH method testing)
+            
+            SUPPORTED CONTENT TYPES:
+            - application/json
+            - application/x-www-form-urlencoded
+            - text/plain
+            - multipart/form-data
+            - Custom content types
+            
+            EXPECTED BACKEND BEHAVIOR:
+            - Accept requests with various Content-Type headers
+            - Process request body according to Content-Type
+            - Return appropriate HTTP status codes (200, 201, 400, 422, 500, etc.)
+            - Include response headers (Content-Type, etc.)
+            - Return response body (JSON, text, HTML, etc.)
+            
+            FRONTEND IMPLEMENTATION:
+            - JavaScript fetch() API for HTTP requests
+            - Dynamic Content-Type header based on user selection
+            - Custom headers support from user input
+            - Request/response timing measurement
+            - History persistence in localStorage
+            
+            CURRENT STATE: Sends real HTTP requests - ready for backend integration
+            ============================================================================
+            -->
+
+            <!-- POST TESTING INTERFACE -->
+            <section class="post-section">
+                <div class="post-container">
+
+                    <!-- URL AND METHOD CONFIGURATION -->
+                    <div class="request-config-section">
+                        <h2>🌐 Request Configuration</h2>
+                        <div class="input-group">
+                            <label for="request-url">URL to Test:</label>
+                            <div class="url-input-container">
+                                <select id="method-select" class="method-select">
+                                    <option value="POST" selected>POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="PATCH">PATCH</option>
+                                </select>
+                                <input type="text" id="request-url" class="url-input"
+                                    placeholder="Enter URL (e.g., /api/users, /submit-form)" value="/test-post">
+                            </div>
+                        </div>
+
+                        <!-- CONTENT TYPE SELECTION -->
+                        <div class="input-group">
+                            <label for="content-type">Content-Type:</label>
+                            <select id="content-type" class="content-type-select">
+                                <option value="application/json">application/json</option>
+                                <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded
+                                </option>
+                                <option value="text/plain">text/plain</option>
+                                <option value="multipart/form-data">multipart/form-data</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <input type="text" id="custom-content-type" class="custom-content-type hidden"
+                                placeholder="Enter custom content type">
+                        </div>
+
+                        <!-- 
+                        ============================================================================
+                        🔧 BACKEND INTEGRATION POINT #2: QUICK TEST ENDPOINTS
+                        ============================================================================
+                        
+                        DESCRIPTION: Pre-configured test scenarios with specific endpoints
+                        
+                        REQUIRED BACKEND ENDPOINTS:
+                        📍 POST /api/users - Accept JSON user data
+                            Example: {"name": "John Doe", "email": "john@example.com", "age": 30}
+                        📍 POST /auth/login - Accept form login data
+                            Example: username=testuser&password=secretpass&remember=true
+                        📍 POST /api/products - Accept JSON product data
+                            Example: {"name": "Product", "price": 99.99, "category": "electronics"}
+                        📍 POST /contact/submit - Accept form contact data
+                            Example: name=Jane&email=jane@example.com&subject=Inquiry&message=Hello
+                        📍 POST /api/messages - Accept plain text messages
+                            Example: "This is a plain text message"
+                        📍 POST /api/batch - Accept JSON array data
+                            Example: [{"id": 1, "action": "create"}, {"id": 2, "action": "update"}]
+                        
+                        BACKEND IMPLEMENTATION NOTES:
+                        - Each endpoint should handle its specific Content-Type
+                        - Return appropriate status codes (200, 201, 400, 422, 500)
+                        - Validate input data and return error messages for invalid data
+                        - Include proper CORS headers if needed
+                        
+                        CURRENT STATE: Configured with real endpoints - ready for backend
+                        ============================================================================
+                        -->
+
+                        <!-- QUICK TESTS -->
+                        <div class="quick-tests">
+                            <h3>⚡ Quick Tests</h3>
+                            <div class="quick-buttons">
+                                <button class="quick-btn" data-test="json-user">👤 JSON User Data</button>
+                                <button class="quick-btn" data-test="form-login">🔐 Form Login</button>
+                                <button class="quick-btn" data-test="json-product">📦 JSON Product</button>
+                                <button class="quick-btn" data-test="form-contact">📧 Form Contact</button>
+                                <button class="quick-btn" data-test="text-message">💬 Text Message</button>
+                                <button class="quick-btn" data-test="json-array">📋 JSON Array</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- REQUEST BODY EDITOR -->
+                    <div class="body-editor-section">
+                        <h2>📝 Request Body</h2>
+                        <div class="editor-tabs">
+                            <button class="tab-button active" data-tab="raw">📄 Raw</button>
+                            <button class="tab-button" data-tab="form">📋 Form Data</button>
+                            <button class="tab-button" data-tab="json">{ } JSON</button>
+                        </div>
+
+                        <!-- RAW EDITOR -->
+                        <div id="raw-tab" class="tab-content active">
+                            <textarea id="raw-body" class="body-textarea" placeholder="Enter your request body here...
+Example JSON:
+{
+  &quot;name&quot;: &quot;John Doe&quot;,
+  &quot;email&quot;: &quot;john@example.com&quot;,
+  &quot;age&quot;: 30
+}
+
+Example Form Data:
+name=John+Doe&email=john%40example.com&age=30"></textarea>
+                        </div>
+
+                        <!-- FORM DATA EDITOR -->
+                        <div id="form-tab" class="tab-content">
+                            <div class="form-data-container">
+                                <div class="form-row">
+                                    <input type="text" class="form-key" placeholder="Key">
+                                    <input type="text" class="form-value" placeholder="Value">
+                                    <button class="remove-row">❌</button>
+                                </div>
+                            </div>
+                            <button id="add-form-row" class="add-button">➕ Add Field</button>
+                        </div>
+
+                        <!-- JSON EDITOR -->
+                        <div id="json-tab" class="tab-content">
+                            <textarea id="json-body" class="body-textarea json-textarea" placeholder="Enter JSON data...
+{
+  &quot;example&quot;: &quot;value&quot;,
+  &quot;number&quot;: 42,
+  &quot;boolean&quot;: true,
+  &quot;array&quot;: [1, 2, 3],
+  &quot;object&quot;: {
+    &quot;nested&quot;: &quot;data&quot;
+  }
+}"></textarea>
+                            <button id="format-json" class="format-button">🎨 Format JSON</button>
+                            <button id="validate-json" class="validate-button">✅ Validate JSON</button>
+                        </div>
+                    </div>
+
+                    <!-- HEADERS SECTION -->
+                    <div class="headers-section">
+                        <h2>📋 Custom Headers</h2>
+                        <div class="headers-container">
+                            <div class="header-row">
+                                <input type="text" class="header-key" placeholder="Header Name">
+                                <input type="text" class="header-value" placeholder="Header Value">
+                                <button class="remove-header">❌</button>
+                            </div>
+                        </div>
+                        <button id="add-header-row" class="add-button">➕ Add Header</button>
+                    </div>
+
+                    <!-- SEND REQUEST BUTTON -->
+                    <div class="send-section">
+                        <button id="send-request" class="send-button">📤 Send POST Request</button>
+                        <div class="loading hidden" id="loading-indicator">
+                            <div class="spinner"></div>
+                            <span>Sending request...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RESPONSE SECTION -->
+            <section class="response-section">
+                <div class="response-container">
+                    <h2>📨 Response</h2>
+
+                    <!-- RESPONSE TABS -->
+                    <div class="response-tabs">
+                        <button class="response-tab-button active" data-tab="response-body">📄 Body</button>
+                        <button class="response-tab-button" data-tab="response-headers">📋 Headers</button>
+                        <button class="response-tab-button" data-tab="response-info">ℹ️ Info</button>
+                    </div>
+
+                    <!-- RESPONSE BODY -->
+                    <div id="response-body" class="response-tab-content active">
+                        <div class="response-controls">
+                            <button id="format-response" class="control-button">🎨 Format</button>
+                            <button id="copy-response" class="control-button">📋 Copy</button>
+                            <button id="download-response" class="control-button">💾 Download</button>
+                        </div>
+                        <pre id="response-body-content"
+                            class="response-content">No response yet. Send a request to see the result.</pre>
+                    </div>
+
+                    <!-- RESPONSE HEADERS -->
+                    <div id="response-headers" class="response-tab-content">
+                        <pre id="response-headers-content" class="response-content">No headers yet.</pre>
+                    </div>
+
+                    <!-- RESPONSE INFO -->
+                    <div id="response-info" class="response-tab-content">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Status:</span>
+                                <span id="response-status" class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Time:</span>
+                                <span id="response-time" class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Size:</span>
+                                <span id="response-size" class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Type:</span>
+                                <span id="response-type" class="info-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- REQUEST HISTORY -->
+            <section class="history-section">
+                <div class="history-container">
+                    <h2>📚 Request History</h2>
+                    <div class="history-controls">
+                        <button id="clear-history" class="control-button">🗑️ Clear History</button>
+                        <button id="export-history" class="control-button">📤 Export</button>
+                    </div>
+                    <div id="history-list" class="history-list">
+                        <p class="empty-history">No requests yet. Send a request to start building your history.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>© 2025 - POST Testing Tool | Webserver HTTP Project</p>
+            <p>Developed with ❤️ and lots of ☕</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="js/post_config.js"></script>
+    <script src="js/post_utils.js"></script>
+    <script src="js/post_handlers.js"></script>
+    <script src="js/post_history.js"></script>
+    <script src="js/post_main.js"></script>
+</body>
+
+</html>

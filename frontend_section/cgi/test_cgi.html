@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚙️ CGI Testing - Webserver</title>
+    <link rel="stylesheet" href="../css/cgi_styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <h1>⚙️ CGI Script Testing</h1>
+            <p class="subtitle">Test and execute CGI scripts with real-time output analysis</p>
+
+            <!-- Navigation -->
+            <nav class="nav-links">
+                <a href="../index.html" class="nav-button">🏠 Home</a>
+                <a href="../upload/upload.html" class="nav-button">📁 Upload</a>
+                <a href="../get/test_get.html" class="nav-button">📥 GET</a>
+                <a href="../post/test_post.html" class="nav-button">📝 POST</a>
+                <a href="../delete/test_delete.html" class="nav-button">🗑️ DELETE</a>
+                <a href="../directory/explorer.html" class="nav-button">📂 EXPLORER</a>
+                <a href="../about.html" class="nav-button">ℹ️ About</a>
+            </nav>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main>
+            <!-- CGI TESTING INTERFACE -->
+            <section class="cgi-section">
+                <div class="cgi-container">
+
+                    <!-- SCRIPT SELECTION -->
+                    <div class="script-selection-section">
+                        <h2>📝 Script Selection</h2>
+                        <div class="input-group">
+                            <label for="script-path">CGI Script Path:</label>
+                            <div class="script-input-container">
+                                <select id="method-select" class="method-select">
+                                    <option value="GET" selected>GET</option>
+                                    <option value="POST">POST</option>
+                                </select>
+                                <input type="text" id="script-path" class="script-input"
+                                    placeholder="Enter script path (e.g., /cgi-bin/mini.py)" value="/cgi-bin/mini.py">
+                                <button id="execute-script" class="execute-button">⚙️ Execute Script</button>
+                            </div>
+                        </div>
+
+                        <!-- QUICK SCRIPTS -->
+                        <div class="quick-scripts">
+                            <h3>⚡ Quick Scripts (Multi-Language)</h3>
+                            <div class="quick-buttons">
+                                <button class="quick-btn" data-script="/cgi-bin/mini.py" data-method="GET">🚀 Mini Test
+                                    (Python)</button>
+                                <button class="quick-btn" data-script="/cgi-bin/hello.sh" data-method="GET">🐚 Hello
+                                    (Shell)</button>
+                                <button class="quick-btn" data-script="/cgi-bin/hello.cgi" data-method="GET">⚡ Hello
+                                    (C++)</button>
+                                <button class="quick-btn" data-script="/cgi-bin/env.py" data-method="GET">🌍 Environment
+                                    (Python)</button>
+                                <button class="quick-btn" data-script="/cgi-bin/form.py" data-method="POST">📝 Form
+                                    (Python)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PARAMETERS SECTION -->
+                    <div class="parameters-section">
+                        <h2>📋 Script Parameters</h2>
+
+                        <!-- QUERY PARAMETERS (GET) -->
+                        <div class="params-group" id="query-params-group">
+                            <h3>🔗 Query Parameters (GET)</h3>
+                            <div class="params-container" id="query-params">
+                                <div class="param-row">
+                                    <input type="text" class="param-key" placeholder="Parameter name">
+                                    <input type="text" class="param-value" placeholder="Parameter value">
+                                    <button class="remove-param">🗑️</button>
+                                </div>
+                            </div>
+                            <button id="add-query-param" class="add-param-btn">➕ Add Query Parameter</button>
+                        </div>
+
+                        <!-- POST DATA -->
+                        <div class="params-group" id="post-data-group" style="display: none;">
+                            <h3>📄 POST Data</h3>
+                            <div class="post-data-container">
+                                <label for="content-type">Content-Type:</label>
+                                <select id="content-type" class="content-type-select">
+                                    <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded
+                                    </option>
+                                    <option value="application/json">application/json</option>
+                                    <option value="text/plain">text/plain</option>
+                                    <option value="multipart/form-data">multipart/form-data</option>
+                                </select>
+                                <textarea id="post-data" class="post-data-textarea"
+                                    placeholder="Enter POST data here..." rows="5"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- ENVIRONMENT VARIABLES -->
+                        <div class="params-group">
+                            <h3>🌐 Environment Variables</h3>
+                            <div class="params-container" id="env-vars">
+                                <div class="param-row">
+                                    <input type="text" class="param-key" placeholder="Variable name">
+                                    <input type="text" class="param-value" placeholder="Variable value">
+                                    <button class="remove-param">🗑️</button>
+                                </div>
+                            </div>
+                            <button id="add-env-var" class="add-param-btn">➕ Add Environment Variable</button>
+                        </div>
+                    </div>
+
+                    <!-- EXECUTION RESULTS -->
+                    <div class="results-section">
+                        <h2>📊 Execution Results</h2>
+
+                        <!-- EXECUTION INFO -->
+                        <div class="execution-info">
+                            <div class="info-item">
+                                <span class="label">Status:</span>
+                                <span id="execution-status" class="status-code">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Execution Time:</span>
+                                <span id="execution-time" class="execution-time">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Output Size:</span>
+                                <span id="output-size" class="output-size">-</span>
+                            </div>
+                        </div>
+
+                        <!-- OUTPUT SECTION -->
+                        <div class="output-section">
+                            <h3>📤 Script Output</h3>
+                            <div class="output-controls">
+                                <button id="view-output" class="view-btn active">📄 Output</button>
+                                <button id="view-headers" class="view-btn">📋 Headers</button>
+                                <button id="view-errors" class="view-btn">❌ Errors</button>
+                                <button id="view-env" class="view-btn">🌍 Environment</button>
+                            </div>
+                            <div id="script-output" class="output-container">
+                                <p class="no-data">No script executed yet</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- EXECUTION HISTORY -->
+                    <div class="history-section">
+                        <h2>📚 Execution History</h2>
+                        <div class="history-controls">
+                            <button id="clear-history" class="clear-btn">🗑️ Clear History</button>
+                            <button id="export-history" class="export-btn">💾 Export</button>
+                        </div>
+                        <div id="history-list" class="history-list">
+                            <p class="no-data">No executions in history</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STATUS INDICATORS -->
+            <div class="status-indicators">
+                <div id="loading-indicator" class="indicator loading hidden">
+                    <span class="spinner"></span>
+                    <span>Executing script...</span>
+                </div>
+                <div id="success-indicator" class="indicator success hidden">
+                    <span>✅</span>
+                    <span>Script executed successfully</span>
+                </div>
+                <div id="error-indicator" class="indicator error hidden">
+                    <span>❌</span>
+                    <span>Script execution failed</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>© 2025 - CGI Testing Interface | 42 Barcelona Webserver Project</p>
+            <p>Developed with ❤️ and lots of ☕</p>
+        </footer>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="js/cgi_config.js"></script>
+    <script src="js/cgi_handlers.js"></script>
+    <script src="js/cgi_utils.js"></script>
+    <script src="js/cgi_history.js"></script>
+    <script src="js/cgi_main.js"></script>
+</body>
+
+</html>
