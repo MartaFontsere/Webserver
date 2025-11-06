@@ -597,12 +597,29 @@ void Server::run()
             Client *client = _clientsByFd[fd];
             if (!client)
             {
-                continue;
+                // 🧹 Si no hay cliente asociado, limpiamos el fd del poll
+                std::cerr << "[Warning] FD " << fd << " sin cliente asociado, eliminando de poll.\n";
+                _pollFds.erase(_pollFds.begin() + i);
+                continue; // No incrementamos i porque el erase ya mueve los elementos
             }
             // ESTE TROZO DE ARRIBA PUEDE SER UN POCO REDUNDANTE, PORQUE TEORICAMENTE YA ESTA CONTROLADO EN CLEANUPCLOSEDCLIENTS, pero se supone que por doble seguridad. igual Quitamos???
 
             if (_pollFds[i].revents & POLLIN)
                 handleClientEvent(_pollFds[i].fd);
+
+            // 🔹 Escritura (cuando había datos pendientes)
+            if (_pollFds[i].revents & POLLOUT)
+            {
+                if (!client->flushWrite())
+                    continue; // si falló, el cleanup se encargará luego
+
+                // Si ya no queda nada por enviar, desactivamos POLLOUT
+                if (!client->hasPendingWrite())
+                    _pollFds[i].events &= ~POLLOUT;
+            }
+            // 🔹 Errores o desconexiones
+            if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+                client->markClosed();
         }
 
         // Limpiar clientes cerrados

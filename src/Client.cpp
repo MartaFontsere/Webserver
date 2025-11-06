@@ -160,6 +160,7 @@ bool Client::readRequest()
         _closed = true;
         return false;
     }
+    std::cout << "Empezando a leer la Request (fd: " << _clientFd << ").\n";
     _request.append(buffer, bytesRead);
 
     // Si aún no hemos terminado de leer las cabeceras
@@ -168,6 +169,7 @@ bool Client::readRequest()
         if (!parseHeaders())
             return false; // aún no se han recibido todos los headers
     }
+    std::cout << " Request leída entera (fd: " << _clientFd << ").\n";
 
     // Si hay cuerpo, lo gestionamos aparte
     if (_headersComplete && _contentLength > 0)
@@ -758,4 +760,18 @@ bool Client::isClosed() const
 /*
 Comprueba si la conexión con este cliente ya se ha cerrado (por error o desconexión).
 Se usa para que el servidor sepa si debe eliminar este cliente de la lista activa o no seguir intentando leer/escribir.
+*/
+
+void Client::markClosed()
+{
+    _closed = true;
+}
+
+/*
+Por qué hacerlo así
+    _closed sigue siendo privado, por lo tanto:
+        Solo Client puede modificar su estado interno.
+        Server solo puede pedirle “ciérrate”, no cambiarlo a lo bruto.
+
+    Evita inconsistencias (por ejemplo, que el Server cierre el socket mientras el Client aún cree que está abierto).
 */

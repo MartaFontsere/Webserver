@@ -22,6 +22,7 @@ public:
     bool queueResponse(const std::string &msg); // añade msg a _writeBuffer y llama a flushWrite()
     bool flushWrite();                          // intenta enviar bytes pendientes (usa send())
     bool hasPendingWrite() const;               // true si queda data por enviar
+    void markClosed();                          // 👈 NUEVA FUNCIÓN PÚBLICA
 
 private:
     int _clientFd;     // file descriptor del socket del cliente
