@@ -40,12 +40,13 @@ std::vector<std::string> split(const std::string &str, char delimiter)
     return tokens;
 }
 
-bool readConfigFile(const std::string &filePath, ServerConfig &config)
+bool readConfigFile(const std::string &filePath)
 {
     std::cout << "Intentando leer archivo: " << filePath << std::endl;
 
     std::ifstream file;
     DirectiveParser parser;
+    int block = 0;
 
     file.open(filePath.c_str());
 
@@ -66,7 +67,35 @@ bool readConfigFile(const std::string &filePath, ServerConfig &config)
         // Ahora clasificar la línea
         if (trimmed[trimmed.length() - 1] == '{')
         {
-            std::cout << "🟦 BLOQUE INICIO: " << trimmed << std::endl;
+            if (block == 0)
+            {
+                std::cout << "🟦 BLOQUE INICIO: " << trimmed << std::endl;
+                // UBICACION DEL PARSING BLOCK COMPROBAR EN VALIDACION SI HAY CIERRE }
+                std::cout << "/*/*/*/SPLITEADO*/*/*/*/*/ \n"
+                          << trimmed << std::endl;
+                size_t pos = line.find(" {");
+                if (pos != std::string::npos)
+                    line = line.substr(0, pos);
+                std::cout << "/*/*/*/LIMPIO*/*/*/*/*/ \n"
+                          << line << std::endl;
+                block = 1;
+            }
+            else
+            {
+                std::cout << "🟦 BLOQUE ANIDADO: " << trimmed << std::endl;
+                // UBICACION DEL PARSING BLOCK COMPROBAR EN VALIDACION SI HAY CIERRE }
+                std::cout << "/*/*/*/SPLITEADO*/*/*/*/*/ \n"
+                          << trimmed << std::endl;
+                size_t start = line.find_first_not_of(" \t");
+                if (start != std::string::npos)
+                    line = line.substr(start);
+                size_t pos = line.find(" {");
+                if (pos != std::string::npos)
+                    line = line.substr(0, pos);
+                std::cout << "/*/*/*/LIMPIO*/*/*/*/*/ \n"
+                          << line << std::endl;
+                block = 1;
+            }
         }
         else if (trimmed == "}")
         {
@@ -76,9 +105,10 @@ bool readConfigFile(const std::string &filePath, ServerConfig &config)
         {
             std::cout << "📝 DIRECTIVA: " << trimmed << std::endl;
             trimmed = trimmed.substr(0, trimmed.length() - 1);
-            std::cout << "/*/*/*/SPLITEADO*/*/*/*/*/ " << trimmed << std::endl;
+            std::cout << "/*/*/*/SPLITEADO*/*/*/*/*/ \n"
+                      << trimmed << std::endl;
             std::vector<std::string> tokens = split(trimmed, ' ');
-            parser.parseDirective(config, tokens);
+            parser.parseDirective(tokens);
         }
         else
         {

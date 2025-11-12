@@ -8,10 +8,10 @@ int main()
 {
     std::cout << "=== TESTING CONFIG PARSER ===" << std::endl;
 
-    ServerConfig config; // Crear config aquí
+    DirectiveToken config; // Crear config aquí
 
     // Por ahora solo probamos con un archivo de ejemplo
-    bool result = readConfigFile("test.conf", config); // Pasar config
+    bool result = readConfigFile("test.conf"); // Pasar config
 
     if (result)
     {
@@ -19,9 +19,9 @@ int main()
 
         // DEBUG SIMPLE - Mostrar config
         std::cout << "\n=== CONFIGURACIÓN PARSEADA ===" << std::endl;
-        std::cout << "Puerto: " << config.listenPort << std::endl;
-        std::cout << "Server Name: " << config.serverName << std::endl;
-        std::cout << "Root: " << config.root << std::endl;
+        /* std::cout << "Puerto: " << config.listenPort << std::endl;
+         std::cout << "Server Name: " << config.serverName << std::endl;
+         std::cout << "Root: " << config.root << std::endl;*/
     }
     else
     {

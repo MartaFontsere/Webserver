@@ -4,12 +4,18 @@
 #include <string>
 #include <vector>
 
-// Definición del struct ServerConfig
-struct ServerConfig
+// Definición del struct DirectiveToken
+/*struct DirectiveToken
 {
     int listenPort;
     std::string serverName;
     std::string root;
+};*/
+
+struct DirectiveToken
+{
+    std::string name;
+    std::string value;
 };
 
 class DirectiveParser
@@ -22,16 +28,13 @@ public:
     ~DirectiveParser();                                       // Destructor
 
     // Método principal
-    bool parseDirective(ServerConfig &config, const std::vector<std::string> &tokens);
-
-    // Métodos de validación
-    bool isValidDirective(const std::string &directive);
+    bool parseDirective(const std::vector<std::string> &tokens);
 
 private:
     // Métodos auxiliares privados
-    bool parseListenDirective(ServerConfig &config, const std::string &value);
-    bool parseServerNameDirective(ServerConfig &config, const std::string &value);
-    bool parseRootDirective(ServerConfig &config, const std::string &value);
+    bool parseListenDirective(DirectiveToken &directive, const std::string &value);
+    bool parseServerNameDirective(DirectiveToken &config, const std::string &value);
+    bool parseRootDirective(DirectiveToken &config, const std::string &value);
 };
 
 #endif
