@@ -4,7 +4,7 @@
 #include <netinet/in.h> // sockaddr_in
 #include <unistd.h>     // close()
 #include <ctime>
-
+#include "HttpRequest.hpp"
 class Client
 {
 public:
@@ -19,10 +19,11 @@ public:
     bool isClosed() const;
 
     // nuevo: encolar respuesta y vaciar buffer progresivamente
-    bool queueResponse(const std::string &msg); // añade msg a _writeBuffer y llama a flushWrite()
-    bool flushWrite();                          // intenta enviar bytes pendientes (usa send())
-    bool hasPendingWrite() const;               // true si queda data por enviar
-    void markClosed();                          // 👈 NUEVA FUNCIÓN PÚBLICA
+    bool flushWrite();            // intenta enviar bytes pendientes (usa send())
+    bool hasPendingWrite() const; // true si queda data por enviar
+    void markClosed();
+    bool isRequestComplete() const; // BORRAR????
+    const HttpRequest &getHttpRequest() const;
 
 private:
     int _clientFd;     // file descriptor del socket del cliente
@@ -30,21 +31,22 @@ private:
     bool _closed;      // indica si la conexión está cerrada
 
     // lectura/parseo
-    bool _headersComplete;
-    bool _requestComplete;
-    int _contentLength;
-    std::string _request; // buffer con los datos recibidos del header
-    std::string _body;    // buffer con los datos recibidos del body
+
+    std::string _rawRequest; // buffer con los datos RAW recibidos del socket
+                             // Client es responsable del socket y de recibir bytes.
+                             // → Por tanto, debe guardar temporalmente lo que va llegando desde el socket
+
     // bool _keepAlive;      // para saber si la conexión se debe mantener viva después de mandar una petición o no
+    HttpRequest _httpRequest;
+    // HttpRequest no sabe nada del socket. Solo sabe parsear texto una vez lo tiene completo.
+    // → Su función es transformar texto crudo → estructura interpretada (método, headers, body...).
 
     //  salida (write buffering)
-    std::string _writeBuffer; // todo lo pendiente por enviar
+    std::string _writeBuffer; // Los datos pendientes de enviar
     size_t _writeOffset;      // bytes ya enviados desde el inicio de _writeBuffer. indica cuánto ya has enviado — así no reenvías bytes ya enviados.
     time_t _lastActivity;     // timestamp del último recv/send exitoso. te permitirá implementar timeouts (más tarde)
 
-    // parsing helpers
-    bool parseHeaders();
-    bool parseBody();
+    bool _requestComplete;
 };
 
 /*
@@ -72,4 +74,17 @@ Por qué la necesitamos
         _buffer → servirá para almacenar lo que el cliente envía (por si llega por trozos).
 
         _closed → nos permite marcar si el cliente ya cerró la conexión, y así poder eliminarlo del poll() más tarde.
+*/
+
+/*
+¿Dónde declarar HttpRequest _httpRequest?
+
+    👉 En la clase Client, como miembro privado.
+
+    Por qué:
+        Cada Client representa una conexión individual, por tanto, su HttpRequest también es única.
+
+        Nadie fuera de Client debería modificar los datos crudos del request, solo leerlos.
+
+        Desde fuera (por ejemplo, en Server), accederás a los datos a través de getters o referencias controladas, no modificando directamente _httpRequest.
 */

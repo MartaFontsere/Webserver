@@ -157,6 +157,13 @@ bool Server::init()
         return false;
     }
 
+    // Añadimos el socket del servidor (el que hace listen) a la lista de Fds a vigilar
+    pollfd serverPollFd;
+    serverPollFd.fd = _serverFd;
+    serverPollFd.events = POLLIN; // queremos saber cuándo hay una nueva conexión entrante
+    serverPollFd.revents = 0;
+    _pollFds.push_back(serverPollFd); // añadimos
+
     std::cout << "✅ Servidor escuchando en el puerto " << _port << std::endl;
     return true;
 }
@@ -562,17 +569,6 @@ int Server::getServerFd() const
 // VERSION 2 DEL BUCLE RUN
 void Server::run()
 {
-    // ESTO IGUAL MOVERLO A INIT, ENTRE LISTEN Y EL MENSAJE DE SERVIDOR ESCUCHANDO
-
-    // Añadimos el socket del servidor (el que hace listen) a la lista de Fds a vigilar
-    pollfd serverPollFd;
-    serverPollFd.fd = _serverFd;
-    serverPollFd.events = POLLIN; // queremos saber cuándo hay una nueva conexión entrante
-    serverPollFd.revents = 0;
-    _pollFds.push_back(serverPollFd); // añadimos
-
-    // SI SE MUEVE, HASTA AQUI
-
     std::cout << "Servidor corriendo con poll()..." << std::endl;
 
     while (true)
@@ -1128,8 +1124,13 @@ void Server::handleClientEvent(int fd)
         return;
 
     if (!client->readRequest())
-        return; // aún no ha llegado todo
+        return; // error o desconexión → el cleanup lo eliminará
 
+    // 👇 Si la request aún no está completa, no hacemos nada todavía
+    if (!client->isRequestComplete())
+        return; // falta data, seguimos esperando más POLLIN
+
+    // 🟢 Si llegamos aquí, la request ya está completa
     std::string response =
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/plain\r\n"

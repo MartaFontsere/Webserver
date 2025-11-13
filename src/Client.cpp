@@ -1,6 +1,7 @@
 #include "Client.hpp"
 #include <arpa/inet.h> // inet_ntoa()
 #include <iostream>    // para imprimir mensajes
+// #include "HttpRequest.hpp"
 
 /*
 ¿Por qué necesitamos Client.cpp?
@@ -13,7 +14,12 @@ La clase Client sirve justo para eso: encapsula todo lo que pasa con un cliente 
 Así evitamos caos y código duplicado dentro del servidor.
 */
 
-Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _headersComplete(false), _requestComplete(false), _contentLength(-1), _writeBuffer(), _writeOffset(0), _lastActivity(time(NULL))
+/*
+Objetivo: que Client solo lea bytes del socket y no se encargue de entender HTTP.
+La lógica de parseHeaders, Content-Length, etc. se moverá a una clase HttpRequest.
+*/
+
+Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _writeBuffer(), _writeOffset(0), _lastActivity(time(NULL)), _requestComplete(false)
 {
 }
 
@@ -156,32 +162,58 @@ bool Client::readRequest()
         if (bytesRead == 0)
             std::cout << "[Info] Cliente (fd: " << _clientFd << ") cerró la conexión normalmente.\n";
         else
-            std::cerr << "[Error] Fallo al leer del cliente (fd: " << _clientFd << ")\n";
+            std::cerr << "[Error] Fallo al leer del cliente con recv() (fd: " << _clientFd << "): " << strerror(errno) << "\n";
         _closed = true;
         return false;
     }
     std::cout << "Empezando a leer la Request (fd: " << _clientFd << ").\n";
-    _request.append(buffer, bytesRead);
+    _rawRequest.append(buffer, bytesRead);
+    _lastActivity = time(NULL);
 
-    // Si aún no hemos terminado de leer las cabeceras
-    if (!_headersComplete)
-    {
-        if (!parseHeaders())
-            return false; // aún no se han recibido todos los headers
-    }
-    std::cout << " Request leída entera (fd: " << _clientFd << ").\n";
-
-    // Si hay cuerpo, lo gestionamos aparte
-    if (_headersComplete && _contentLength > 0)
-    {
-        if (!parseBody())
-            return false; // aún no ha llegado todo el body
-    }
+    // if (!_httpRequest.parse(_request))
+    //     return false; // aún falta data
 
     // Si llegamos aquí, ya tenemos toda la petición completa
-    _requestComplete = true;
+    //_requestComplete = true;
+
+    // Intentamos parsear la request actual
+    std::cout << "[Debug] Parseando request del cliente fd " << _clientFd << std::endl;
+    if (_httpRequest.parse(_rawRequest))
+    {
+        std::cout << "✅ Request completa (fd: " << _clientFd << ")\n";
+        _requestComplete = true;
+    }
+
+    // ⚙️ En cualquier caso (falta data o ya completa),
+    // seguimos vivos y listos para la siguiente vuelta
     return true;
 }
+
+/*
+7.11.25
+¿Hay que crear el objeto httpRequeest en readRequest()?
+
+❌ No hace falta crearlo explícitamente con new ni llamando a un constructor.
+El objeto _httpRequest se crea automáticamente cuando se construye el Client, igual que cualquier otro miembro.
+
+Simplemente, cuando leas del socket en readRequest(), irás acumulando los datos en _requestBuffer, y cuando veas que está completa, llamarás a:
+    _httpRequest.parse(_requestBuffer);
+
+
+
+resumen del flujo completo
+    1️⃣ poll() detecta POLLIN.
+    2️⃣ handleClientEvent() llama a readRequest().
+    3️⃣
+        Si readRequest() devuelve false → cliente cerrado.
+
+        Si devuelve true pero isRequestComplete() es false → esperar más data.
+
+        Si devuelve true y isRequestComplete() es true → enviar respuesta.
+        4️⃣ Si falta enviar algo, se activa POLLOUT.
+        5️⃣ Cuando el kernel indique POLLOUT, el bucle principal llama flushWrite().
+        6️⃣ Cuando ya no haya nada pendiente, se desactiva POLLOUT.
+        */
 
 /*
 4.11.25
@@ -356,102 +388,6 @@ if (_headersComplete && _contentLength > 0)
 
 */
 
-bool Client::parseHeaders()
-{
-    // 🔍 Comprobamos si la petición HTTP está completa
-    // Buscamos el final de la cabecera (header) HTTP, que termina con "\r\n\r\n"
-    size_t headerEnd = _request.find("\r\n\r\n");
-    if (headerEnd == std::string::npos) // significa “no encontrado” o “posición inválida”
-        return false;                   // aún no ha llegado toda la cabecera
-
-    _headersComplete = true; // Si llega hasta ahquí, significa que ha encontrado el final
-
-    // Extraemos y guardamos solo la parte de la cabecera
-    std::string headerPart = _request.substr(0, headerEnd);
-
-    // Buscamos si hay un Content-Length
-    size_t contentLengthPos = headerPart.find("Content-Length:");
-    if (contentLengthPos != std::string::npos)
-    {
-        // Leemos el número tras "Content-Length:"
-        size_t endLine = headerPart.find("\r\n", contentLengthPos);
-        std::string value = headerPart.substr(contentLengthPos + 15, endLine - (contentLengthPos + 15));
-        _contentLength = std::atoi(value.c_str());
-    }
-    else
-        _contentLength = 0;
-
-    return true;
-    // SOLO SE CONTEMPLA CONTENT LENGHT, FALTA CHUNKS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-}
-
-/*
-parseHeaders() detecta si llegaron las cabeceras completas (\r\n\r\n).
-
-Si encuentra el delimitador \r\n\r\n, significa que la cabecera HTTP está completa (ya se ha recibido la petición entera)
-
-➤ Por qué es necesario:
-    Las peticiones HTTP no siempre llegan de una sola vez.
-    Un cliente puede enviar una parte ahora y otra dentro de unos milisegundos.
-    Este método permite leer de forma incremental hasta tener la petición completa. Como el cliente puede seguir enviando fragmentos parciales, si no encontramos la secuencia final, devolveremos false.
-
-Si encontramos el final del header:
-    Primero guardamos la parte de la cabecera
-    Buscamos si dentro del header hay Content-Length para saber si hay body.
-        Si lo hay:
-            Esto indica que la petición tiene un cuerpo (por ejemplo, un POST o PUT).
-            Leemos el valor numérico y comprobamos si el tamaño actual del buffer ya contiene cabecera + body completo.
-            Entonces:
-                size_t endLine = headerPart.find("\r\n", contentLengthPos); -> Busca el final de esa línea (\r\n)
-
-                std::string value = headerPart.substr(contentLengthPos + 15, endLine - (contentLengthPos + 15)); -> Corta el trozo de texto que está entre "Content-Length:"(por eso el +15 caracteres) y el salto de línea → o sea, el número.
-                    find() apunta a la posicion de inicio de lo que buscas, por eso cuando queremos encontrar el numero hay que sumar 15 caracteres, que son los que tiene exactamente Content-Length
-
-                _contentLength = std::atoi(value.c_str()); -> Convierte ese número en entero (std::atoi) y lo guarda en _contentLength.
-
-        Si no hay cabecera "Content-Length:", asumimos que no hay cuerpo (body), por lo tanto _contentLenght será 0
-*/
-
-bool Client::parseBody()
-{
-    // Localizamos el inicio del body: justo después de "\r\n\r\n"
-    size_t bodyStart = _request.find("\r\n\r\n") + 4;
-
-    // Si no tenemos todavía todos los bytes del body, volvemos al bucle y esperamos a la siguiente vuelta
-    size_t bodyBytes = _request.size() - bodyStart;
-    if (bodyBytes < static_cast<size_t>(_contentLength))
-        return false;
-
-    // Si llegamos aquí, ya tenemos todo
-    // Guardamos el cuerpo completo
-    _body = _request.substr(bodyStart, _contentLength);
-
-    return true;
-}
-
-/*
-size_t bodyStart = _request.find("\r\n\r\n") + 4;
-    _request contiene toda la petición recibida hasta ahora, incluyendo headers y body.
-    find("\r\n\r\n") devuelve la posición del primer \r\n\r\n, es decir, el final de los headers.
-    +4 → avanzamos justo después del \r\n\r\n, que es donde empieza el body.
-
-size_t bodyBytes = _request.size() - bodyStart;
-    Calculamos cuántos bytes de body ya hemos recibido.
-    _request.size() → total de datos que tenemos
-    bodyStart → posición donde empieza el body
-    bodyBytes = cantidad de bytes del body que ya llegaron.
-
-if (bodyBytes < static_cast<size_t>(_contentLength))
-    return false;
-
-    _contentLength → lo que el cliente dijo que iba a enviar en la cabecera Content-Length.
-    Si aún no tenemos todos los bytes del body, devolvemos false.
-    Esto indica al servidor: “no he terminado de leer la petición; vuelve a llamar cuando llegue más data”.
-
-    📌 Aquí no hacemos bucles: la función solo revisa si ya está todo, y si no, se sale.
-
-*/
-
 bool Client::sendResponse(const std::string &msg)
 {
     // 1. Encolar respuesta
@@ -465,7 +401,7 @@ bool Client::sendResponse(const std::string &msg)
     // 3. Si todavía hay bytes pendientes, el servidor deberá activar POLLOUT
     if (hasPendingWrite())
     {
-        return true; // todo correcto, pero falta enviar
+        return true; // está todo correcto, pero falta enviar
     }
 
     // 4. Si no queda nada pendiente, todo enviado -> según keep-alive, marcar cerrado o dejar abierto
@@ -479,10 +415,9 @@ bool Client::sendResponse(const std::string &msg)
     //{
     // mantener la conexión abierta para próximas peticiones
     // además limpiar buffers de request si quieres reutilizar
-    _request.clear();
-    _headersComplete = false;
+    _rawRequest.clear();
+    _httpRequest.reset(); // <-- limpia headers, body, etc.
     _requestComplete = false;
-    _contentLength = -1;
     std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive)" << std::endl;
     //}
 
@@ -774,4 +709,33 @@ Por qué hacerlo así
         Server solo puede pedirle “ciérrate”, no cambiarlo a lo bruto.
 
     Evita inconsistencias (por ejemplo, que el Server cierre el socket mientras el Client aún cree que está abierto).
+*/
+
+bool Client::isRequestComplete() const
+{
+    return _requestComplete;
+}
+
+const HttpRequest &Client::getHttpRequest() const
+{
+    return _httpRequest;
+}
+
+/*
+getHttpRequest()
+
+Sí es útil y limpio tenerlo, aunque tampoco obligatorio.
+Cuando el Server (u otra parte del código) quiera acceder al contenido ya parseado, puedes hacer:
+
+const HttpRequest &req = client.getHttpRequest();
+std::cout << req.getMethod() << " " << req.getPath() << std::endl;
+
+
+Si no lo tienes, tendrías que hacer algo feo tipo:
+
+client._httpRequest.getPath(); // ❌ acceso directo a miembro privado
+
+
+Así que getHttpRequest() sirve como interfaz de acceso controlado.
+Conclusión: es buena práctica mantenerlo, aunque no imprescindible.
 */
