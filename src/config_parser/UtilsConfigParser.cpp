@@ -10,9 +10,7 @@ std::string trimLine(const std::string &line)
 {
     size_t start = line.find_first_not_of(" \t\r\n");
     if (start == std::string::npos)
-    {
         return "";
-    }
     size_t end = line.find_last_not_of(" \t\r\n");
     return line.substr(start, end - start + 1);
 }
@@ -27,32 +25,23 @@ std::vector<std::string> split(const std::string &str, char delimiter)
     std::vector<std::string> tokens;
     size_t start = 0;
     size_t pos = str.find(delimiter, start);
-    // int cont = 0;
 
     while (pos != std::string::npos)
     {
         tokens.push_back(str.substr(start, pos - start));
-        //  std::cout << "Token [" << cont++ << "] : " << str.substr(start, pos - start) << std::endl;
         start = pos + 1;
         pos = str.find(delimiter, start);
     }
     tokens.push_back(str.substr(start));
-    // std::cout << "Token [" << cont << "] : " << str.substr(start) << std::endl;
     return tokens;
 }
 
 BlockParser readConfigFile(const std::string &filePath)
 {
-    std::cout << "Intentando leer archivo: " << filePath << std::endl;
-
     std::ifstream file(filePath.c_str());
-    /* int i = 0;
-     int j = 0;*/
     if (!file.is_open())
         throw std::runtime_error("❌ No se pudo abrir el archivo");
-
     BlockParser root;
-
     std::string line;
     while (std::getline(file, line))
     {
@@ -61,25 +50,11 @@ BlockParser readConfigFile(const std::string &filePath)
             continue;
         if (trimmed[trimmed.size() - 1] == '{')
         {
-            /*   if (i == 0)
-               {
-                    std::string blockName = trimmed.substr(0, trimmed.size() - 1);
-                    blockName = trimLine(blockName);
-                    BlockParser temp;
-                    BlockParser name = temp.parseBlock(file, blockName);
-                    root.setName(blockName);
-
-                    i++;
-                }
-               else if (j = 0)
-                {*/
             std::string blockName = trimmed.substr(0, trimmed.size() - 1);
             blockName = trimLine(blockName);
             BlockParser temp;
             BlockParser nest = temp.parseBlock(file, blockName);
             root.addNest(nest);
-            /*      j++;
-              }*/
         }
         else if (trimmed[trimmed.size() - 1] == ';')
         {
@@ -92,90 +67,7 @@ BlockParser readConfigFile(const std::string &filePath)
                 root.addDirective(dirs[i]);
         }
         else
-        {
             std::cout << "❓ DESCONOCIDO FUERA DE BLOQUE: " << trimmed << std::endl;
-        }
     }
-
     return root;
 }
-
-/*bool readConfigFile(const std::string &filePath)
-{
-    std::cout << "Intentando leer archivo: " << filePath << std::endl;
-
-    std::ifstream file;
-    DirectiveParser parser;
-    int block = 0;
-
-    file.open(filePath.c_str());
-
-    if (!file.is_open())
-    {
-        std::cout << "❌ No se pudo abrir el archivo" << std::endl;
-        return false;
-    }
-
-    std::string line;
-    while (std::getline(file, line))
-    {
-        std::string trimmed = trimLine(line);
-        if (isEmptyOrComment(trimmed))
-        {
-            continue;
-        }
-        // Ahora clasificar la línea
-        if (trimmed[trimmed.length() - 1] == '{')
-        {
-            if (block == 0)
-            {
-                std::cout << "🟦 BLOQUE INICIO: " << trimmed << std::endl;
-                size_t pos = line.find(" {");
-                if (pos != std::string::npos)
-                    line = line.substr(0, pos);
-
-    << line << std::endl;
-block = 1;
-}
-else
-{
-    std::cout << "🟦 BLOQUE ANIDADO: " << trimmed << std::endl;
-    size_t start = line.find_first_not_of(" \t");
-    if (start != std::string::npos)
-        line = line.substr(start);
-    size_t pos = line.find(" {");
-    if (pos != std::string::npos)
-        line = line.substr(0, pos);
-
-    block = 1;
-}
-}
-else if (trimmed == "}")
-{
-    std::cout << "🟦 BLOQUE FIN: " << trimmed << std::endl;
-}
-else if (trimmed[trimmed.length() - 1] == ';')
-{
-    std::cout << "📝 DIRECTIVA: " << trimmed << std::endl;
-    trimmed = trimmed.substr(0, trimmed.length() - 1);
-
-    std::vector<std::string> tokens = split(trimmed, ' ');
-
-    // Usamos la API actual: parseDirective devuelve bool y guarda internamente
-    if (!parser.parseDirective(tokens))
-    {
-        std::cerr << "⚠️ Error parseando directiva: " << trimmed << std::endl;
-    }
-}
-else
-{
-    std::cout << "❓ DESCONOCIDO: " << trimmed << std::endl;
-}
-}
-
-// Imprimimos las directivas guardadas en el parser
-parser.printDirectives();
-
-return true;
-}
-*/

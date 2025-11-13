@@ -1,3 +1,6 @@
+#ifndef UTILSCONFIGPARSER_HPP
+#define UTILSCONFIGPARSER_HPP
+
 #include <string>
 #include <vector>
 #include "DirectiveParser.hpp"
@@ -10,3 +13,5 @@ bool isEmptyOrComment(const std::string &trimmedLine);
 std::vector<std::string> split(const std::string &str, char delimiter);
 
 BlockParser readConfigFile(const std::string &filePath);
+
+#endif
