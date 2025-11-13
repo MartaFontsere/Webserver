@@ -74,6 +74,7 @@ bool resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey,
 
 bool incorrectLineTermination(const std::string &line, int *lineCont, const std::string &filePath)
 {
+    // falta ajustar contador aqui
     std::string temp = trimLine(line);
     if ((temp[temp.size() - 1] != '{') || (temp[temp.size() - 1] == ';') || (temp[temp.size() - 1] == '}'))
     {
