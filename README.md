@@ -4,6 +4,7 @@
 7.11.2025 - Creación de la rama Server multi-client (POLLOUT), con un prototipo de webserver que acepta multiples clientes no bloqueantes, preparado para mandar la respuesta en trozos y responde Hello World                            
 13.11.2025 - Creación de la rama Parsing-request, con el mismo prototipo que el anterior pero las responsabilidades divididas entre client y HttpRequest                
 14.11.2025 - Creación de la rama Process-and-send-response, con el mismo prototipo que el anterior pero las responsabilidades divididas entre client y HttpResponse       
+14.11.2025 - Creación de la rama Server-engine para centrar el desarrollo de la lógica interna del servidor
 
 Test:
  * Terminal 1:                                  
