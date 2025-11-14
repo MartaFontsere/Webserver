@@ -1,10 +1,10 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include "DirectiveParser.hpp"
-#include "UtilsConfigParser.hpp"
-#include "BlockParser.hpp"
-#include "ValidationConfigFile.hpp"
+#include "../../includes/config_parser/DirectiveParser.hpp"
+#include "../../includes/config_parser/UtilsConfigParser.hpp"
+#include "../../includes/config_parser/BlockParser.hpp"
+#include "../../includes/config_parser/ValidationConfigFile.hpp"
 
 int main()
 {

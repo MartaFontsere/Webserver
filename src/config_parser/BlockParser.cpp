@@ -1,5 +1,5 @@
-#include "BlockParser.hpp"
-#include "UtilsConfigParser.hpp"
+#include "../../includes/config_parser/BlockParser.hpp"
+#include "../../includes/config_parser/UtilsConfigParser.hpp"
 #include <string>
 #include <iostream>
 #include <fstream>

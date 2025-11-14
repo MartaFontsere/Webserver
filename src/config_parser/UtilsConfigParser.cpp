@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 #include <cstdlib>
-#include "DirectiveParser.hpp"
-#include "BlockParser.hpp"
+#include "../../includes/config_parser/DirectiveParser.hpp"
+#include "../../includes/config_parser/BlockParser.hpp"
 
 std::string trimLine(const std::string &line)
 {

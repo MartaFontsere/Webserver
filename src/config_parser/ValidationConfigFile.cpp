@@ -3,8 +3,8 @@
 #include <fstream>
 #include <vector>
 #include <cctype>
-#include "ValidationConfigFile.hpp"
-#include "UtilsConfigParser.hpp"
+#include "../../includes/config_parser/ValidationConfigFile.hpp"
+#include "../../includes/config_parser/UtilsConfigParser.hpp"
 
 bool isEmptyBraceOrSemicolonLine(std::string line, int *lineCont, const std::string &filePath)
 {
