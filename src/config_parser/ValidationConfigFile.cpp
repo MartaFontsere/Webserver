@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <cctype>
 #include "ValidationConfigFile.hpp"
 #include "UtilsConfigParser.hpp"
 
@@ -28,7 +29,6 @@ int contOpenKeys(std::string line, int *lineCont, int *contOpenKey)
 
     if (temp[temp.size() - 1] == '{')
     {
-
         (*contOpenKey)++;
         if (*contOpenKey == 1)
             firstOpenKey = *lineCont;
@@ -74,18 +74,38 @@ bool resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey,
 
 bool incorrectLineTermination(const std::string &line, int *lineCont, const std::string &filePath)
 {
-    // falta ajustar contador aqui
     std::string temp = trimLine(line);
-    if ((temp[temp.size() - 1] != '{') || (temp[temp.size() - 1] == ';') || (temp[temp.size() - 1] == '}'))
+    if ((temp[temp.size() - 1] != '{') && (temp[temp.size() - 1] != ';') && (temp[temp.size() - 1] != '}'))
     {
-        std::cerr << "Warning: Malformed line ending detected. Please check if a closing character ('{' or ';') is missing in line: "
+        std::cerr << "⚠️ Warning: Malformed line ending detected.\n"
+                  << "Please check if a closing character ('{', '}' or ';') is missing in line: "
                   << "(" << *lineCont << ") in file: " << filePath << std::endl;
         return true;
     }
 
     return false;
 }
-
+bool firstNonAlNumChar(const std::string &line, int *lineCont, const std::string &filePath)
+{
+    std::string temp = trimLine(line);
+    bool dir;
+    size_t i = 0;
+    while (i < line.size() - 1)
+    {
+        if (std::isalnum(static_cast<unsigned char>(line[i])) && (line[i + 1] == ' ' && line[i + 2] == '.' && line[i + 3] == '/'))
+            dir = true;
+        else if (!std::isalnum(static_cast<unsigned char>(line[i])) && (line[i] != ' ' && line[i] != '_') && !dir)
+        {
+            if (line[i] != '\0')
+            {
+                std::cerr << "Error: Character ('" << line[i] << "') Not Allowed in line " << "(" << *lineCont << ") in file: " << filePath << std::endl;
+                return true;
+            }
+        }
+        ++i;
+    }
+    return false;
+}
 bool validationConfigFile(const std::string &filePath)
 {
     std::ifstream file(filePath.c_str());
@@ -100,16 +120,19 @@ bool validationConfigFile(const std::string &filePath)
     int lineCont = 1;
     while (std::getline(file, line))
     {
-        // repeticiones de name o value???
         if (isEmptyBraceOrSemicolonLine(line, &lineCont, filePath))
+            return false;
+        if (incorrectLineTermination(line, &lineCont, filePath))
+            return false;
+        if (firstNonAlNumChar(line, &lineCont, filePath))
             return false;
 
         processConfigLine(line, &lineCont, &contOpenKey, &contCloseKey, &firstOpenKey,
                           &lastCloseKey);
         ////ZONA DE CURRELE///
-        // gestion de ; linea con contenido y no ;
-        if (incorrectLineTermination(line, &lineCont, filePath))
-            return false;
+        // repeticiones de name o value???
+        // TODO: MEJORAR EL TRIM PARA ESPACIOS POSTERIORES
+
         //////////////////////
         lines.push_back(line);
         lineCont++;
