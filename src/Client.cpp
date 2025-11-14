@@ -1,8 +1,6 @@
 #include "Client.hpp"
 #include <arpa/inet.h> // inet_ntoa()
 #include <iostream>    // para imprimir mensajes
-// #include <sstream>     //std::ostringstream
-//  #include "HttpRequest.hpp"
 
 /*
 ¿Por qué necesitamos Client.cpp?
