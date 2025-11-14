@@ -1,7 +1,8 @@
 #include "Client.hpp"
 #include <arpa/inet.h> // inet_ntoa()
 #include <iostream>    // para imprimir mensajes
-// #include "HttpRequest.hpp"
+// #include <sstream>     //std::ostringstream
+//  #include "HttpRequest.hpp"
 
 /*
 ¿Por qué necesitamos Client.cpp?
@@ -387,9 +388,136 @@ if (_headersComplete && _contentLength > 0)
     Una vez sabemos que ya esta el header completo, y en el caso de que se haya encontrado un content lenght, entonces parseamos el body. En este parseo miramos si está todo. en caso de que esté lo guardamos.
 
 */
-
-bool Client::sendResponse(const std::string &msg)
+bool Client::processRequest()
 {
+    // 0) Protegemos la llamada: si la request aún no está completa, no hacemos nada (no hay suficiente información para decidir respuesta).
+    if (!_requestComplete)
+        return true;
+
+    // 1) Reseteamos cualquier HttpResponse previa (estado limpio) -> Limpia HttpResponse previo
+    _httpResponse = HttpResponse(); // crea un HttpResponse por defecto y lo copia en el miembro //AQUÍ O AL ACABAR DE USARLO LO DEJAMOS LISTO PARA LA PRÓXIMA??? LA PRIMERA VEZ QUE SE USE YA SE CREA SOLO CON CLIENT, ASI QUE NO PASARÍA NADA
+
+    // 2) Validar método HTTP (por ahora solo admitimos GET)
+    const std::string &method = _httpRequest.getMethod();
+    if (method != "GET")
+    {
+        // Respondemos con 405 Method Not Allowed (contenido + headers dentro de HttpResponse)
+        _httpResponse.setErrorResponse(405);
+        return true; // hemos generado una respuesta válida -> no es un fallo fatal
+    }
+
+    // 2. Validar ruta
+    const std::string &path = _httpRequest.getPath();
+
+    if (path != "/") // caso para empezar
+    {
+        _httpResponse.setErrorResponse(404);
+        return true;
+    }
+
+    // 3. Todo OK → generar respuesta 200
+    std::string body = "<html><body><h1>Hello World!</h1></body></html>";
+
+    _httpResponse.setStatus(200, "OK");
+    _httpResponse.setHeader("Content-Type", "text/html");
+    _httpResponse.setHeader("Content-Length", std::to_string(body.size()));
+    _httpResponse.setBody(body);
+
+    std::cout << "[Client fd=" << _clientFd << "] processRequest: GET / -> 200)";
+    return true;
+}
+
+/*
+✔ Client decide qué respuesta toca, concretamente aquí decides:
+    método
+    ruta
+    errores 404 / 405 / 500
+    generar el body
+
+✔ Client decide contenido
+✔ HttpResponse decide formato
+
+
+Explicación del código:
+
+if (!_requestComplete) return true;
+    Qué hace: comprueba si Client::readRequest() ya marcó que la petición está completa. Si no, vuelve sin tocar nada.
+
+    Por qué: no tiene sentido generar una respuesta si todavía faltan bytes (por ejemplo, headers incompletos o body no recibido).
+
+    Por qué return true: esto no es error: simplemente indica “no procesado aún — seguir esperando”. En el Server::handleClientEvent ese true significa que no hay fallo fatal y que el Client queda activo.
+
+_httpResponse = HttpResponse();
+    Qué hace: asigna un HttpResponse nuevo por valor al miembro _httpResponse. Es una forma rápida de “resetear” cualquier contenido/headers anteriores.
+
+    Por qué: evitamos mezclar una respuesta antigua con la nueva; limpiamos el estado antes de construirla.
+
+    Nota de implementación: esto usa el operador de asignación. Si HttpResponse tiene un buen constructor por defecto y no gestiona recursos raros, está bien. Alternativa: _httpResponse.reset() si implementas un método reset() dentro de HttpResponse.
+
+    VALORAR SI HACER UNA FUNCIÓN RESET PARA EL FINAL DE CUANDO SE HA ACABADO CON HTTPRESPONSE, SI ES MAS PROFESIONAL O ASI YA VA BIEN
+
+const std::string &method = _httpRequest.getMethod();
+    Qué hace: obtiene (por referencia constante) la cadena con el método ("GET", "POST", ...).
+
+    Por qué usar const &: evita copiar la cadena (más eficiente) y previene modificaciones accidentales.
+
+    Importante: HttpRequest::getMethod() debe devolver const std::string& para que no haya una copia temporal. Si devuelve por valor, seguiría funcionando pero habría copia.
+
+if (method != "GET") { _httpResponse.setErrorResponse(405); return true; }
+    Qué hace: valida que el método sea GET. Si no, prepara una respuesta 405 (Method Not Allowed).
+
+    Por qué no cerramos la conexión ni devolvemos false: una petición con método no permitido no es un fallo interno del servidor, es una petición válida que se responde con un código HTTP. Por eso devolvemos true (hemos generado respuesta), y luego sendResponse() enviará la 405.
+
+    Dónde se define setErrorResponse: en HttpResponse. Debe fijar _statusCode, _statusMessage, _body, y headers básicos como Content-Type y Content-Length.
+
+const std::string &path = _httpRequest.getPath();
+    Qué hace: obtiene la ruta solicitada (ej. "/", "/index.html").
+
+    Por qué: a partir de la ruta decides si servir un archivo, redirigir, error 404, etc.
+
+if (path != "/") { _httpResponse.setErrorResponse(404); return true; }
+    Qué hace: ejemplo simple: aceptas solo /. Si no, preparas 404.
+
+    Por qué: de nuevo, esto no es un fallo del servidor, es comportamiento esperado ante una ruta no encontrada → preparas una respuesta y devuelves true.
+
+Construcción del body y headers 200:
+    body: la respuesta que quieres enviar. Puede salir de un archivo, ser generada dinámicamente, lo que necesites.
+
+    setStatus: fija el código y el mensaje de estado.
+
+    setHeader("Content-Type", ...): informa al cliente cómo interpretar el body.
+
+    Content-Length: número de bytes del body. Muy importante en HTTP/1.1 si no usas chunked. Aquí usamos std::to_string(body.size()) — claro y legible.
+
+    setBody: guarda el body en el objeto HttpResponse para que buildResponse() lo inserte al final.
+
+
+Notas importantes sobre diseño y flujo
+    processRequest() no envía.
+        Su responsabilidad es únicamente decidir qué respuesta deben enviar y construirla dentro de _httpResponse. El envío lo hace sendResponse() — separación de responsabilidades.
+
+    ¿Qué devuelve true y false?
+        true → procesamiento OK (aunque la respuesta sea 404/405).
+
+        false → error fatal (por ejemplo, fallo interno irreparable, recursos agotados) y Server debería abandonar el cliente. En este diseño, las rutas no válidas o métodos no soportados no son false.
+
+    Content-Length:
+        Es obligatorio si no usas Transfer-Encoding: chunked.
+
+        Cuando más adelante sirvas archivos, calcula filesize y pon Content-Length con std::to_string.
+
+    Keep-Alive / Connection:
+        Aquí no toques la conexión. Client::sendResponse() será quien decida, en función de headers de la request (Connection: close o keep-alive), si mantiene la conexión abierta y resetea estado para la siguiente petición.
+
+    Escalabilidad:
+        Cuando añadas más rutas, processRequest() puede delegar a un pequeño enrutador que busque handlers por path y method. Mantén processRequest() como punto de entrada.
+
+ */
+
+bool Client::sendResponse()
+{
+    std::string msg = _httpResponse.buildResponse();
+
     // 1. Encolar respuesta
     if (!_closed && !msg.empty())
         _writeBuffer.append(msg);
@@ -414,7 +542,7 @@ bool Client::sendResponse(const std::string &msg)
     // else
     //{
     // mantener la conexión abierta para próximas peticiones
-    // además limpiar buffers de request si quieres reutilizar
+    // además limpiar buffers de request para la siguiente
     _rawRequest.clear();
     _httpRequest.reset(); // <-- limpia headers, body, etc.
     _requestComplete = false;
@@ -423,6 +551,24 @@ bool Client::sendResponse(const std::string &msg)
 
     return true;
 }
+
+/*
+14.11.25
+Aquí imprimimos lo que se ha decidido en process request
+
+Explicación del código:
+
+std::string msg = _httpResponse.buildResponse();
+    Aquí generas un string completo de la respuesta HTTP:
+        buildResponse() concatena:
+            status line
+            headers
+            CRLF final
+            body
+    Aquí produces UN SOLO string final, listo para enviar.
+
+El resto de código sigue igual
+*/
 
 /*
 Principios sencillos antes de tocar código

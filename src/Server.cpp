@@ -1123,23 +1123,21 @@ void Server::handleClientEvent(int fd)
     if (!client)
         return;
 
+    // Leer datos
     if (!client->readRequest())
-        return; // error o desconexión → el cleanup lo eliminará
+        return; // error o desconexión del cliente → el cleanup lo eliminará
 
-    // 👇 Si la request aún no está completa, no hacemos nada todavía
+    // 👇 Si la request aún no está completa, no hacemos nada todavía, seguimos esperando más datos
     if (!client->isRequestComplete())
         return; // falta data, seguimos esperando más POLLIN
 
-    // 🟢 Si llegamos aquí, la request ya está completa
-    std::string response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain\r\n"
-        "Content-Length: 15\r\n"
-        "\r\n"
-        "Hello world!!!!";
+    // 3) Procesar la request y generar la respuesta
+    if (!client->processRequest())
+        return; // si algún error grave → desconexión
 
-    if (!client->sendResponse(response))
-        return; // Error, el cliente se cerrará solo
+    // 4) Enviar respuesta
+    if (!client->sendResponse())
+        return; // Error, el cliente se cerrará solo, cleanup lo limpiará después
 
     // Activar POLLOUT solo si hay datos pendientes
     if (client->hasPendingWrite())
@@ -1154,6 +1152,20 @@ void Server::handleClientEvent(int fd)
         }
     }
 }
+
+/*
+14.11.25
+Actualización de responsabilidades que tendrá que hacer client:
+    1. readRequest()
+        Recibe bytes y los pasa al parser (HttpRequest).
+
+    2. processRequest()
+        Cuando HttpRequest dice que está completa → decides qué respuesta toca.
+        Aquí se crea/llena HttpResponse.
+
+    3. sendResponse()
+        Convierte el HttpResponse en string, lo envía y resetea para siguiente petición.
+*/
 
 /*
 Para que sea mas sencillo, asignamos un puntero client que señala al objeto Client correspondiente al fd que llega como argumento. Si el cliente con ese fd existe, se guarda su puntero en client*

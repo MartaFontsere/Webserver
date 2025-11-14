@@ -5,6 +5,7 @@
 #include <unistd.h>     // close()
 #include <ctime>
 #include "HttpRequest.hpp"
+#include "HttpResponse.hpp"
 class Client
 {
 public:
@@ -14,8 +15,9 @@ public:
     int getFd() const;
     std::string getIp() const;
 
-    bool readRequest();                        // lee datos del cliente
-    bool sendResponse(const std::string &msg); // envía respuesta
+    bool readRequest();    // lee datos del cliente
+    bool processRequest(); // crea HttpResponse basado en HttpRequest
+    bool sendResponse();   // envía respuesta
     bool isClosed() const;
 
     // nuevo: encolar respuesta y vaciar buffer progresivamente
@@ -47,6 +49,8 @@ private:
     time_t _lastActivity;     // timestamp del último recv/send exitoso. te permitirá implementar timeouts (más tarde)
 
     bool _requestComplete;
+
+    HttpResponse _httpResponse;
 };
 
 /*
