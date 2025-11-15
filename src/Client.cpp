@@ -541,11 +541,15 @@ bool Client::sendResponse()
     //{
     // mantener la conexión abierta para próximas peticiones
     // además limpiar buffers de request para la siguiente
-    _rawRequest.clear();
-    _httpRequest.reset(); // <-- limpia headers, body, etc.
-    _requestComplete = false;
-    std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive)" << std::endl;
+    //_rawRequest.clear();
+    //_httpRequest.reset(); // <-- limpia headers, body, etc.
+    //_requestComplete = false;
+    // std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive)" << std::endl;
     //}
+
+    // 4. Si todo fue enviado → cerrar SIEMPRE la conexión (FASE 1 de momento, LUEGO IMPLEMENTAREMOS EL KEEP ALIVE
+    _closed = true;
+    std::cout << "[Client] Respuesta enviada. Cerrando conexión (FASE 1)" << std::endl;
 
     return true;
 }
