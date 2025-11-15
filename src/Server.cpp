@@ -164,7 +164,7 @@ bool Server::init()
     serverPollFd.revents = 0;
     _pollFds.push_back(serverPollFd); // añadimos
 
-    std::cout << "✅ Servidor escuchando en el puerto " << _port << std::endl;
+    std::cout << "🌐 Servidor escuchando en el puerto " << _port << std::endl;
     return true;
 }
 
@@ -569,7 +569,8 @@ int Server::getServerFd() const
 // VERSION 2 DEL BUCLE RUN
 void Server::run()
 {
-    std::cout << "Servidor corriendo con poll()..." << std::endl;
+    std::cout << "Servidor corriendo con poll()...\n"
+              << std::endl;
 
     while (true)
     {

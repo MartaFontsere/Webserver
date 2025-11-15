@@ -8,7 +8,7 @@ HttpRequest::HttpRequest() : _headersComplete(false), _isChunked(false), _conten
 {
 }
 
-bool HttpRequest::parse(const std::string &rawRequest)
+bool HttpRequest::parse(const std::string &rawRequest /*, size_t &bytesUsed*/)
 {
     // Si aún no hemos terminado de leer las cabeceras
     if (!_headersComplete)

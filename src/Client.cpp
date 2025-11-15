@@ -165,8 +165,12 @@ bool Client::readRequest()
         _closed = true;
         return false;
     }
-    std::cout << "Empezando a leer la Request (fd: " << _clientFd << ").\n";
+    std::cout << "\nEmpezando a leer la Request (fd: " << _clientFd << ").\n";
     _rawRequest.append(buffer, bytesRead);
+
+    std::cout << "  # Request recibida (fd: " << _clientFd << "):\n"
+              << _rawRequest;
+
     _lastActivity = time(NULL);
 
     // if (!_httpRequest.parse(_request))
@@ -179,7 +183,7 @@ bool Client::readRequest()
     std::cout << "[Debug] Parseando request del cliente fd " << _clientFd << std::endl;
     if (_httpRequest.parse(_rawRequest))
     {
-        std::cout << "✅ Request completa (fd: " << _clientFd << ")\n";
+        std::cout << "✅ Request completa (client fd: " << _clientFd << ")\n";
         _requestComplete = true;
     }
 
@@ -421,7 +425,7 @@ bool Client::processRequest()
     _httpResponse.setHeader("Content-Length", std::to_string(body.size()));
     _httpResponse.setBody(body);
 
-    std::cout << "[Client fd=" << _clientFd << "] processRequest: GET / -> 200)";
+    std::cout << "\nProcess Request (fd=" << _clientFd << "):\n  method = GET\n  status = 200)\n";
     return true;
 }
 
@@ -659,7 +663,8 @@ bool Client::flushWrite()
     {
         _writeOffset += static_cast<size_t>(s);
         _lastActivity = time(NULL);
-        std::cout << "[Info] Enviando respuesta al cliente (fd: " << _clientFd << ")\n";
+        std::cout << "\n[Info] Enviando respuesta al cliente (fd: " << _clientFd << "):\n"
+                  << buf << "\n\n";
         if (_writeOffset >= _writeBuffer.size())
         {
             _writeBuffer.clear();
