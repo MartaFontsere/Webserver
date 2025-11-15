@@ -1,5 +1,5 @@
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
-#include "../../includes/config_parser/ValidationConfigFile.hpp"
+#include "../../includes/config_parser/ValidationStructureConfig.hpp"
 #include <fstream>
 #include <iostream>
 
@@ -39,7 +39,7 @@ BlockParser readConfigFile(const std::string &filePath)
     return root;
 }
 
-bool validationConfigFile(const std::string &filePath)
+bool validationStructureConfigFile(const std::string &filePath)
 {
     std::ifstream file(filePath.c_str());
     if (!file.is_open())
@@ -49,31 +49,24 @@ bool validationConfigFile(const std::string &filePath)
     int contCloseKey = 0;
     int firstOpenKey = 0;
     int lastCloseKey = 0;
-    std::vector<std::string> lines;
     int lineCont = 1;
     while (std::getline(file, line))
     {
-        if (isEmptyBraceOrSemicolonLine(line, &lineCont, filePath))
-            return false;
-        if (incorrectLineTermination(line, &lineCont, filePath))
-            return false;
-        if (firstNonAlNumChar(line, &lineCont, filePath))
-            return false;
+        if (!isEmptyOrComment(line))
+        {
+            if (isEmptyBraceOrSemicolonLine(line, &lineCont, filePath))
+                return false;
+            else if (firstNonAlNumChar(line, &lineCont, filePath))
+                return false;
+            else if (incorrectLineTermination(line, &lineCont, filePath))
+                return false;
 
-        processConfigLine(line, &lineCont, &contOpenKey, &contCloseKey, &firstOpenKey,
-                          &lastCloseKey);
-        ////ZONA DE CURRELE///
-        // repeticiones de name o value???
-        // TODO: MEJORAR EL TRIM PARA ESPACIOS POSTERIORES
-
-        //////////////////////
-        lines.push_back(line);
+            processConfigLine(line, &lineCont, &contOpenKey, &contCloseKey, &firstOpenKey,
+                              &lastCloseKey);
+        }
         lineCont++;
     }
     if (resultProcesConfigLine(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, filePath))
         return false;
-    // size_t i = -1;
-    // while (++i < lines.size())
-    //     std::cout << "Line[" << i << "]:" << lines[i] << std::endl;
     return true;
 }

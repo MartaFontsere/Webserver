@@ -4,34 +4,27 @@
 #include "../../includes/config_parser/DirectiveParser.hpp"
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
 #include "../../includes/config_parser/BlockParser.hpp"
-#include "../../includes/config_parser/ValidationConfigFile.hpp"
+#include "../../includes/config_parser/ValidationStructureConfig.hpp"
 
 int main()
 {
     std::cout << "=== TESTING CONFIG PARSER ===" << std::endl;
-    if (!validationConfigFile("test.conf"))
+    if (!validationStructureConfigFile("test.conf"))
     {
         std::cerr << "Error canalla! " << std::endl;
         return 0;
     }
+    std::cerr << " 🏅 Mu bien!!!! 🏅" << std::endl;
     // try
     // {
     //     // BlockParser root = readConfigFile("test.conf");
     //     // root.printBlock(root);
     //     BlockParser configRoot = readConfigFile("test.conf");
-
-    //     // 1. Obtener los bloques de nivel superior (los hijos del 'root' vacío)
     //     const std::vector<BlockParser> &topLevelBlocks = configRoot.getNestedBlocks();
-
-    //     // 2. Iterar e imprimir CADA UNO de ellos
     //     for (size_t i = 0; i < topLevelBlocks.size(); ++i)
     //     {
-    //         // Llama a la impresión usando el bloque hijo, no el 'root'.
-    //         // Usamos 'topLevelBlocks[i]' como argumento, que es el bloque 'server' o 'paquito'.
-
     //         // Si printBlock NO es estático (es método de instancia):
     //         configRoot.printBlock(topLevelBlocks[i]);
-
     //         // Si printBlock es estático:
     //         // BlockParser::printBlock(topLevelBlocks[i]);
     //     }

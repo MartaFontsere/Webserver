@@ -17,7 +17,8 @@ std::string trimLine(const std::string &line)
 
 bool isEmptyOrComment(const std::string &trimmedLine)
 {
-    return trimmedLine.empty() || trimmedLine[0] == '#';
+    std::string temp = trimLine(trimmedLine);
+    return temp.empty() || temp[0] == '#';
 }
 
 std::vector<std::string> split(const std::string &str, char delimiter)

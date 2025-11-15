@@ -3,7 +3,7 @@
 #include <fstream>
 #include <vector>
 #include <cctype>
-#include "../../includes/config_parser/ValidationConfigFile.hpp"
+#include "../../includes/config_parser/ValidationStructureConfig.hpp"
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
 
 bool isEmptyBraceOrSemicolonLine(std::string line, int *lineCont, const std::string &filePath)
@@ -75,34 +75,65 @@ bool resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey,
 bool incorrectLineTermination(const std::string &line, int *lineCont, const std::string &filePath)
 {
     std::string temp = trimLine(line);
+    if (temp.empty())
+        return false;
     if ((temp[temp.size() - 1] != '{') && (temp[temp.size() - 1] != ';') && (temp[temp.size() - 1] != '}'))
     {
-        std::cerr << "⚠️ Warning: Malformed line ending detected.\n"
-                  << "Please check if a closing character ('{', '}' or ';') is missing in line: "
-                  << "(" << *lineCont << ") in file: " << filePath << std::endl;
+        std::cerr << "❌ Error: Line does not end with a valid closing character ('{', '}' or ';').\n"
+                  << "Check syntax in line (" << *lineCont << ") of file: " << filePath << std::endl;
         return true;
     }
 
     return false;
 }
+
+static bool isValidConfigChar(char character)
+{
+    unsigned char temp = static_cast<unsigned char>(character);
+
+    if (std::isalnum(temp))
+        return true;
+
+    switch (character)
+    {
+    case '/':
+    case '.':
+    case '_':
+    case '-':
+    case ':':
+    case '*':
+    case ',':
+    case '=':
+    case '@':
+    case '$':
+    case '"':
+    case '\'':
+    case ' ':
+    case '\t':
+    case ';':
+    case '{':
+    case '}':
+        return true;
+
+    default:
+        return false;
+    }
+}
+
 bool firstNonAlNumChar(const std::string &line, int *lineCont, const std::string &filePath)
 {
     std::string temp = trimLine(line);
-    bool dir;
-    size_t i = 0;
-    while (i < line.size() - 1)
+
+    for (size_t i = 0; i < temp.size(); ++i)
     {
-        if (std::isalnum(static_cast<unsigned char>(line[i])) && (line[i + 1] == ' ' && line[i + 2] == '.' && line[i + 3] == '/'))
-            dir = true;
-        else if (!std::isalnum(static_cast<unsigned char>(line[i])) && (line[i] != ' ' && line[i] != '_') && !dir)
+        if (!isValidConfigChar(temp[i]))
         {
-            if (line[i] != '\0')
-            {
-                std::cerr << "Error: Character ('" << line[i] << "') Not Allowed in line " << "(" << *lineCont << ") in file: " << filePath << std::endl;
-                return true;
-            }
+            std::cerr << "Error: Character ('" << temp[i] << "') not allowed "
+                      << "in line (" << *lineCont << ") "
+                      << "in file: " << filePath << std::endl;
+            return true;
         }
-        ++i;
     }
+
     return false;
 }

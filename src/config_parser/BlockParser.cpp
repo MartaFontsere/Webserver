@@ -10,11 +10,6 @@ BlockParser::BlockParser()
     // Inicialización si es necesario
 }
 
-// Constructor de copia
-/*BlockParser::BlockParser(const BlockParser &other)
-    : name(other.name), directives(other.directives), nestedBlocks(other.nestedBlocks)
-{
-}*/
 BlockParser::BlockParser(const std::string &blockName) : name(blockName) {};
 
 // Operador de asignación
@@ -67,6 +62,13 @@ void BlockParser::addNest(const BlockParser &nest)
     nestedBlocks.push_back(nest);
 }
 
+/**
+ * @brief
+ *
+ * @param file fsdkfd lkdajflsk  slkfjslkfg
+ * @param blockName fkjsdlkf
+ * @return BlockParser
+ */
 BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &blockName)
 {
     DirectiveParser parser;
@@ -84,21 +86,14 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             // Detectar subbloque
             std::string childName = trimmed.substr(0, trimmed.size() - 1);
             childName = trimLine(childName);
-            // std::cout << "🟦 INICIO SUBBLOQUE: " << childName << std::endl;
-
             BlockParser child = parseBlock(file, childName);
             block.addNest(child);
         }
         else if (trimmed == "}")
         {
-            // Cierre del bloque actual
-            //  std::cout << "🟩 FIN BLOQUE: " << blockName << std::endl;
-
-            // Agregar directivas parseadas al bloque
             const std::vector<DirectiveToken> &parsed = parser.getDirectives();
             for (size_t i = 0; i < parsed.size(); ++i)
                 block.addDirective(parsed[i]);
-
             return block;
         }
         else if (trimmed[trimmed.size() - 1] == ';')
@@ -106,7 +101,6 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             // Directiva simple
             trimmed = trimmed.substr(0, trimmed.size() - 1);
             std::vector<std::string> tokens = split(trimmed, ' ');
-
             if (!parser.parseDirective(tokens))
                 std::cerr << "⚠️ Error parseando directiva: " << trimmed << std::endl;
         }

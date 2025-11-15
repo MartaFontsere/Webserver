@@ -19,6 +19,6 @@ bool incorrectLineTermination(const std::string &line, int *lineCont, const std:
 
 bool firstNonAlNumChar(const std::string &line, int *lineCont, const std::string &filePath);
 
-bool validationConfigFile(const std::string &filePath);
+bool validationStructureConfigFile(const std::string &filePath);
 
 #endif
