@@ -35,39 +35,3 @@ std::vector<std::string> split(const std::string &str, char delimiter)
     tokens.push_back(str.substr(start));
     return tokens;
 }
-
-BlockParser readConfigFile(const std::string &filePath)
-{
-    std::ifstream file(filePath.c_str());
-    if (!file.is_open())
-        throw std::runtime_error("❌ No se pudo abrir el archivo");
-    BlockParser root;
-    std::string line;
-    while (std::getline(file, line))
-    {
-        std::string trimmed = trimLine(line);
-        if (isEmptyOrComment(trimmed))
-            continue;
-        if (trimmed[trimmed.size() - 1] == '{')
-        {
-            std::string blockName = trimmed.substr(0, trimmed.size() - 1);
-            blockName = trimLine(blockName);
-            BlockParser temp;
-            BlockParser nest = temp.parseBlock(file, blockName);
-            root.addNest(nest);
-        }
-        else if (trimmed[trimmed.size() - 1] == ';')
-        {
-            DirectiveParser parser;
-            trimmed = trimmed.substr(0, trimmed.size() - 1);
-            std::vector<std::string> tokens = split(trimmed, ' ');
-            parser.parseDirective(tokens);
-            const std::vector<DirectiveToken> &dirs = parser.getDirectives();
-            for (size_t i = 0; i < dirs.size(); ++i)
-                root.addDirective(dirs[i]);
-        }
-        else
-            std::cout << "❓ DESCONOCIDO FUERA DE BLOQUE: " << trimmed << std::endl;
-    }
-    return root;
-}
