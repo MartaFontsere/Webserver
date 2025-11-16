@@ -6,28 +6,24 @@
 #include "../../includes/config_parser/ValidationStructureConfig.hpp"
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
 
-bool isEmptyBraceOrSemicolonLine(std::string line, int *lineCont, const std::string &filePath)
+bool isEmptyBraceOrSemicolonLine(const std::string &trimmedLine, int *lineCont, const std::string &filePath)
 {
-    std::string temp;
-    temp = trimLine(line);
-    if (temp[0] == '{')
+    if (trimmedLine[0] == '{')
     {
         std::cerr << "Error: no name before '{' in line" << "(" << *lineCont << ") in file: " << filePath << std::endl;
         return true;
     }
-    else if (temp[0] == ';')
+    else if (trimmedLine[0] == ';')
     {
         std::cerr << "Error: no name before ';' in line" << "(" << *lineCont << ") in file: " << filePath << std::endl;
         return true;
     }
     return false;
 }
-int contOpenKeys(std::string line, int *lineCont, int *contOpenKey)
+int contOpenKeys(const std::string &trimmedLine, int *lineCont, int *contOpenKey)
 {
     int firstOpenKey = 0;
-    std::string temp = trimLine(line);
-
-    if (temp[temp.size() - 1] == '{')
+    if (trimmedLine[trimmedLine.size() - 1] == '{')
     {
         (*contOpenKey)++;
         if (*contOpenKey == 1)
@@ -35,22 +31,21 @@ int contOpenKeys(std::string line, int *lineCont, int *contOpenKey)
     }
     return firstOpenKey;
 }
-int contCloseKeys(std::string line, int *lineCont, int *contCloseKey)
+int contCloseKeys(const std::string &trimmedLine, int *lineCont, int *contCloseKey)
 {
     int lastCloseKey = 0;
-    std::string temp = trimLine(line);
-    if (temp[temp.size() - 1] == '}')
+    if (trimmedLine[trimmedLine.size() - 1] == '}')
     {
         (*contCloseKey)++;
         lastCloseKey = *lineCont;
     }
     return lastCloseKey;
 }
-void processConfigLine(const std::string &line, int *lineCont, int *contOpenKey,
+void processConfigLine(const std::string &trimmedLine, int *lineCont, int *contOpenKey,
                        int *contCloseKey, int *firstOpenKey, int *lastCloseKey)
 {
-    int openLine = contOpenKeys(line, lineCont, contOpenKey);
-    int closeLine = contCloseKeys(line, lineCont, contCloseKey);
+    int openLine = contOpenKeys(trimmedLine, lineCont, contOpenKey);
+    int closeLine = contCloseKeys(trimmedLine, lineCont, contCloseKey);
     if (openLine > 0 && *firstOpenKey == 0)
         *firstOpenKey = openLine;
     if (closeLine > 0)
@@ -105,15 +100,13 @@ static bool isValidConfigChar(char character)
     }
 }
 
-bool firstNonAlNumChar(const std::string &line, int *lineCont, const std::string &filePath)
+bool firstNonAlNumChar(const std::string &trimmedLine, int *lineCont, const std::string &filePath)
 {
-    std::string temp = trimLine(line);
-
-    for (size_t i = 0; i < temp.size(); ++i)
+    for (size_t i = 0; i < trimmedLine.size(); ++i)
     {
-        if (!isValidConfigChar(temp[i]))
+        if (!isValidConfigChar(trimmedLine[i]))
         {
-            std::cerr << "Error: Character ('" << temp[i] << "') not allowed "
+            std::cerr << "Error: Character ('" << trimmedLine[i] << "') not allowed "
                       << "in line (" << *lineCont << ") "
                       << "in file: " << filePath << std::endl;
             return true;
