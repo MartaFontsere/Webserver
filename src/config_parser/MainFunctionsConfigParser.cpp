@@ -57,12 +57,12 @@ bool validationStructureConfigFile(const std::string &filePath)
             std::string trimmed = trimLine(line);
             if(!trimmed.empty())
             {
-                if (isEmptyBraceOrSemicolonLine(trimmed, &lineCont, filePath))
+                if (isEmptyBraceOrSemicolonLine(trimmed, lineCont, filePath))
                     return false;
-                else if (firstNonAlNumChar(trimmed, &lineCont, filePath))
+                else if (firstNonAlNumChar(trimmed, lineCont, filePath))
                     return false;
-                processConfigLine(trimmed, &lineCont, &contOpenKey, &contCloseKey, &firstOpenKey,
-                              &lastCloseKey);
+                processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, firstOpenKey,
+                              lastCloseKey);
             }
 
         }
