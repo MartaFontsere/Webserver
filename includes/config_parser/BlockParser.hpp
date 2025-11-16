@@ -3,33 +3,38 @@
 
 #include <string>
 #include <vector>
-#include "DirectiveParser.hpp" // Para usar DirectiveToken
+#include "DirectiveParser.hpp"
 
 class BlockParser
 {
 
 private:
-    std::string name;                       // Nombre del bloque (p. ej. "server", "location")
-    std::vector<DirectiveToken> directives; // Directivas dentro del bloque
-    std::vector<BlockParser> nestedBlocks;  // Subbloques
+    std::string name;
+    int startLine;
+    int endLine;
+    std::vector<DirectiveToken> directives;
+    std::vector<BlockParser> nestedBlocks;  
 
 public:
     BlockParser();
-    BlockParser(const std::string &blockName);
+    BlockParser(const std::string &blockName, int start = 0);
     BlockParser &operator=(const BlockParser &other);
     ~BlockParser();
 
     std::string getName() const;
     std::vector<DirectiveToken> getDirectives() const;
     std::vector<BlockParser> getNestedBlocks() const;
+    int getStartLine() const;
+    int getEndLine() const;
 
     void setName(const std::string &newName);
+    void setEndLine(int line);
 
     void addDirective(const DirectiveToken &directive);
     void addNest(const BlockParser &nest);
 
-    BlockParser parseBlock(std::ifstream &file, const std::string &blockName);
+    static BlockParser parseBlock(std::ifstream &file, const std::string &blockName, int &lineNumber);
     void printBlock(const BlockParser &block);
-}; /*, int indent = 0*/
+}; 
 
 #endif

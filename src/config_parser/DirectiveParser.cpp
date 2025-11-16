@@ -2,42 +2,38 @@
 #include <cstdlib>
 #include <iostream>
 
-// Constructor por defecto
+
 DirectiveParser::DirectiveParser()
 {
-    // No hay atributos que inicializar - clase stateless
+
 }
 
-// Constructor de copia
 DirectiveParser::DirectiveParser(const DirectiveParser &other)
 {
-    // No hay atributos que copiar
-    (void)other; // Evita warning de parámetro no usado
+    (void)other;
 }
 
 // Operador de asignación
 DirectiveParser &DirectiveParser::operator=(const DirectiveParser &other)
 {
-    // No hay atributos que asignar
-    (void)other; // Evita warning
+    (void)other;
     return *this;
 }
 
 // Destructor
 DirectiveParser::~DirectiveParser()
 {
-    // No hay recursos que liberar
+
 }
 
-// Método principal
-// recogemos los toquens para guardarlos en el struct
-bool DirectiveParser::parseDirective(const std::vector<std::string> &tokens)
+bool DirectiveParser::parseDirective(const std::vector<std::string> &tokens, int lineNum)
 {
     if (tokens.empty())
         return false;
 
     DirectiveToken directive;
     directive.name = tokens[0];
+    directive.lineNumber = lineNum;
 
     if (tokens.size() > 1)
     {
@@ -54,8 +50,8 @@ void DirectiveParser::printDirectives() const
     for (size_t i = 0; i < _directives.size(); ++i)
     {
         std::cout << "Directiva #" << i + 1 << ": "
-                  << "name = " << _directives[i].name
-                  << ", values = ";
+                << "name = " << _directives[i].name
+                << ", values = ";
 
         if (_directives[i].values.empty())
             std::cout << "(none)";

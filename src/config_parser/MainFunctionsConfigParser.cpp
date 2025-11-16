@@ -7,11 +7,13 @@ BlockParser readConfigFile(const std::string &filePath)
 {
     std::ifstream file(filePath.c_str());
     if (!file.is_open())
-        throw std::runtime_error("❌ No se pudo abrir el archivo");
+        throw std::runtime_error("❌ File can't be open");
     BlockParser root;
     std::string line;
+    int lineNumber = 0;
     while (std::getline(file, line))
     {
+        lineNumber++;
         std::string trimmed = trimLine(line);
         if (isEmptyOrComment(trimmed))
             continue;
@@ -20,7 +22,7 @@ BlockParser readConfigFile(const std::string &filePath)
             std::string blockName = trimmed.substr(0, trimmed.size() - 1);
             blockName = trimLine(blockName);
             BlockParser temp;
-            BlockParser nest = temp.parseBlock(file, blockName);
+            BlockParser nest = temp.parseBlock(file, blockName, lineNumber);
             root.addNest(nest);
         }
         else if (trimmed[trimmed.size() - 1] == ';')
@@ -28,13 +30,13 @@ BlockParser readConfigFile(const std::string &filePath)
             DirectiveParser parser;
             trimmed = trimmed.substr(0, trimmed.size() - 1);
             std::vector<std::string> tokens = tokenize(trimmed);
-            parser.parseDirective(tokens);
+            parser.parseDirective(tokens, lineNumber);
             const std::vector<DirectiveToken> &dirs = parser.getDirectives();
             for (size_t i = 0; i < dirs.size(); ++i)
                 root.addDirective(dirs[i]);
         }
         else
-            std::cout << "❓ DESCONOCIDO FUERA DE BLOQUE: " << trimmed << std::endl;
+            std::cout << "❓ Unknow out of block at line: "<< lineNumber << " => "<< trimmed << std::endl;
     }
     return root;
 }

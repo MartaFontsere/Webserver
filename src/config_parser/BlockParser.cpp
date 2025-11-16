@@ -4,15 +4,13 @@
 #include <iostream>
 #include <fstream>
 
-// Constructor por defecto
-BlockParser::BlockParser()
+// Construc
+BlockParser::BlockParser() : startLine(0), endLine(0)
 {
-    // Inicialización si es necesario
 }
 
-BlockParser::BlockParser(const std::string &blockName) : name(blockName) {};
+BlockParser::BlockParser(const std::string &blockName, int start) : name(blockName), startLine(start), endLine(0) {};
 
-// Operador de asignación
 BlockParser &BlockParser::operator=(const BlockParser &other)
 {
     if (this != &other)
@@ -24,10 +22,9 @@ BlockParser &BlockParser::operator=(const BlockParser &other)
     return *this;
 }
 
-// Destructor
 BlockParser::~BlockParser()
 {
-    // No hay recursos que liberar
+
 }
 
 // Getters
@@ -46,10 +43,24 @@ std::vector<BlockParser> BlockParser::getNestedBlocks() const
     return nestedBlocks;
 }
 
-// Metodos propios
+int BlockParser::getStartLine() const
+{
+    return startLine;
+}
+
+int BlockParser::getEndLine() const
+{
+    return endLine;
+}
+
 void BlockParser::setName(const std::string &newName)
 {
     name = newName;
+}
+
+void BlockParser::setEndLine(int line)
+{
+    endLine = line;
 }
 
 void BlockParser::addDirective(const DirectiveToken &directive)
@@ -69,28 +80,29 @@ void BlockParser::addNest(const BlockParser &nest)
  * @param blockName fkjsdlkf
  * @return BlockParser
  */
-BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &blockName)
+BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &blockName, int &lineNumber)
 {
     DirectiveParser parser;
-    BlockParser block(blockName);
+    BlockParser block(blockName, lineNumber);
 
     std::string line;
     while (std::getline(file, line))
     {
+        lineNumber++;
         std::string trimmed = trimLine(line);
         if (isEmptyOrComment(trimmed))
             continue;
 
         if (trimmed[trimmed.size() - 1] == '{')
         {
-            // Detectar subbloque
             std::string childName = trimmed.substr(0, trimmed.size() - 1);
             childName = trimLine(childName);
-            BlockParser child = parseBlock(file, childName);
+            BlockParser child = parseBlock(file, childName, lineNumber);
             block.addNest(child);
         }
         else if (trimmed == "}")
         {
+            block.setEndLine(lineNumber);
             const std::vector<DirectiveToken> &parsed = parser.getDirectives();
             for (size_t i = 0; i < parsed.size(); ++i)
                 block.addDirective(parsed[i]);
@@ -98,79 +110,41 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
         }
         else if (trimmed[trimmed.size() - 1] == ';')
         {
-            // Directiva simple
             trimmed = trimmed.substr(0, trimmed.size() - 1);
             std::vector<std::string> tokens = tokenize(trimmed);
-            if (!parser.parseDirective(tokens))
-                std::cerr << "⚠️ Error parseando directiva: " << trimmed << std::endl;
+            if (!parser.parseDirective(tokens, lineNumber))
+                std::cerr << "⚠️ Error parsing directive: " << trimmed << " at line: " << lineNumber << std::endl;
         }
         else
         {
-            std::cerr << "❓ Línea desconocida dentro del bloque " << blockName << ": " << trimmed << std::endl;
+            std::cerr << "❓ Unknown line at block: " << blockName << ": in line:" << lineNumber << " =>"<< trimmed << std::endl;
         }
     }
-
-    // En caso de EOF sin cerrar el bloque
-    std::cerr << "❌ Error: bloque '" << blockName << "' no cerrado correctamente" << std::endl;
+    std::cerr << "❌ Error: block '" << blockName << "' not closed properly"
+                    << " (started at line: " << block.getStartLine() << ")" << std::endl;
     return block;
 }
 void BlockParser::printBlock(const BlockParser &block)
 {
-    // 1. IMPRIMIR CABECERA DEL BLOQUE
-    // Se añade un salto de línea inicial para separar los bloques
     std::cout << "\n=== BLOCK ===" << std::endl;
     std::cout << "NAME: " << block.name << std::endl;
+    std::cout << "LINES: " << block.startLine << " - " << block.endLine << std::endl;
     std::cout << "---------------------------------" << std::endl;
 
-    // 2. ITERAR E IMPRIMIR DIRECTIVAS
     const std::vector<DirectiveToken> &directives = block.getDirectives();
     for (size_t i = 0; i < directives.size(); ++i)
     {
-        // Cabecera de la Directiva
-        std::cout << "  Directive [" << i << "]:" << std::endl; // Espacio fijo para claridad
+        std::cout << "  Directive [" << i << "] (line " << directives[i].lineNumber << "): "<< std::endl;
         std::cout << "    NAME: " << directives[i].name << std::endl;
 
-        // Valores de la Directiva
         const std::vector<std::string> &values = directives[i].values;
         for (size_t j = 0; j < values.size(); ++j)
-        {
             std::cout << "    VALUE [" << j << "]: " << values[j] << std::endl;
-        }
-
-        // Separador de Directivas
         std::cout << "  ------------------" << std::endl;
     }
-
-    // 3. ITERAR SOBRE BLOQUES ANIDADOS (RECURSIÓN)
     const std::vector<BlockParser> &nestedBlocks = block.getNestedBlocks();
     for (size_t i = 0; i < nestedBlocks.size(); ++i)
-    {
-        // Llamada Recursiva: Solo se pasa el bloque.
         printBlock(nestedBlocks[i]);
-    }
-
-    // Separador final del bloque
     std::cout << "--- END BLOCK (" << block.name << ") ---" << std::endl;
     std::cout << "////////////////////////////////////" << std::endl;
 }
-
-/*void BlockParser::printBlock(const BlockParser &block, int indent)
-{
-    std::string pad(indent, ' ');
-    std::cout << pad << "Block: " << block.name << std::endl;
-
-    for (size_t i = 0; i < block.getDirectives().size(); ++i)
-    {
-        std::cout << pad << "  Directive: " << block.getDirectives()[i].name << " = ";
-        for (size_t j = 0; j < block.getDirectives()[i].values.size(); ++j)
-        {
-            if (j > 0)
-                std::cout << ", ";
-            std::cout << block.getDirectives()[i].values[j];
-        }
-        std::cout << std::endl;
-    }
-
-    for (size_t i = 0; i < block.getNestedBlocks().size(); ++i)
-        printBlock(block.getNestedBlocks()[i], indent + 2);
-}*/

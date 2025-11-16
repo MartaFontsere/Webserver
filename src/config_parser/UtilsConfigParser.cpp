@@ -21,22 +21,6 @@ bool isEmptyOrComment(const std::string &trimmedLine)
     return temp.empty() || temp[0] == '#';
 }
 
-// std::vector<std::string> split(const std::string &str, char delimiter)
-// {
-//     std::vector<std::string> tokens;
-//     size_t start = 0;
-//     size_t pos = str.find(delimiter, start);
-
-//     while (pos != std::string::npos)
-//     {
-//         tokens.push_back(str.substr(start, pos - start));
-//         start = pos + 1;
-//         pos = str.find(delimiter, start);
-//     }
-//     tokens.push_back(str.substr(start));
-//     return tokens;
-// }
-
 std::vector<std::string> tokenize(const std::string &line)
 {
     std::vector<std::string> tokens;
