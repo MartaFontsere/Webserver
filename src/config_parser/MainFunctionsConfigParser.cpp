@@ -27,7 +27,7 @@ BlockParser readConfigFile(const std::string &filePath)
         {
             DirectiveParser parser;
             trimmed = trimmed.substr(0, trimmed.size() - 1);
-            std::vector<std::string> tokens = split(trimmed, ' ');
+            std::vector<std::string> tokens = tokenize(trimmed);
             parser.parseDirective(tokens);
             const std::vector<DirectiveToken> &dirs = parser.getDirectives();
             for (size_t i = 0; i < dirs.size(); ++i)
@@ -62,7 +62,7 @@ bool validationStructureConfigFile(const std::string &filePath)
                 else if (firstNonAlNumChar(trimmed, lineCont, filePath))
                     return false;
                 processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, firstOpenKey,
-                              lastCloseKey);
+                            lastCloseKey);
             }
 
         }

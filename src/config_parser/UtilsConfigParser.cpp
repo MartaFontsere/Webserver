@@ -21,18 +21,58 @@ bool isEmptyOrComment(const std::string &trimmedLine)
     return temp.empty() || temp[0] == '#';
 }
 
-std::vector<std::string> split(const std::string &str, char delimiter)
+// std::vector<std::string> split(const std::string &str, char delimiter)
+// {
+//     std::vector<std::string> tokens;
+//     size_t start = 0;
+//     size_t pos = str.find(delimiter, start);
+
+//     while (pos != std::string::npos)
+//     {
+//         tokens.push_back(str.substr(start, pos - start));
+//         start = pos + 1;
+//         pos = str.find(delimiter, start);
+//     }
+//     tokens.push_back(str.substr(start));
+//     return tokens;
+// }
+
+std::vector<std::string> tokenize(const std::string &line)
 {
     std::vector<std::string> tokens;
-    size_t start = 0;
-    size_t pos = str.find(delimiter, start);
+    std::string current;
+    bool inQuotes = false;
+    char quoteChar = '\0';
 
-    while (pos != std::string::npos)
+    for (size_t i = 0; i < line.size(); ++i)
     {
-        tokens.push_back(str.substr(start, pos - start));
-        start = pos + 1;
-        pos = str.find(delimiter, start);
+        char temp = line[i];
+        if (!inQuotes && (temp == '"' || temp == '\''))
+        {
+            inQuotes = true;
+            quoteChar = temp;
+            continue;
+        }
+        if (inQuotes && temp == quoteChar)
+        {
+            inQuotes = false;
+            quoteChar = '\0';
+            continue;
+        }
+        if (!inQuotes && (temp == ' ' || temp == '\t'))
+        {
+            if (!current.empty())
+            {
+                tokens.push_back(current);
+                current.clear();
+            }
+            continue;
+        }
+        current += temp;
     }
-    tokens.push_back(str.substr(start));
+    if (!current.empty())
+        tokens.push_back(current);
+    if (inQuotes)
+        std::cerr << "Warning: Unclosed quote in line " << line << std::endl;
     return tokens;
 }

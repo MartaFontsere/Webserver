@@ -100,7 +100,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
         {
             // Directiva simple
             trimmed = trimmed.substr(0, trimmed.size() - 1);
-            std::vector<std::string> tokens = split(trimmed, ' ');
+            std::vector<std::string> tokens = tokenize(trimmed);
             if (!parser.parseDirective(tokens))
                 std::cerr << "⚠️ Error parseando directiva: " << trimmed << std::endl;
         }
