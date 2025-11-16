@@ -15,8 +15,6 @@ void processConfigLine(const std::string &line, int *lineCont, int *contOpenKey,
 bool resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey,
                             int lastCloseKey, const std::string &filePath);
 
-bool incorrectLineTermination(const std::string &line, int *lineCont, const std::string &filePath);
-
 bool firstNonAlNumChar(const std::string &line, int *lineCont, const std::string &filePath);
 
 bool validationStructureConfigFile(const std::string &filePath);

@@ -58,9 +58,6 @@ bool validationStructureConfigFile(const std::string &filePath)
                 return false;
             else if (firstNonAlNumChar(line, &lineCont, filePath))
                 return false;
-            else if (incorrectLineTermination(line, &lineCont, filePath))
-                return false;
-
             processConfigLine(line, &lineCont, &contOpenKey, &contCloseKey, &firstOpenKey,
                               &lastCloseKey);
         }

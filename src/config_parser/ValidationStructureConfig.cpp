@@ -72,21 +72,6 @@ bool resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey,
     return false;
 }
 
-bool incorrectLineTermination(const std::string &line, int *lineCont, const std::string &filePath)
-{
-    std::string temp = trimLine(line);
-    if (temp.empty())
-        return false;
-    if ((temp[temp.size() - 1] != '{') && (temp[temp.size() - 1] != ';') && (temp[temp.size() - 1] != '}'))
-    {
-        std::cerr << "❌ Error: Line does not end with a valid closing character ('{', '}' or ';').\n"
-                  << "Check syntax in line (" << *lineCont << ") of file: " << filePath << std::endl;
-        return true;
-    }
-
-    return false;
-}
-
 static bool isValidConfigChar(char character)
 {
     unsigned char temp = static_cast<unsigned char>(character);
