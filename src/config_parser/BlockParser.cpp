@@ -3,6 +3,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 // Construc
 BlockParser::BlockParser() : startLine(0), endLine(0)
@@ -80,48 +81,110 @@ void BlockParser::addNest(const BlockParser &nest)
  * @param blockName fkjsdlkf
  * @return BlockParser
  */
+
+static bool isDirectiveStart(const std::string &line)
+{
+    if (line.empty())
+        return false;
+    
+    const char* directives[] = {
+        "listen", "server_name", "root", "index", "location",
+        "error_page", "allow_methods", "autoindex", "proxy_pass",
+        "return", "rewrite", "cgi_path", "cgi_ext", "host",
+        "client_max_body_size", NULL
+    };
+    
+    size_t spacePos = line.find(' ');
+    std::string firstWord = (spacePos == std::string::npos) ? line : line.substr(0, spacePos);
+    
+    for (int i = 0; directives[i] != NULL; ++i)
+    {
+        if (firstWord == directives[i])
+            return true;
+    }
+    
+    return false;
+}
+
 BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &blockName, int &lineNumber)
 {
     DirectiveParser parser;
     BlockParser block(blockName, lineNumber);
 
     std::string line;
+    std::string accumulated;
+    int directiveStartLine = 0;
     while (std::getline(file, line))
     {
         lineNumber++;
+
         std::string trimmed = trimLine(line);
+
         if (isEmptyOrComment(trimmed))
             continue;
-
-        if (trimmed[trimmed.size() - 1] == '{')
+        
+        if (!accumulated.empty() && isDirectiveStart(trimmed))
         {
-            std::string childName = trimmed.substr(0, trimmed.size() - 1);
-            childName = trimLine(childName);
-            BlockParser child = parseBlock(file, childName, lineNumber);
-            block.addNest(child);
+            std::stringstream message;
+                message << "❌ Unterminated directive at line " << directiveStartLine << "\n  Content: '" << accumulated << "'"
+                    << "\n  Missing ';' before line " << lineNumber << ": '" << trimmed << "'";
+            throw std::runtime_error(message.str());
         }
-        else if (trimmed == "}")
+
+        if (accumulated.empty())
+            directiveStartLine = lineNumber;
+        
+        if (!accumulated.empty())
+            accumulated += " ";
+            
+        accumulated += trimmed;
+        if (trimmed == "}")
         {
+
+            if (accumulated != "}")
+            {
+                std::stringstream message2;
+                message2 << "⚠️ Error: Unterminated directive before '}' at line: " 
+                    << lineNumber << "\n  Content: " << accumulated;
+                throw std::runtime_error(message2.str());
+            }
             block.setEndLine(lineNumber);
             const std::vector<DirectiveToken> &parsed = parser.getDirectives();
             for (size_t i = 0; i < parsed.size(); ++i)
                 block.addDirective(parsed[i]);
             return block;
         }
+        else if (trimmed[trimmed.size() - 1] == '{')
+        {  
+            std::string blockLine = accumulated;
+            std::string childName = blockLine.substr(0, blockLine.size() - 1);
+            childName = trimLine(childName);
+            BlockParser child = parseBlock(file, childName, lineNumber);
+            block.addNest(child);
+            accumulated.clear();
+        }
         else if (trimmed[trimmed.size() - 1] == ';')
         {
-            trimmed = trimmed.substr(0, trimmed.size() - 1);
-            std::vector<std::string> tokens = tokenize(trimmed);
+            accumulated = accumulated.substr(0, accumulated.size() - 1);
+            std::vector<std::string> tokens = tokenize(accumulated);
             if (!parser.parseDirective(tokens, lineNumber))
-                std::cerr << "⚠️ Error parsing directive: " << trimmed << " at line: " << lineNumber << std::endl;
+            {
+                std::stringstream message3;
+                message3 << "⚠️ Error parsing directive: " << trimmed << " at line: " << lineNumber << "\n";
+                throw std::runtime_error(message3.str());
+            }
+            accumulated.clear();
         }
-        else
-        {
-            std::cerr << "❓ Unknown line at block: " << blockName << ": in line:" << lineNumber << " =>"<< trimmed << std::endl;
-        }
+        
     }
-    std::cerr << "❌ Error: block '" << blockName << "' not closed properly"
-                    << " (started at line: " << block.getStartLine() << ")" << std::endl;
+    if (!accumulated.empty())
+    {
+        std::stringstream message4;
+        message4 << "⚠️ Error: Unterminated directive at EOF \n"
+                << "  Start at line: " << directiveStartLine  << "\n  Content: " << accumulated << "\n";
+        throw std::runtime_error(message4.str());
+
+    }
     return block;
 }
 void BlockParser::printBlock(const BlockParser &block)

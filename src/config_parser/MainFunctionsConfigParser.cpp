@@ -8,35 +8,55 @@ BlockParser readConfigFile(const std::string &filePath)
     std::ifstream file(filePath.c_str());
     if (!file.is_open())
         throw std::runtime_error("❌ File can't be open");
+
     BlockParser root;
     std::string line;
+    std::string accumulated;
     int lineNumber = 0;
+    int directiveStartLine = 0;
+
     while (std::getline(file, line))
     {
         lineNumber++;
+        
         std::string trimmed = trimLine(line);
         if (isEmptyOrComment(trimmed))
             continue;
+        
+        if (accumulated.empty())
+            directiveStartLine = lineNumber;
+
+        if (!accumulated.empty())
+            accumulated += " ";
+        accumulated += trimmed;
+        
         if (trimmed[trimmed.size() - 1] == '{')
         {
-            std::string blockName = trimmed.substr(0, trimmed.size() - 1);
+            std::string blockLine = accumulated;
+            std::string blockName = blockLine.substr(0, blockLine.size() - 1);
             blockName = trimLine(blockName);
             BlockParser temp;
             BlockParser nest = temp.parseBlock(file, blockName, lineNumber);
             root.addNest(nest);
+            accumulated.clear();
         }
         else if (trimmed[trimmed.size() - 1] == ';')
         {
             DirectiveParser parser;
-            trimmed = trimmed.substr(0, trimmed.size() - 1);
-            std::vector<std::string> tokens = tokenize(trimmed);
-            parser.parseDirective(tokens, lineNumber);
+            accumulated = accumulated.substr(0, accumulated.size() - 1);
+            std::vector<std::string> tokens = tokenize(accumulated);
+            parser.parseDirective(tokens, directiveStartLine);
             const std::vector<DirectiveToken> &dirs = parser.getDirectives();
             for (size_t i = 0; i < dirs.size(); ++i)
                 root.addDirective(dirs[i]);
+            accumulated.clear();
         }
-        else
-            std::cout << "❓ Unknow out of block at line: "<< lineNumber << " => "<< trimmed << std::endl;
+    }
+    if (!accumulated.empty())
+    {
+        std::cerr << "⚠️ Error: Unterminated directive at EOF" << std::endl;
+        std::cerr << "  Started at line: " << directiveStartLine << std::endl;
+        std::cerr << "  Content: " << accumulated << std::endl;
     }
     return root;
 }
