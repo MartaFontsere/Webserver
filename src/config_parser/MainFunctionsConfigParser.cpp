@@ -2,6 +2,7 @@
 #include "../../includes/config_parser/ValidationStructureConfig.hpp"
 #include <fstream>
 #include <iostream>
+#include <sstream>
 
 BlockParser readConfigFile(const std::string &filePath)
 {
@@ -18,18 +19,18 @@ BlockParser readConfigFile(const std::string &filePath)
     while (std::getline(file, line))
     {
         lineNumber++;
-        
+
         std::string trimmed = trimLine(line);
         if (isEmptyOrComment(trimmed))
             continue;
-        
+
         if (accumulated.empty())
             directiveStartLine = lineNumber;
 
         if (!accumulated.empty())
             accumulated += " ";
         accumulated += trimmed;
-        
+
         if (trimmed[trimmed.size() - 1] == '{')
         {
             std::string blockLine = accumulated;
@@ -44,7 +45,7 @@ BlockParser readConfigFile(const std::string &filePath)
         {
             DirectiveParser parser;
             accumulated = accumulated.substr(0, accumulated.size() - 1);
-            std::vector<std::string> tokens = tokenize(accumulated);
+            std::vector<std::string> tokens = tokenize(accumulated, lineNumber);
             parser.parseDirective(tokens, directiveStartLine);
             const std::vector<DirectiveToken> &dirs = parser.getDirectives();
             for (size_t i = 0; i < dirs.size(); ++i)
@@ -54,14 +55,15 @@ BlockParser readConfigFile(const std::string &filePath)
     }
     if (!accumulated.empty())
     {
-        std::cerr << "⚠️ Error: Unterminated directive at EOF" << std::endl;
-        std::cerr << "  Started at line: " << directiveStartLine << std::endl;
-        std::cerr << "  Content: " << accumulated << std::endl;
+        std::stringstream message;
+        message << "⚠️ Error: Unterminated directive at EOF \n"
+                << "  Started at line: " << directiveStartLine << "\n  Content: " << accumulated;
+        throw std::runtime_error(message.str());
     }
     return root;
 }
 
-bool validationStructureConfigFile(const std::string &filePath)
+void validationStructureConfigFile(const std::string &filePath)
 {
     std::ifstream file(filePath.c_str());
     if (!file.is_open())
@@ -77,20 +79,15 @@ bool validationStructureConfigFile(const std::string &filePath)
         if (!isEmptyOrComment(line))
         {
             std::string trimmed = trimLine(line);
-            if(!trimmed.empty())
+            if (!trimmed.empty())
             {
-                if (isEmptyBraceOrSemicolonLine(trimmed, lineCont, filePath))
-                    return false;
-                else if (firstNonAlNumChar(trimmed, lineCont, filePath))
-                    return false;
+                isEmptyBraceOrSemicolonLine(trimmed, lineCont, filePath);
+                firstNonAlNumChar(trimmed, lineCont, filePath);
                 processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, firstOpenKey,
-                            lastCloseKey);
+                                  lastCloseKey);
             }
-
         }
         lineCont++;
     }
-    if (resultProcesConfigLine(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, filePath))
-        return false;
-    return true;
+    resultProcesConfigLine(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, filePath);
 }

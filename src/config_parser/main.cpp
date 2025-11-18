@@ -9,11 +9,7 @@
 int main()
 {
     std::cout << "=== TESTING CONFIG PARSER ===" << std::endl;
-    if (!validationStructureConfigFile("test.conf"))
-    {
-        std::cerr << "Error canalla! " << std::endl;
-        return 0;
-    }
+    validationStructureConfigFile("test.conf");
     std::cerr << " 🏅 Mu bien!!!! 🏅" << std::endl;
     try
     {
@@ -34,13 +30,13 @@ int main()
         std::cerr << "Error: " << e.what() << std::endl;
     }
 
-        // TEST DEL TOKENIZADOR
+    // TEST DEL TOKENIZADOR
     // std::string test1 = "root \"/var/www/my site\"";
     // std::vector<std::string> tokens1 = tokenize(test1);
     // std::cout << "\nTest 1: " << test1 << std::endl;
     // for (size_t i = 0; i < tokens1.size(); i++)
     //     std::cout << "  Token[" << i << "]: '" << tokens1[i] << "'" << std::endl;
-    
+
     // std::string test2 = "server_name 'example.com' localhost";
     // std::vector<std::string> tokens2 = tokenize(test2);
     // std::cout << "\nTest 2: " << test2 << std::endl;

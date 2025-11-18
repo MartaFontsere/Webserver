@@ -10,7 +10,7 @@ std::string trimLine(const std::string &line);
 
 bool isEmptyOrComment(const std::string &trimmedLine);
 
-std::vector<std::string> tokenize(const std::string &line);
+std::vector<std::string> tokenize(const std::string &line, int numLine);
 
 BlockParser readConfigFile(const std::string &filePath);
 

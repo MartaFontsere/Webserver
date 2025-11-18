@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <cstdlib>
@@ -21,7 +22,7 @@ bool isEmptyOrComment(const std::string &trimmedLine)
     return temp.empty() || temp[0] == '#';
 }
 
-std::vector<std::string> tokenize(const std::string &line)
+std::vector<std::string> tokenize(const std::string &line, int numLine)
 {
     std::vector<std::string> tokens;
     std::string current;
@@ -57,6 +58,10 @@ std::vector<std::string> tokenize(const std::string &line)
     if (!current.empty())
         tokens.push_back(current);
     if (inQuotes)
-        std::cerr << "Warning: Unclosed quote in line " << line << std::endl;
+    {
+        std::stringstream message;
+        message << "Warning: Unclosed quote in line: " << numLine;
+        throw std::runtime_error(message.str());
+    }
     return tokens;
 }

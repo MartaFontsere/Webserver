@@ -25,7 +25,6 @@ BlockParser &BlockParser::operator=(const BlockParser &other)
 
 BlockParser::~BlockParser()
 {
-
 }
 
 // Getters
@@ -86,23 +85,22 @@ static bool isDirectiveStart(const std::string &line)
 {
     if (line.empty())
         return false;
-    
-    const char* directives[] = {
+
+    const char *directives[] = {
         "listen", "server_name", "root", "index", "location",
         "error_page", "allow_methods", "autoindex", "proxy_pass",
         "return", "rewrite", "cgi_path", "cgi_ext", "host",
-        "client_max_body_size", NULL
-    };
-    
+        "client_max_body_size", NULL};
+
     size_t spacePos = line.find(' ');
     std::string firstWord = (spacePos == std::string::npos) ? line : line.substr(0, spacePos);
-    
+
     for (int i = 0; directives[i] != NULL; ++i)
     {
         if (firstWord == directives[i])
             return true;
     }
-    
+
     return false;
 }
 
@@ -122,21 +120,21 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
 
         if (isEmptyOrComment(trimmed))
             continue;
-        
+
         if (!accumulated.empty() && isDirectiveStart(trimmed))
         {
             std::stringstream message;
-                message << "❌ Unterminated directive at line " << directiveStartLine << "\n  Content: '" << accumulated << "'"
+            message << "❌ Unterminated directive at line " << directiveStartLine << "\n  Content: '" << accumulated << "'"
                     << "\n  Missing ';' before line " << lineNumber << ": '" << trimmed << "'";
             throw std::runtime_error(message.str());
         }
 
         if (accumulated.empty())
             directiveStartLine = lineNumber;
-        
+
         if (!accumulated.empty())
             accumulated += " ";
-            
+
         accumulated += trimmed;
         if (trimmed == "}")
         {
@@ -144,8 +142,8 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             if (accumulated != "}")
             {
                 std::stringstream message2;
-                message2 << "⚠️ Error: Unterminated directive before '}' at line: " 
-                    << lineNumber << "\n  Content: " << accumulated;
+                message2 << "⚠️ Error: Unterminated directive before '}' at line: "
+                         << lineNumber << "\n  Content: " << accumulated;
                 throw std::runtime_error(message2.str());
             }
             block.setEndLine(lineNumber);
@@ -155,7 +153,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             return block;
         }
         else if (trimmed[trimmed.size() - 1] == '{')
-        {  
+        {
             std::string blockLine = accumulated;
             std::string childName = blockLine.substr(0, blockLine.size() - 1);
             childName = trimLine(childName);
@@ -166,7 +164,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
         else if (trimmed[trimmed.size() - 1] == ';')
         {
             accumulated = accumulated.substr(0, accumulated.size() - 1);
-            std::vector<std::string> tokens = tokenize(accumulated);
+            std::vector<std::string> tokens = tokenize(accumulated, lineNumber);
             if (!parser.parseDirective(tokens, lineNumber))
             {
                 std::stringstream message3;
@@ -175,15 +173,13 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             }
             accumulated.clear();
         }
-        
     }
     if (!accumulated.empty())
     {
         std::stringstream message4;
         message4 << "⚠️ Error: Unterminated directive at EOF \n"
-                << "  Start at line: " << directiveStartLine  << "\n  Content: " << accumulated << "\n";
+                 << "  Start at line: " << directiveStartLine << "\n  Content: " << accumulated << "\n";
         throw std::runtime_error(message4.str());
-
     }
     return block;
 }
@@ -197,7 +193,7 @@ void BlockParser::printBlock(const BlockParser &block)
     const std::vector<DirectiveToken> &directives = block.getDirectives();
     for (size_t i = 0; i < directives.size(); ++i)
     {
-        std::cout << "  Directive [" << i << "] (line " << directives[i].lineNumber << "): "<< std::endl;
+        std::cout << "  Directive [" << i << "] (line " << directives[i].lineNumber << "): " << std::endl;
         std::cout << "    NAME: " << directives[i].name << std::endl;
 
         const std::vector<std::string> &values = directives[i].values;

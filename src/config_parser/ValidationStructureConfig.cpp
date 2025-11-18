@@ -3,22 +3,24 @@
 #include <fstream>
 #include <vector>
 #include <cctype>
+#include <sstream>
 #include "../../includes/config_parser/ValidationStructureConfig.hpp"
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
 
-bool isEmptyBraceOrSemicolonLine(const std::string &trimmedLine, int &lineCont, const std::string &filePath)
+void isEmptyBraceOrSemicolonLine(const std::string &trimmedLine, int &lineCont, const std::string &filePath)
 {
     if (trimmedLine[0] == '{')
     {
-        std::cerr << "Error: no name before '{' in line" << "(" << lineCont << ") in file: " << filePath << std::endl;
-        return true;
+        std::stringstream message1;
+        message1 << "Error: no name before '{' in line" << "(" << lineCont << ") in file: " << filePath;
+        throw std::runtime_error(message1.str());
     }
     else if (trimmedLine[0] == ';')
     {
-        std::cerr << "Error: no name before ';' in line" << "(" << lineCont << ") in file: " << filePath << std::endl;
-        return true;
+        std::stringstream message2;
+        message2 << "Error: no name before ';' in line" << "(" << lineCont << ") in file: " << filePath;
+        throw std::runtime_error(message2.str());
     }
-    return false;
 }
 int contOpenKeys(const std::string &trimmedLine, int &lineCont, int &contOpenKey)
 {
@@ -52,19 +54,20 @@ void processConfigLine(const std::string &trimmedLine, int &lineCont, int &contO
         lastCloseKey = closeLine;
 }
 
-bool resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey, int lastCloseKey, const std::string &filePath)
+void resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey, int lastCloseKey, const std::string &filePath)
 {
     if (contOpenKey > contCloseKey)
     {
-        std::cerr << "Error: Expected '}' in line" << "(" << firstOpenKey << ") in file: " << filePath << std::endl;
-        return true;
+        std::stringstream message3;
+        message3 << "Error: Expected '}' in line" << "(" << firstOpenKey << ") in file: " << filePath;
+        throw std::runtime_error(message3.str());
     }
     else if (contOpenKey < contCloseKey)
     {
-        std::cerr << "Error: extraneous closing bace '}' in line" << "(" << lastCloseKey << ") in file: " << filePath << std::endl;
-        return true;
+        std::stringstream message4;
+        message4 << "Error: extraneous closing bace '}' in line" << "(" << lastCloseKey << ") in file: " << filePath;
+        throw std::runtime_error(message4.str());
     }
-    return false;
 }
 
 static bool isValidConfigChar(char character)
@@ -100,18 +103,17 @@ static bool isValidConfigChar(char character)
     }
 }
 
-bool firstNonAlNumChar(const std::string &trimmedLine, int &lineCont, const std::string &filePath)
+void firstNonAlNumChar(const std::string &trimmedLine, int &lineCont, const std::string &filePath)
 {
     for (size_t i = 0; i < trimmedLine.size(); ++i)
     {
         if (!isValidConfigChar(trimmedLine[i]))
         {
-            std::cerr << "Error: Character ('" << trimmedLine[i] << "') not allowed "
-                      << "in line (" << lineCont << ") "
-                      << "in file: " << filePath << std::endl;
-            return true;
+            std::stringstream message5;
+            message5 << "Error: Character ('" << trimmedLine[i] << "') not allowed "
+                     << "in line (" << lineCont << ") "
+                     << "in file: " << filePath;
+            throw std::runtime_error(message5.str());
         }
     }
-
-    return false;
 }
