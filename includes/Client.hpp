@@ -51,6 +51,9 @@ private:
     bool _requestComplete;
 
     HttpResponse _httpResponse;
+
+    // Helpper
+    void applyConnectionHeader();
 };
 
 /*

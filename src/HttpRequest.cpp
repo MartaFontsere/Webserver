@@ -4,12 +4,15 @@
 #include <cstring>   // para atoi
 #include <strings.h> // para strcasecmp
 
-HttpRequest::HttpRequest() : _headersComplete(false), _isChunked(false), _contentLength(-1)
+HttpRequest::HttpRequest() : _headersComplete(false), _isChunked(false), _keepAlive(false), _parsedBytes(0), _contentLength(-1)
 {
 }
 
-bool HttpRequest::parse(const std::string &rawRequest /*, size_t &bytesUsed*/)
+bool HttpRequest::parse(const std::string &rawRequest)
 {
+    // Reiniciar parsedBytes por si parse se llama varias veces
+    _parsedBytes = 0;
+
     // Si aún no hemos terminado de leer las cabeceras
     if (!_headersComplete)
     {
@@ -27,6 +30,13 @@ bool HttpRequest::parse(const std::string &rawRequest /*, size_t &bytesUsed*/)
     // ✅ Si llegamos aquí, ya tenemos todo completo
     return true;
 }
+
+/*
+18.11.25
+HttpRequest::parse(raw) seguirá devolviendo true/false, pero cuando devuelve true dejará almacenado cuántos bytes ha consumido (cabeceras + body). Añadimos int _parsedBytes y size_t getParsedBytes() const.
+
+En Client::readRequest() no borramos todo _rawRequest al parsear: llamaremos _rawRequest.erase(0, _httpRequest.getParsedBytes()). Así si vienen bytes extra (pipelined requests) se quedan listos.
+*/
 
 /*
 HttpRequest
@@ -74,6 +84,11 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest)
         firstLine >> _method >> _path >> _version;
     }
 
+    if (_version == "HTTP/1.1")
+        _keepAlive = true; // por defecto en HTTP/1.1
+    else
+        _keepAlive = false; // por defecto en HTTP/1.0
+
     // Resto de líneas → headers
     while (std::getline(ss, line))
     {
@@ -100,6 +115,16 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest)
             _contentLength = std::atoi(val.c_str());
         else if (strcasecmp(key.c_str(), "Transfer-Encoding") == 0 && val == "chunked")
             _isChunked = true;
+
+        // Aunque ya está puesto por defecto, aqui permites sobreescrivir si se especifica lo contrario en connection
+        if (strcasecmp(key.c_str(), "Connection") == 0)
+        {
+            if (strcasecmp(val.c_str(), "close") == 0)
+                _keepAlive = false;
+            else if (strcasecmp(val.c_str(), "keep-alive") == 0)
+                _keepAlive = true;
+        }
+        // No es redundante, primero parseasmos la versión y defines el default, luego parseamos los headers y defines si el cliente quiere cambiar ese default. Así es como funciona el protocolo
     }
 
     return true;
@@ -405,6 +430,11 @@ if (bodyBytes < static_cast<size_t>(_contentLength))
 
 */
 
+bool HttpRequest::isKeepAlive() const
+{
+    return _keepAlive;
+}
+
 const std::string &HttpRequest::getMethod() const
 {
     return _method;
@@ -433,7 +463,15 @@ bool HttpRequest::headersComplete() const
 {
     return _headersComplete;
 }
-
+/*
+const std::string &HttpRequest::getSpecificHeader(const std::string &key) const
+{
+    std::map<std::string, std::string>::const_iterator it = _headers.find(key);
+    if (it != _headers.end())
+        return it->second;
+    return "";
+}
+*/
 bool HttpRequest::isChunked() const
 {
     return _isChunked;

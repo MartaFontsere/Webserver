@@ -173,18 +173,16 @@ bool Client::readRequest()
 
     _lastActivity = time(NULL);
 
-    // if (!_httpRequest.parse(_request))
-    //     return false; // aún falta data
-
-    // Si llegamos aquí, ya tenemos toda la petición completa
-    //_requestComplete = true;
-
     // Intentamos parsear la request actual
     std::cout << "[Debug] Parseando request del cliente fd " << _clientFd << std::endl;
     if (_httpRequest.parse(_rawRequest))
     {
         std::cout << "✅ Request completa (client fd: " << _clientFd << ")\n";
         _requestComplete = true;
+        _rawRequest.clear(); // 👈 limpiamos el buffer raw porque la información queda almacenada en _httpRequest, asi rawRequest queda limpio para la próxima request
+
+        // IMPORTANTEEEEEEE!!!!
+        // Nota: más adelante, si quieres soportar pipelining, cambia esto por _rawRequest.erase(0, parsedBytes) y haz que HttpRequest devuelva parsedBytes.
     }
 
     // ⚙️ En cualquier caso (falta data o ya completa),
@@ -390,12 +388,18 @@ if (_headersComplete && _contentLength > 0)
     Una vez sabemos que ya esta el header completo, y en el caso de que se haya encontrado un content lenght, entonces parseamos el body. En este parseo miramos si está todo. en caso de que esté lo guardamos.
 
 */
+
+// HELPPER
+void Client::applyConnectionHeader()
+{
+    if (_httpRequest.isKeepAlive())
+        _httpResponse.setHeader("Connection", "keep-alive");
+    else
+        _httpResponse.setHeader("Connection", "close");
+}
+
 bool Client::processRequest()
 {
-    // 0) Protegemos la llamada: si la request aún no está completa, no hacemos nada (no hay suficiente información para decidir respuesta).
-    if (!_requestComplete)
-        return true;
-
     // 1) Reseteamos cualquier HttpResponse previa (estado limpio) -> Limpia HttpResponse previo
     _httpResponse = HttpResponse(); // crea un HttpResponse por defecto y lo copia en el miembro //AQUÍ O AL ACABAR DE USARLO LO DEJAMOS LISTO PARA LA PRÓXIMA??? LA PRIMERA VEZ QUE SE USE YA SE CREA SOLO CON CLIENT, ASI QUE NO PASARÍA NADA
 
@@ -405,7 +409,8 @@ bool Client::processRequest()
     {
         // Respondemos con 405 Method Not Allowed (contenido + headers dentro de HttpResponse)
         _httpResponse.setErrorResponse(405);
-        return true; // hemos generado una respuesta válida -> no es un fallo fatal
+        applyConnectionHeader(); // Así el servidor maneja keep alive corretamente tanto en rutas validas como en invalidas (erroes), siempre coherente
+        return true;             // hemos generado una respuesta válida -> no es un fallo fatal
     }
 
     // 2. Validar ruta
@@ -414,6 +419,7 @@ bool Client::processRequest()
     if (path != "/") // caso para empezar
     {
         _httpResponse.setErrorResponse(404);
+        applyConnectionHeader();
         return true;
     }
 
@@ -423,6 +429,7 @@ bool Client::processRequest()
     _httpResponse.setStatus(200, "OK");
     _httpResponse.setHeader("Content-Type", "text/html");
     _httpResponse.setHeader("Content-Length", std::to_string(body.size()));
+    applyConnectionHeader();
     _httpResponse.setBody(body);
 
     std::cout << "\nProcess Request (fd=" << _clientFd << "):\n  method = GET\n  status = 200)\n";
@@ -438,6 +445,17 @@ bool Client::processRequest()
 
 ✔ Client decide contenido
 ✔ HttpResponse decide formato
+
+processRequest devuelve:
+    True: ha ido todo bien, hemos generado una respuesta
+    False: error grave, cerrar cliente
+        Ejemplo:
+            Fallo al abrir un archivo del disco
+            Fallo al ejecutar un CGI
+            Fallo lígico interno / nenirt error
+            Corrupción de la request
+            ...
+        De momento no tengo errores que requieran cerrar el cliente PERO TENER EN CUENTA PARA EL FUTURO, COSAS A AÑADIR!!!!!!!!!!!!!!!!!!!
 
 
 Explicación del código:
@@ -521,7 +539,7 @@ bool Client::sendResponse()
     std::string msg = _httpResponse.buildResponse();
 
     // 1. Encolar respuesta
-    if (!_closed && !msg.empty())
+    if (/*!_closed && */ !msg.empty()) // no tiene sentido mirar closed aqui, porque si lo estaba debido a un error que he comprobado ya habria salido antes, y si se desconecta el cliente por su lado despues del recv() lo vere en el send, antes de intentarenviar
         _writeBuffer.append(msg);
 
     // 2. Intentar enviar lo que haya
@@ -535,25 +553,22 @@ bool Client::sendResponse()
     }
 
     // 4. Si no queda nada pendiente, todo enviado -> según keep-alive, marcar cerrado o dejar abierto
-    // if (!_keepAlive)
-    //{
-    // cerrar la conexión limpiamente (marcar para que cleanup la borre)
-    //   _closed = true;
-    //   std::cout << "[Client] Respuesta completa, cerrando conexión con " << getIp() << std::endl;
-    //}
-    // else
-    //{
-    // mantener la conexión abierta para próximas peticiones
-    // además limpiar buffers de request para la siguiente
-    //_rawRequest.clear();
-    //_httpRequest.reset(); // <-- limpia headers, body, etc.
-    //_requestComplete = false;
-    // std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive)" << std::endl;
-    //}
+    if (!_httpRequest.isKeepAlive())
+    {
+        // cerrar la conexión limpiamente (marcar para que cleanup la borre)
+        _closed = true;
+        std::cout << "[Client] Respuesta completa. Cierre por Connection: close (fd: " << _clientFd << ")" << std::endl;
+    }
 
-    // 4. Si todo fue enviado → cerrar SIEMPRE la conexión (FASE 1 de momento, LUEGO IMPLEMENTAREMOS EL KEEP ALIVE
-    _closed = true;
-    std::cout << "[Client] Respuesta enviada. Cerrando conexión (FASE 1)" << std::endl;
+    else
+    {
+        // mantener la conexión abierta para próximas peticiones
+        // además limpiar buffers de request para la siguiente
+        _rawRequest.clear();
+        _httpRequest.reset(); // <-- limpia headers, body, etc.
+        _requestComplete = false;
+        std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive fd: " << _clientFd << ")\n    Esperando nueva request" << std::endl;
+    }
 
     return true;
 }

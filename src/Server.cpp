@@ -588,7 +588,7 @@ void Server::run()
             acceptNewClient();
 
         // Actividad en clientes existentes - Recorremos el resto revisando todos los clientes
-        for (size_t i = 1; i < _pollFds.size(); ++i)
+        for (size_t i = 1; i < _pollFds.size();)
         {
             int fd = _pollFds[i].fd;
             Client *client = _clientsByFd[fd];
@@ -601,28 +601,102 @@ void Server::run()
             }
             // ESTE TROZO DE ARRIBA PUEDE SER UN POCO REDUNDANTE, PORQUE TEORICAMENTE YA ESTA CONTROLADO EN CLEANUPCLOSEDCLIENTS, pero se supone que por doble seguridad. igual Quitamos???
 
-            if (_pollFds[i].revents & POLLIN)
+            // 🔹 Errores o desconexiones
+            if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+            {
+                client->markClosed();
+                ++i;
+                continue;
+            }
+            if (_pollFds[i].revents & POLLIN && !client->isClosed())
+            {
                 handleClientEvent(_pollFds[i].fd);
-
+                // Si dentro del handler se marcó cerrado → no seguimos con POLLOUT
+                if (client->isClosed())
+                {
+                    ++i;
+                    continue;
+                }
+            }
             // 🔹 Escritura (cuando había datos pendientes)
-            if (_pollFds[i].revents & POLLOUT)
+            if (_pollFds[i].revents & POLLOUT && !client->isClosed())
             {
                 if (!client->flushWrite())
+                {
+                    // flushWrite ya marcó closed si era error/EOF
+                    ++i;
                     continue; // si falló, el cleanup se encargará luego
+                }
 
                 // Si ya no queda nada por enviar, desactivamos POLLOUT
                 if (!client->hasPendingWrite())
                     _pollFds[i].events &= ~POLLOUT;
             }
-            // 🔹 Errores o desconexiones
-            if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
-                client->markClosed();
+            ++i;
         }
 
         // Limpiar clientes cerrados
         cleanupClosedClients();
     }
 }
+/*
+17.11.25
+Ahora, cuando entramos en handle client, dentro se gestiona que si hay algun error salga de handle y siga con el bucle. El problema, es que si por ejemplo hay un cliente con datos disponibles para leer y también tenia datos pendientes para escribir (o el socket es write ready, que casi siempre lo es aunque no tengas pendientes) tendrá ambos revents, POLLIN y POLLOUT, por lo que después de handle client podría entrar en el for de POLLOUT y llamar a flusWrite sobre un cliente ya cerrado dentro de handle client. No es super grave, porque el propio fluswrite marcaría closed y saldria al encontrar problemas en el send, pero es innecesario llegar hasta ahí
+
+Recordatorio rápido: poll() puede devolver varios flags a la vez
+    poll() no te da “un único evento”. Un mismo revents puede contener POLLIN, POLLOUT, POLLHUP, POLLERR, etc. al mismo tiempo.
+    Eso significa que en la misma iteración puedes tener que:
+        leer datos (POLLIN),
+        escribir datos pendientes (POLLOUT),
+        y además haber recibido un HUP/ERR asíncrono.
+
+    Esa simultaneidad es el origen de la necesidad de orden y cuidado.
+
+2) Qué pasaba antes (tu código original)
+    Orden en cada fd:
+        if (POLLIN) -> handleClientEvent(fd)
+        if (POLLOUT) -> flushWrite()
+        if (POLLERR|POLLHUP|POLLNVAL) -> markClosed()
+
+    Problema real posible:
+        poll() devuelve POLLIN | POLLOUT (y quizá también HUP/ERR).
+
+        En handleClientEvent() detectas un error (por ejemplo recv() devolvió 0) y ejecutas client->markClosed() — marcando ya _closed = true.
+
+        Sin comprobar isClosed(), sigues y llegas a la sección if (POLLOUT) y llamas a flushWrite() sobre un cliente ya marcado como cerrado.
+
+        flushWrite() intentará send() y probablemente falle (EPIPE, ECONNRESET), volverá false, marcará _closed (otra vez) y al final cleanupClosedClients() borrará el cliente.
+
+    Consecuencias:
+        Llamadas innecesarias a send() sobre sockets que ya deberías considerar muertos.
+
+        Logs duplicados y flujos inconsistentes.
+
+        En casos más complejos (keep-alive, borrado inmediato) podría provocar manejar índices/pollfds inválidos si borras dentro del loop sin cuidado.
+
+3) ¿Por qué comprobar errores antes de lectura/escritura?
+    Porque hay errores que ocurren entre tus syscalls: el peer puede cerrar o resetear la conexión justo después del último send() que hiciste, y antes de la siguiente llamada. poll() refleja ese estado asíncrono con POLLERR/POLLHUP.
+    Si procesas I/O sin mirar primero esos flags, puedes:
+        intentar recv() o send() sobre un fd en mal estado,
+        generar errores evitables,
+        hacer trabajo inútil.
+
+    Mirar los flags de error primero evita todo eso: detectas “esto está roto” y lo marcas para limpieza sin tocarlo.
+
+    Es decir, errores asíncronos (HUP/ERR) se gestionan antes de tocar el socket, así no intentas I/O en un fd con problemas.
+
+
+4) ¿Por qué mover ++i al final (o controlarlo manualmente)?
+    En la versión nueva gestionas i manualmente (incrementas en cada rama con ++i cuando proceda) para poder continue y no incrementar en ramas donde ya hiciste erase. Es una forma segura de iterar cuando en algunas ramas haces erase() del vector _pollFds.
+    Antes tenías un for (i=1; i<_pollFds.size(); ++i) y en las ramas llamabas erase() seguido de continue. Eso también funcionaba porque en el continue evitabas el ++i, y la iteración volvía a comprobar el nuevo _pollFds[i].
+    La versión nueva simplemente hace explícito el control del i para evitar confusiones cuando añades condiciones continue en varios puntos — es más fácil razonar y menos propenso a errores sutiles.
+
+
+
+
+
+ */
+
 /*
 ACTUALIZACIÓN 2 información:
 
@@ -1153,6 +1227,10 @@ void Server::handleClientEvent(int fd)
         }
     }
 }
+
+/*
+Solo podemos detectar si el cliente se ha cerrado por su lado en el momento de intentar leer (recv()) o de intentar escribir (send()), y eso solo pasa en readrequest y en fluswrite, por lo tanto lo checkeamos despues de ambas funciones, pero entremedias no tiene sentido hacerlo, solo si lo hemos cerrado nosotros expresamente por un error. El error no lo podre saber hasta que envie o reciba algo, es normal, todos los servidores funcionan así. Nunca se arrastra sin detectarlo antes de usar el socket
+*/
 
 /*
 14.11.25

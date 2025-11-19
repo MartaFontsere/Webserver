@@ -7,8 +7,7 @@ class HttpRequest
 {
 public:
     HttpRequest();
-    bool parse(const std::string &rawRequest /*, size_t &bytesUsed*/); // devuelve true si request completa y consumed = bytes usados
-    bool isKeepAlive() const;                                          // indica si esta request pide mantener conexión
+    bool parse(const std::string &rawRequest); // devuelve true si request completa
 
     // Getters útiles
     const std::string &getMethod() const;
@@ -16,10 +15,12 @@ public:
     const std::string &getVersion() const;
     const std::string &getBody() const;
     const std::map<std::string, std::string> &getHeaders() const;
-    const std::string &getHeader(const std::string &key) const;
+    /*const std::string &getSpecificHeader(const std::string &key) const;*/
+    int getParsedBytes() const;
 
     bool headersComplete() const;
     bool isChunked() const;
+    bool isKeepAlive() const;
     int getContentLength() const;
 
     // resetea el estado para reutilizar el objeto
@@ -29,6 +30,8 @@ private:
     // estado interno
     bool _headersComplete;
     bool _isChunked;
+    bool _keepAlive;  // true → mantener abierta
+    int _parsedBytes; // número de bytes consumidos del rawRequest por el parse exitoso
 
     // elementos del request
     std::string _method;
