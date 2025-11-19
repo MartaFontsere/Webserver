@@ -548,9 +548,7 @@ bool Client::sendResponse()
 
     // 3. Si todavía hay bytes pendientes, el servidor deberá activar POLLOUT
     if (hasPendingWrite())
-    {
-        return true; // está todo correcto, pero falta enviar
-    }
+        return true; // está todo correcto, pero falta enviar, server activará POLLOUT
 
     // 4. Si no queda nada pendiente, todo enviado -> según keep-alive, marcar cerrado o dejar abierto
     if (!_httpRequest.isKeepAlive())
@@ -559,12 +557,10 @@ bool Client::sendResponse()
         _closed = true;
         std::cout << "[Client] Respuesta completa. Cierre por Connection: close (fd: " << _clientFd << ")" << std::endl;
     }
-
     else
     {
         // mantener la conexión abierta para próximas peticiones
         // además limpiar buffers de request para la siguiente
-        _rawRequest.clear();
         _httpRequest.reset(); // <-- limpia headers, body, etc.
         _requestComplete = false;
         std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive fd: " << _clientFd << ")\n    Esperando nueva request" << std::endl;
