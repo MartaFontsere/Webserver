@@ -1,4 +1,5 @@
 #include "../../includes/config_parser/DirectiveMetadata.hpp"
+#include "../../includes/config_parser/ValueValidator.hpp"
 #include <cstring>
 
 const DirectiveRule DirectiveMetadata::rules[] = {
@@ -85,6 +86,12 @@ bool DirectiveMetadata::validateArguments(const std::string &directive,
     if (rule->maxArgs != -1 && argCount > rule->maxArgs)
         return false;
 
+    for (size_t i = 0; i < args.size(); ++i)
+    {
+        if (args[i].empty())
+            return false;
+    }
+
     // switch (rule->argType) {
     //     case ARG_PORT:
     //         return isValidPort(args[0]);  // Verificar 1-65535
@@ -94,6 +101,9 @@ bool DirectiveMetadata::validateArguments(const std::string &directive,
     //         return isValidPath(args[0]);  // Verificar formato path
     //     case ARG_IP:
     //         return isValidIP(args[0]);
+    //      case ARG_STR:
+    //          default:
+    //         return true;
     // }
     return true;
 }
