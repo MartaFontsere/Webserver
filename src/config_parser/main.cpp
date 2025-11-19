@@ -8,11 +8,11 @@
 
 int main()
 {
-    std::cout << "=== TESTING CONFIG PARSER ===" << std::endl;
-    validationStructureConfigFile("test.conf");
-    std::cerr << " 🏅 Mu bien!!!! 🏅" << std::endl;
     try
     {
+        std::cout << "=== TESTING CONFIG PARSER ===" << std::endl;
+        validationStructureConfigFile("test.conf");
+        std::cerr << " 🏅 Mu bien!!!! 🏅" << std::endl;
         // BlockParser root = readConfigFile("test.conf");
         // root.printBlock(root);
         BlockParser configRoot = readConfigFile("test.conf");
