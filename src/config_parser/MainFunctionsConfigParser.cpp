@@ -23,6 +23,16 @@ BlockParser readConfigFile(const std::string &filePath)
         std::string trimmed = trimLine(line);
         if (isEmptyOrComment(trimmed))
             continue;
+        
+        size_t commentPos = trimmed.find('#');
+        if (commentPos != std::string::npos)
+        {
+            trimmed = trimmed.substr(0, commentPos);
+            trimmed = trimLine(trimmed);
+        }
+
+        if (trimmed.empty())
+            continue;
 
         if (accumulated.empty())
             directiveStartLine = lineNumber;

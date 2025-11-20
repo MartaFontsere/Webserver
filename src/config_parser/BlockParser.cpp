@@ -121,6 +121,16 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
         if (isEmptyOrComment(trimmed))
             continue;
 
+        size_t commentPos = trimmed.find('#');
+        if (commentPos != std::string::npos)
+        {
+            trimmed = trimmed.substr(0, commentPos);
+            trimmed = trimLine(trimmed);
+        }
+
+        if (trimmed.empty())
+            continue;
+
         if (!accumulated.empty() && isDirectiveStart(trimmed))
         {
             std::stringstream message;
@@ -178,7 +188,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
     {
         std::stringstream message4;
         message4 << "⚠️ Error: Unterminated directive at EOF \n"
-                 << "  Start at line: " << directiveStartLine << "\n  Content: " << accumulated << "\n";
+                << "  Start at line: " << directiveStartLine << "\n  Content: " << accumulated << "\n";
         throw std::runtime_error(message4.str());
     }
     return block;
