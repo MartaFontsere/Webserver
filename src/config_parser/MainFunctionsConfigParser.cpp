@@ -81,10 +81,16 @@ void validationStructureConfigFile(const std::string &filePath)
             std::string trimmed = trimLine(line);
             if (!trimmed.empty())
             {
+                size_t commentPos = trimmed.find('#');
+                if (commentPos != std::string::npos)
+                {
+                    trimmed = trimmed.substr(0, commentPos);
+                    trimmed = trimLine(trimmed);
+                }
                 isEmptyBraceOrSemicolonLine(trimmed, lineCont, filePath);
                 firstNonAlNumChar(trimmed, lineCont, filePath);
                 processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, firstOpenKey,
-                                  lastCloseKey);
+                                lastCloseKey);
             }
         }
         lineCont++;

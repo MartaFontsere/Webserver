@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <vector>
 #include <cctype>
@@ -22,6 +23,27 @@ void isEmptyBraceOrSemicolonLine(const std::string &trimmedLine, int &lineCont, 
         throw std::runtime_error(message2.str());
     }
 }
+
+void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont,
+                                const std::string &filePath,
+                                std::vector<std::string> &errors)
+{
+    if (trimmedLine[0] == '{')
+    {
+        std::stringstream message;
+        message << "Error line " << lineCont 
+                << ": No name before '{' in " << filePath;
+        errors.push_back(message.str());
+    }
+    else if (trimmedLine[0] == ';')
+    {
+        std::stringstream message;
+        message << "Error line " << lineCont 
+                << ": No name before ';' in " << filePath;
+        errors.push_back(message.str());
+    }
+}
+
 int contOpenKeys(const std::string &trimmedLine, int &lineCont, int &contOpenKey)
 {
     int firstOpenKey = 0;
@@ -44,7 +66,7 @@ int contCloseKeys(const std::string &trimmedLine, int &lineCont, int &contCloseK
     return lastCloseKey;
 }
 void processConfigLine(const std::string &trimmedLine, int &lineCont, int &contOpenKey,
-                       int &contCloseKey, int &firstOpenKey, int &lastCloseKey)
+                    int &contCloseKey, int &firstOpenKey, int &lastCloseKey)
 {
     int openLine = contOpenKeys(trimmedLine, lineCont, contOpenKey);
     int closeLine = contCloseKeys(trimmedLine, lineCont, contCloseKey);
@@ -96,6 +118,7 @@ static bool isValidConfigChar(char character)
     case ';':
     case '{':
     case '}':
+    case '#':
         return true;
 
     default:
@@ -111,9 +134,50 @@ void firstNonAlNumChar(const std::string &trimmedLine, int &lineCont, const std:
         {
             std::stringstream message5;
             message5 << "Error: Character ('" << trimmedLine[i] << "') not allowed "
-                     << "in line (" << lineCont << ") "
-                     << "in file: " << filePath;
+                    << "in line (" << lineCont << ") "
+                    << "in file: " << filePath;
             throw std::runtime_error(message5.str());
         }
     }
 }
+
+// bool validateStructure(const std::string &filePath, std::vector<std::string> &errors)
+// {
+//     std::ifstream file(filePath.c_str());
+//     if (!file.is_open())
+//     {
+//         errors.push_back("Error: Cannot open file '" + filePath + "'");
+//         return false;
+//     }
+//     std::string line;
+//     int contOpenKey = 0;
+//     int contCloseKey = 0;
+//     int firstOpenKey = 0;
+//     int lastCloseKey = 0;
+//     int lineCont = 1;
+
+//     while (std::getline(file, line))
+//     {
+//         if (!isEmptyOrComment(line))
+//         {
+//             std::string trimmed = trimLine(line);
+//             size_t commentPos = trimmed.find('#');
+//             if (commentPos != std::string::npos)
+//             {
+//                 trimmed = trimmed.substr(0, commentPos);
+//                 trimmed = trimLine(trimmed);
+//             }
+//             if (!trimmed.empty())
+//             {
+//                 checkEmptyBraceOrSemicolon(trimmed, lineCont, filePath, errors); 
+//                 checkInvalidCharacters(trimmed, lineCont, filePath, errors);
+//                 processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, 
+//                                 firstOpenKey, lastCloseKey);
+//             }
+//         }
+//         lineCont++;
+//     }
+//         checkBraceBalance(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, 
+//                     filePath, errors);
+//     return errors.empty();
+// }
