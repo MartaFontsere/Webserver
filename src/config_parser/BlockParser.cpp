@@ -153,7 +153,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             {
                 std::stringstream message2;
                 message2 << "⚠️ Error: Unterminated directive before '}' at line: "
-                         << lineNumber << "\n  Content: " << accumulated;
+                        << lineNumber << "\n  Content: " << accumulated;
                 throw std::runtime_error(message2.str());
             }
             block.setEndLine(lineNumber);
