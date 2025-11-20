@@ -1,5 +1,6 @@
 #include "../../includes/config_parser/BlockParser.hpp"
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
+#include "../../includes/config_parser/DirectiveMetadata.hpp"
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -86,22 +87,15 @@ static bool isDirectiveStart(const std::string &line)
     if (line.empty())
         return false;
 
-    const char *directives[] = {
-        "listen", "server_name", "root", "index", "location",
-        "error_page", "allow_methods", "autoindex", "proxy_pass",
-        "return", "rewrite", "cgi_path", "cgi_ext", "host",
-        "client_max_body_size", NULL};
-
     size_t spacePos = line.find(' ');
-    std::string firstWord = (spacePos == std::string::npos) ? line : line.substr(0, spacePos);
+    std::string firstWord;
 
-    for (int i = 0; directives[i] != NULL; ++i)
-    {
-        if (firstWord == directives[i])
-            return true;
-    }
+    if (spacePos == std::string::npos)
+        firstWord = line;
+    else
+        firstWord = line.substr(0, spacePos);
 
-    return false;
+    return (DirectiveMetadata::getRule(firstWord) != NULL);
 }
 
 BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &blockName, int &lineNumber)
