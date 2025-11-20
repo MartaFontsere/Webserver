@@ -1,4 +1,5 @@
 #include "../../includes/config_parser/SemanticValidator.hpp"
+#include "../../includes/config_parser/ValueValidator.hpp"
 #include <iostream>
 #include <sstream>
 
@@ -27,14 +28,13 @@ void SemanticValidator::clear()
     _warnings.clear();
 }
 
-// ========== FUNCIONES AUXILIARES ==========
 Context SemanticValidator::getBlockContext(const std::string &blockName) const
 {
     if (blockName == "http")
         return CTX_HTTP;
     if (blockName == "server")
         return CTX_SERVER;
-    if (blockName == "location")
+    if (blockName.find("location ") == 0)
         return CTX_LOCATION;
     if (blockName == "events")
         return CTX_EVENTS;
@@ -73,20 +73,38 @@ void SemanticValidator::validateDirective(const DirectiveToken &directive, Conte
 void SemanticValidator::validateBlock(const BlockParser &block, Context ctx)
 {
     std::string blockName = block.getName();
-
-    if (!blockName.empty() && blockName != "http" && blockName != "server" && blockName != "location" 
-            && blockName != "events")
+    if (!blockName.empty())
     {
-        std::stringstream message;
-        message << "Error line " << block.getStartLine()
-                << ": Unknown block '" << blockName << "'";
-        _errors.push_back(message.str());
-    }
+        bool isKnown = false;
 
-    std::vector<DirectiveToken> directives = block.getDirectives(); 
+        if (blockName == "http" || blockName == "server" || blockName == "events")
+            isKnown = true;
+        else if (blockName.find("location ") == 0)
+        {
+            isKnown = true;
+            std::string pattern = blockName.substr(9);
+
+            if (!isValidPattern(pattern))
+            {
+                std::stringstream message;
+                message << "Error line " << block.getStartLine()
+                        << ": Invalid location pattern '" << pattern << "'";
+                _errors.push_back(message.str());
+            }
+        }
+
+        if (!isKnown)
+        {
+            std::stringstream message;
+            message << "Error line " << block.getStartLine()
+                    << ": Unknown block '" << blockName << "'";
+            _errors.push_back(message.str());
+        }
+    }
+    std::vector<DirectiveToken> directives = block.getDirectives();
     for (size_t i = 0; i < directives.size(); ++i)
         validateDirective(directives[i], ctx);
-    
+
     std::vector<BlockParser> children = block.getNestedBlocks();
     for (size_t i = 0; i < children.size(); ++i)
     {
