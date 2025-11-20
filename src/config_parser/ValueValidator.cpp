@@ -66,24 +66,27 @@ bool isValidIP(const std::string &value)
     for (size_t i = 0; i < value.size(); ++i)
     {
 
-        if (value[i] == '.')
+        if(value[i] == '.')
         {
-            // TODO:
-            // - Convertir oct a número
-            // - Verificar rango 0-255
-            // - Incrementar octetCount
-            // - Limpiar oct
+            if (oct.empty())
+                return false;
+            int octet = atoi(oct.c_str());
+            if (octet > 255)
+                return false;
+            oct.clear();
+            octetCount++;         
         }
         else
-        {
-            oct += value[i]; // Acumular dígito
-        }
+            oct += value[i];
     }
-
-    // TODO: Procesar el ÚLTIMO octeto (no termina en punto)
-
-    // TODO: Verificar que octetCount == 4
-
+    if (oct.empty())
+        return false;
+    int octet = atoi(oct.c_str());
+    if (octet < 0 || octet > 255)
+        return false;
+    octetCount++;
+    if (octetCount != 4)
+        return false;
     return true;
 }
 
@@ -106,7 +109,5 @@ bool isValidBool(const std::string &value)
 
 bool isValidPattern(const std::string &value)
 {
-    // TODO: Implementar
-    (void)value;
-    return false;
+    return (value[0] == '/' || value[0] == '~' || value[0] == '=' || value[0] == '^');
 }
