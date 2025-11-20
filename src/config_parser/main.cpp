@@ -11,28 +11,30 @@ int main()
 {
     try
     {
-        std::cout << "=== TESTING CONFIG PARSER ===" << std::endl;
-        validationStructureConfigFile("test.conf");
-
+        std::vector<std::string> structuralErrors;
+        if (!validateStructure("test.conf", structuralErrors))
+        {
+            // Mostrar errores estructurales
+            std::cerr << "❌ Structural validation failed with " 
+                    << structuralErrors.size() << " error(s):" << std::endl;
+            for (size_t i = 0; i < structuralErrors.size(); ++i)
+                std::cerr << structuralErrors[i] << std::endl;
+            return 1;
+        }
         BlockParser root = readConfigFile("test.conf");
-
         SemanticValidator validator;
-        bool valid = validator.validate(root);
-        if (!valid)
+        if (!validator.validate(root))
         {
             validator.printReport();
             return 1;
         }
+
         std::cout << "✅ Configuración válida" << std::endl;
 
-        const std::vector<BlockParser> &topLevelBlocks = root.getNestedBlocks();
-        for (size_t i = 0; i < topLevelBlocks.size(); ++i)
-            root.printBlock(topLevelBlocks[i]);
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
+
     return 0;
 }

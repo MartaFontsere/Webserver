@@ -8,22 +8,6 @@
 #include "../../includes/config_parser/ValidationStructureConfig.hpp"
 #include "../../includes/config_parser/UtilsConfigParser.hpp"
 
-void isEmptyBraceOrSemicolonLine(const std::string &trimmedLine, int &lineCont, const std::string &filePath)
-{
-    if (trimmedLine[0] == '{')
-    {
-        std::stringstream message1;
-        message1 << "Error: no name before '{' in line" << "(" << lineCont << ") in file: " << filePath;
-        throw std::runtime_error(message1.str());
-    }
-    else if (trimmedLine[0] == ';')
-    {
-        std::stringstream message2;
-        message2 << "Error: no name before ';' in line" << "(" << lineCont << ") in file: " << filePath;
-        throw std::runtime_error(message2.str());
-    }
-}
-
 void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont,
                                 const std::string &filePath,
                                 std::vector<std::string> &errors)
@@ -76,22 +60,6 @@ void processConfigLine(const std::string &trimmedLine, int &lineCont, int &contO
         lastCloseKey = closeLine;
 }
 
-void resultProcesConfigLine(int contOpenKey, int contCloseKey, int firstOpenKey, int lastCloseKey, const std::string &filePath)
-{
-    if (contOpenKey > contCloseKey)
-    {
-        std::stringstream message3;
-        message3 << "Error: Expected '}' in line" << "(" << firstOpenKey << ") in file: " << filePath;
-        throw std::runtime_error(message3.str());
-    }
-    else if (contOpenKey < contCloseKey)
-    {
-        std::stringstream message4;
-        message4 << "Error: extraneous closing bace '}' in line" << "(" << lastCloseKey << ") in file: " << filePath;
-        throw std::runtime_error(message4.str());
-    }
-}
-
 static bool isValidConfigChar(char character)
 {
     unsigned char temp = static_cast<unsigned char>(character);
@@ -126,58 +94,79 @@ static bool isValidConfigChar(char character)
     }
 }
 
-void firstNonAlNumChar(const std::string &trimmedLine, int &lineCont, const std::string &filePath)
+void checkInvalidCharacters(const std::string &trimmedLine, int lineCont, std::vector<std::string> &errors)
 {
     for (size_t i = 0; i < trimmedLine.size(); ++i)
     {
         if (!isValidConfigChar(trimmedLine[i]))
         {
-            std::stringstream message5;
-            message5 << "Error: Character ('" << trimmedLine[i] << "') not allowed "
-                    << "in line (" << lineCont << ") "
-                    << "in file: " << filePath;
-            throw std::runtime_error(message5.str());
+            std::stringstream message;
+            message << "Error line " << lineCont 
+                    << ": Invalid character '" << trimmedLine[i] << "'";
+            errors.push_back(message.str());
+            return; 
         }
     }
 }
 
-// bool validateStructure(const std::string &filePath, std::vector<std::string> &errors)
-// {
-//     std::ifstream file(filePath.c_str());
-//     if (!file.is_open())
-//     {
-//         errors.push_back("Error: Cannot open file '" + filePath + "'");
-//         return false;
-//     }
-//     std::string line;
-//     int contOpenKey = 0;
-//     int contCloseKey = 0;
-//     int firstOpenKey = 0;
-//     int lastCloseKey = 0;
-//     int lineCont = 1;
+void checkBraceBalance(int contOpenKey, int contCloseKey, int firstOpenKey,
+                    int lastCloseKey, const std::string &filePath, std::vector<std::string> &errors)
+{
+    (void)filePath;  // No necesitamos filePath
 
-//     while (std::getline(file, line))
-//     {
-//         if (!isEmptyOrComment(line))
-//         {
-//             std::string trimmed = trimLine(line);
-//             size_t commentPos = trimmed.find('#');
-//             if (commentPos != std::string::npos)
-//             {
-//                 trimmed = trimmed.substr(0, commentPos);
-//                 trimmed = trimLine(trimmed);
-//             }
-//             if (!trimmed.empty())
-//             {
-//                 checkEmptyBraceOrSemicolon(trimmed, lineCont, filePath, errors); 
-//                 checkInvalidCharacters(trimmed, lineCont, filePath, errors);
-//                 processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, 
-//                                 firstOpenKey, lastCloseKey);
-//             }
-//         }
-//         lineCont++;
-//     }
-//         checkBraceBalance(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, 
-//                     filePath, errors);
-//     return errors.empty();
-// }
+    if (contOpenKey > contCloseKey)
+    {
+        std::stringstream message;
+        message << "Error line " << firstOpenKey 
+                << ": Missing closing brace '}'";
+        errors.push_back(message.str());
+    }
+    else if (contOpenKey < contCloseKey)
+    {
+        std::stringstream message;
+        message << "Error line " << lastCloseKey 
+                << ": Unexpected closing brace '}'";
+        errors.push_back(message.str());
+    }
+}
+
+bool validateStructure(const std::string &filePath, std::vector<std::string> &errors)
+{
+    std::ifstream file(filePath.c_str());
+    if (!file.is_open())
+    {
+        errors.push_back("Error: Cannot open file '" + filePath + "'");
+        return false;
+    }
+    std::string line;
+    int contOpenKey = 0;
+    int contCloseKey = 0;
+    int firstOpenKey = 0;
+    int lastCloseKey = 0;
+    int lineCont = 1;
+
+    while (std::getline(file, line))
+    {
+        if (!isEmptyOrComment(line))
+        {
+            std::string trimmed = trimLine(line);
+            size_t commentPos = trimmed.find('#');
+            if (commentPos != std::string::npos)
+            {
+                trimmed = trimmed.substr(0, commentPos);
+                trimmed = trimLine(trimmed);
+            }
+            if (!trimmed.empty())
+            {
+                checkEmptyBraceOrSemicolon(trimmed, lineCont, filePath, errors); 
+                checkInvalidCharacters(trimmed, lineCont, errors);
+                processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, 
+                                firstOpenKey, lastCloseKey);
+            }
+        }
+        lineCont++;
+    }
+        checkBraceBalance(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, 
+                    filePath, errors);
+    return errors.empty();
+}
