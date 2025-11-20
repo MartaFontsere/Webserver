@@ -1,6 +1,6 @@
-#include "../../includes/config_parser/BlockParser.hpp"
-#include "../../includes/config_parser/UtilsConfigParser.hpp"
-#include "../../includes/config_parser/DirectiveMetadata.hpp"
+#include "../../../includes/config_parser/parser/BlockParser.hpp"
+#include "../../../includes/config_parser/parser/UtilsConfigParser.hpp"
+#include "../../../includes/config_parser/validation/DirectiveMetadata.hpp"
 #include <string>
 #include <iostream>
 #include <fstream>

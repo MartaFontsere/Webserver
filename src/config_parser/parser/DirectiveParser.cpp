@@ -1,4 +1,4 @@
-#include "../../includes/config_parser/DirectiveParser.hpp"
+#include "../../../includes/config_parser/parser/DirectiveParser.hpp"
 #include <cstdlib>
 #include <iostream>
 

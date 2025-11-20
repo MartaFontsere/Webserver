@@ -1,11 +1,11 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include "../../includes/config_parser/DirectiveParser.hpp"
-#include "../../includes/config_parser/UtilsConfigParser.hpp"
-#include "../../includes/config_parser/BlockParser.hpp"
-#include "../../includes/config_parser/ValidationStructureConfig.hpp"
-#include "../../includes/config_parser/SemanticValidator.hpp"
+#include "../../includes/config_parser/parser/DirectiveParser.hpp"
+#include "../../includes/config_parser/parser/UtilsConfigParser.hpp"
+#include "../../includes/config_parser/parser/BlockParser.hpp"
+#include "../../includes/config_parser/validation/ValidationStructureConfig.hpp"
+#include "../../includes/config_parser/validation/SemanticValidator.hpp"
 
 int main()
 {

@@ -1,5 +1,5 @@
-#include "../../includes/config_parser/DirectiveMetadata.hpp"
-#include "../../includes/config_parser/ValueValidator.hpp"
+#include "../../../includes/config_parser/validation/DirectiveMetadata.hpp"
+#include "../../../includes/config_parser/validation/ValueValidator.hpp"
 #include <cstring>
 
 const DirectiveRule DirectiveMetadata::rules[] = {

@@ -1,5 +1,5 @@
-#include "../../includes/config_parser/SemanticValidator.hpp"
-#include "../../includes/config_parser/ValueValidator.hpp"
+#include "../../../includes/config_parser/validation/SemanticValidator.hpp"
+#include "../../../includes/config_parser/validation/ValueValidator.hpp"
 #include <iostream>
 #include <sstream>
 

@@ -5,8 +5,8 @@
 #include <vector>
 #include <cctype>
 #include <sstream>
-#include "../../includes/config_parser/ValidationStructureConfig.hpp"
-#include "../../includes/config_parser/UtilsConfigParser.hpp"
+#include "../../../includes/config_parser/validation/ValidationStructureConfig.hpp"
+#include "../../../includes/config_parser/parser/UtilsConfigParser.hpp"
 
 void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont,
                                 const std::string &filePath,

@@ -3,7 +3,7 @@
 
 #include <string>
 #include <vector>
-#include "BlockParser.hpp"          
+#include "../parser/BlockParser.hpp"       
 #include "DirectiveMetadata.hpp"
 
 class SemanticValidator

@@ -2,6 +2,7 @@
 #define VALIDATIONCONFIGFILE_HPP
 
 #include <string>
+#include <vector>
 
 void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont, const std::string &filePath,
                                 std::vector<std::string> &errors);
