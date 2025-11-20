@@ -72,7 +72,7 @@ bool DirectiveMetadata::isValidInContext(const std::string &directive, Context c
 }
 
 bool DirectiveMetadata::validateArguments(const std::string &directive,
-                                          const std::vector<std::string> &args)
+                                        const std::vector<std::string> &args)
 {
     const DirectiveRule *rule = getRule(directive);
     if (rule == NULL)
@@ -92,18 +92,25 @@ bool DirectiveMetadata::validateArguments(const std::string &directive,
             return false;
     }
 
-    // switch (rule->argType) {
-    //     case ARG_PORT:
-    //         return isValidPort(args[0]);  // Verificar 1-65535
-    //     case ARG_BOOL:
-    //         return isValidBool(args[0]);  // Verificar "on"/"off"
-    //     case ARG_PATH:
-    //         return isValidPath(args[0]);  // Verificar formato path
-    //     case ARG_IP:
-    //         return isValidIP(args[0]);
-    //      case ARG_STR:
-    //          default:
-    //         return true;
-    // }
-    return true;
+    switch (rule->argType) {
+        case ARG_HTTP:
+            return isValidHttpCode(args[0]);
+        case ARG_NUMBER:
+            return isValidNumber(args[0]);
+        case ARG_PORT:
+            return isValidPort(args[0]);
+        case ARG_BOOL:
+            return isValidBool(args[0]);
+        case ARG_PATH:
+            return isValidPath(args[0]);
+        case ARG_IP:
+            return isValidIP(args[0]);
+        case ARG_HOST:
+            return isValidHost(args[0]);
+        case ARG_PATTERN:
+            return isValidPattern(args[0]);
+        case ARG_STR:
+        default:
+            return true;
+    }
 }
