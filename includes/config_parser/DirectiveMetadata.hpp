@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#define MAX_ARGS 5
+
 // ========== 1. CONTEXTOS ==========
 enum Context
 {
@@ -35,7 +37,7 @@ struct DirectiveRule
     int allowedContexts;  // Bitfield de contextos
     int minArgs;          // Mínimo argumentos
     int maxArgs;          // Máximo argumentos (-1 = ilimitado)
-    ArgumentType argType; // Tipo de argumento
+    ArgumentType argType[MAX_ARGS]; // Tipo de argumento
     bool unique;          // ¿Solo una por contexto?
 };
 
@@ -46,6 +48,7 @@ private:
     static const DirectiveRule rules[];
     static const size_t rulesCount;
 
+    static bool validateArgumentTypes(const DirectiveRule *rule, const std::vector<std::string> &args);
 public:
     static const DirectiveRule *getRule(const std::string &directiveName);
     static bool isValidInContext(const std::string &directive, Context ctx);
