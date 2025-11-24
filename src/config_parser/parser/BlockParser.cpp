@@ -6,13 +6,34 @@
 #include <fstream>
 #include <sstream>
 
-// Construc
+/**
+ * @brief Default constructor - creates an empty block
+ *
+ * Initializes a BlockParser with empty name and line numbers set to 0.
+ */
+
 BlockParser::BlockParser() : startLine(0), endLine(0)
 {
 }
-
+/**
+ * @brief Constructor with block name and starting line
+ *
+ * Creates a BlockParser for a named block (e.g., "http", "server", "location /").
+ *
+ * @param blockName Name of the block (can include arguments like "location /api")
+ * @param start Line number where the block starts in the config file
+ */
 BlockParser::BlockParser(const std::string &blockName, int start) : name(blockName), startLine(start), endLine(0) {};
 
+/**
+ * @brief Assignment operator - deep copy of block data
+ *
+ * Copies name, directives, and nested blocks from another BlockParser.
+ * Implements self-assignment protection.
+ *
+ * @param other BlockParser to copy from
+ * @return Reference to this object (*this)
+ */
 BlockParser &BlockParser::operator=(const BlockParser &other)
 {
     if (this != &other)
@@ -24,64 +45,129 @@ BlockParser &BlockParser::operator=(const BlockParser &other)
     return *this;
 }
 
+/**
+ * @brief Destructor - cleans up resources
+ *
+ * Default destructor. Vectors clean themselves automatically.
+ */
 BlockParser::~BlockParser()
 {
 }
 
-// Getters
+/**
+ * @brief Gets the name of the block
+ *
+ * @return Block name (e.g., "http", "server", "location /api")
+ */
 std::string BlockParser::getName() const
 {
     return name;
 }
 
+/**
+ * @brief Gets all directives contained in this block
+ *
+ * Returns a copy of the directives vector. Does not include directives
+ * from nested blocks.
+ *
+ * @return Vector of DirectiveToken objects
+ */
 std::vector<DirectiveToken> BlockParser::getDirectives() const
 {
     return directives;
 }
 
+/**
+ * @brief Gets all nested blocks (children) of this block
+ *
+ * Returns a copy of the nested blocks vector. For recursive traversal
+ * of the entire configuration tree.
+ *
+ * @return Vector of BlockParser objects
+ */
 std::vector<BlockParser> BlockParser::getNestedBlocks() const
 {
     return nestedBlocks;
 }
 
+/**
+ * @brief Gets the line number where the block starts
+ *
+ * @return Starting line number in the config file
+ */
 int BlockParser::getStartLine() const
 {
     return startLine;
 }
 
+/**
+ * @brief Gets the line number where the block ends
+ *
+ * The ending line is the line with the closing brace '}'.
+ *
+ * @return Ending line number in the config file
+ */
 int BlockParser::getEndLine() const
 {
     return endLine;
 }
 
+/**
+ * @brief Sets the name of the block
+ *
+ * @param newName New name for the block
+ */
 void BlockParser::setName(const std::string &newName)
 {
     name = newName;
 }
 
+/**
+ * @brief Sets the ending line number
+ *
+ * Called when the closing brace '}' of the block is found.
+ *
+ * @param line Line number where the block ends
+ */
 void BlockParser::setEndLine(int line)
 {
     endLine = line;
 }
-
+/**
+ * @brief Adds a directive to this block
+ *
+ * Appends a parsed directive to the directives vector.
+ *
+ * @param directive DirectiveToken to add (contains name, values, lineNumber)
+ */
 void BlockParser::addDirective(const DirectiveToken &directive)
 {
     directives.push_back(directive);
 }
 
+/**
+ * @brief Adds a nested block to this block
+ *
+ * Appends a child block to the nestedBlocks vector.
+ * Used for building the hierarchical config tree.
+ *
+ * @param nest BlockParser object representing the nested block
+ */
 void BlockParser::addNest(const BlockParser &nest)
 {
     nestedBlocks.push_back(nest);
 }
 
 /**
- * @brief
+ * @brief Checks if a line starts with a known directive
  *
- * @param file fsdkfd lkdajflsk  slkfjslkfg
- * @param blockName fkjsdlkf
- * @return BlockParser
+ * Extracts the first word from the line and verifies if it matches
+ * any directive registered in DirectiveMetadata. Used to detect
+ * unterminated directives (missing semicolon).
+ *
+ * @param line Trimmed line to check
+ * @return true if line starts with a known directive, false otherwise
  */
-
 static bool isDirectiveStart(const std::string &line)
 {
     if (line.empty())
@@ -98,6 +184,25 @@ static bool isDirectiveStart(const std::string &line)
     return (DirectiveMetadata::getRule(firstWord) != NULL);
 }
 
+/**
+ * @brief Recursively parses a configuration block from a file stream
+ *
+ * Reads lines from the file until the closing brace '}' is found.
+ * Handles:
+ * - Multi-line directives (accumulated until ';')
+ * - Nested blocks (recursive parseBlock calls)
+ * - Inline and full-line comments (stripped out)
+ * - Syntax validation (unterminated directives, missing semicolons)
+ *
+ * The function modifies the lineNumber reference to track the current
+ * position in the file during recursive parsing.
+ *
+ * @param file Input file stream (must be open and readable)
+ * @param blockName Name of the block being parsed (e.g., "server", "location /")
+ * @param lineNumber Reference to current line number (modified during parsing)
+ * @return BlockParser object containing all parsed directives and nested blocks
+ * @throw std::runtime_error if syntax errors are detected (unterminated directives, etc.)
+ */
 BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &blockName, int &lineNumber)
 {
     DirectiveParser parser;
@@ -114,7 +219,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
 
         if (isEmptyOrComment(trimmed))
             continue;
-
+        // Strip inline comments
         size_t commentPos = trimmed.find('#');
         if (commentPos != std::string::npos)
         {
@@ -124,7 +229,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
 
         if (trimmed.empty())
             continue;
-
+        // Detect unterminated directive (missing semicolon)
         if (!accumulated.empty() && isDirectiveStart(trimmed))
         {
             std::stringstream message;
@@ -147,7 +252,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             {
                 std::stringstream message2;
                 message2 << "⚠️ Error: Unterminated directive before '}' at line: "
-                        << lineNumber << "\n  Content: " << accumulated;
+                         << lineNumber << "\n  Content: " << accumulated;
                 throw std::runtime_error(message2.str());
             }
             block.setEndLine(lineNumber);
@@ -156,6 +261,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
                 block.addDirective(parsed[i]);
             return block;
         }
+        // Nested block opening
         else if (trimmed[trimmed.size() - 1] == '{')
         {
             std::string blockLine = accumulated;
@@ -165,6 +271,7 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             block.addNest(child);
             accumulated.clear();
         }
+        // Directive ending
         else if (trimmed[trimmed.size() - 1] == ';')
         {
             accumulated = accumulated.substr(0, accumulated.size() - 1);
@@ -178,15 +285,26 @@ BlockParser BlockParser::parseBlock(std::ifstream &file, const std::string &bloc
             accumulated.clear();
         }
     }
+    // Reached EOF with unterminated directive
     if (!accumulated.empty())
     {
         std::stringstream message4;
         message4 << "⚠️ Error: Unterminated directive at EOF \n"
-                << "  Start at line: " << directiveStartLine << "\n  Content: " << accumulated << "\n";
+                 << "  Start at line: " << directiveStartLine << "\n  Content: " << accumulated << "\n";
         throw std::runtime_error(message4.str());
     }
     return block;
 }
+
+/**
+ * @brief Recursively prints the entire block structure (for debugging)
+ *
+ * Displays block name, line range, all directives with their values,
+ * and recursively prints all nested blocks. Useful for debugging
+ * the parsing process and visualizing the configuration tree.
+ *
+ * @param block BlockParser object to print
+ */
 void BlockParser::printBlock(const BlockParser &block)
 {
     std::cout << "\n=== BLOCK ===" << std::endl;
