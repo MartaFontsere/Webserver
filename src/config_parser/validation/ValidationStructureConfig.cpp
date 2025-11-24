@@ -15,14 +15,14 @@ void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont,
     if (trimmedLine[0] == '{')
     {
         std::stringstream message;
-        message << "Error line " << lineCont 
+        message << "Error line " << lineCont
                 << ": No name before '{' in " << filePath;
         errors.push_back(message.str());
     }
     else if (trimmedLine[0] == ';')
     {
         std::stringstream message;
-        message << "Error line " << lineCont 
+        message << "Error line " << lineCont
                 << ": No name before ';' in " << filePath;
         errors.push_back(message.str());
     }
@@ -50,7 +50,7 @@ int contCloseKeys(const std::string &trimmedLine, int &lineCont, int &contCloseK
     return lastCloseKey;
 }
 void processConfigLine(const std::string &trimmedLine, int &lineCont, int &contOpenKey,
-                    int &contCloseKey, int &firstOpenKey, int &lastCloseKey)
+                       int &contCloseKey, int &firstOpenKey, int &lastCloseKey)
 {
     int openLine = contOpenKeys(trimmedLine, lineCont, contOpenKey);
     int closeLine = contCloseKeys(trimmedLine, lineCont, contCloseKey);
@@ -87,6 +87,16 @@ static bool isValidConfigChar(char character)
     case '{':
     case '}':
     case '#':
+    case '~':
+    case '^':
+    case '\\':
+    case '|':
+    case '(':
+    case ')':
+    case '[':
+    case ']':
+    case '+':
+    case '?':
         return true;
 
     default:
@@ -101,30 +111,30 @@ void checkInvalidCharacters(const std::string &trimmedLine, int lineCont, std::v
         if (!isValidConfigChar(trimmedLine[i]))
         {
             std::stringstream message;
-            message << "Error line " << lineCont 
+            message << "Error line " << lineCont
                     << ": Invalid character '" << trimmedLine[i] << "'";
             errors.push_back(message.str());
-            return; 
+            return;
         }
     }
 }
 
 void checkBraceBalance(int contOpenKey, int contCloseKey, int firstOpenKey,
-                    int lastCloseKey, const std::string &filePath, std::vector<std::string> &errors)
+                       int lastCloseKey, const std::string &filePath, std::vector<std::string> &errors)
 {
-    (void)filePath;  // No necesitamos filePath
+    (void)filePath; // No necesitamos filePath
 
     if (contOpenKey > contCloseKey)
     {
         std::stringstream message;
-        message << "Error line " << firstOpenKey 
+        message << "Error line " << firstOpenKey
                 << ": Missing closing brace '}'";
         errors.push_back(message.str());
     }
     else if (contOpenKey < contCloseKey)
     {
         std::stringstream message;
-        message << "Error line " << lastCloseKey 
+        message << "Error line " << lastCloseKey
                 << ": Unexpected closing brace '}'";
         errors.push_back(message.str());
     }
@@ -158,15 +168,15 @@ bool validateStructure(const std::string &filePath, std::vector<std::string> &er
             }
             if (!trimmed.empty())
             {
-                checkEmptyBraceOrSemicolon(trimmed, lineCont, filePath, errors); 
+                checkEmptyBraceOrSemicolon(trimmed, lineCont, filePath, errors);
                 checkInvalidCharacters(trimmed, lineCont, errors);
-                processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey, 
-                                firstOpenKey, lastCloseKey);
+                processConfigLine(trimmed, lineCont, contOpenKey, contCloseKey,
+                                  firstOpenKey, lastCloseKey);
             }
         }
         lineCont++;
     }
-        checkBraceBalance(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey, 
-                    filePath, errors);
+    checkBraceBalance(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey,
+                      filePath, errors);
     return errors.empty();
 }
