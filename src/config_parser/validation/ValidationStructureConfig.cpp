@@ -8,6 +8,21 @@
 #include "../../../includes/config_parser/validation/ValidationStructureConfig.hpp"
 #include "../../../includes/config_parser/parser/UtilsConfigParser.hpp"
 
+/**
+ * @brief Validates that braces and semicolons are not orphaned
+ *
+ * Checks if a line starts with '{' or ';' without a preceding name/directive.
+ * This catches syntax errors like:
+ *   {           ← Invalid (no block name)
+ *   ;           ← Invalid (no directive name)
+ *
+ * Errors are accumulated (not thrown) for complete error reporting.
+ *
+ * @param trimmedLine Line to check (already trimmed)
+ * @param lineCont Line number in the file
+ * @param filePath Path to the config file (for error messages)
+ * @param errors Vector to accumulate error messages
+ */
 void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont,
                                 const std::string &filePath,
                                 std::vector<std::string> &errors)
@@ -28,6 +43,18 @@ void checkEmptyBraceOrSemicolon(const std::string &trimmedLine, int lineCont,
     }
 }
 
+/**
+ * @brief Counts opening braces and tracks the first occurrence
+ *
+ * Increments the open brace counter if the line ends with '{'.
+ * Records the line number of the FIRST opening brace found
+ * (used for error reporting if braces are unbalanced).
+ *
+ * @param trimmedLine Line to check (already trimmed)
+ * @param lineCont Current line number (for tracking first occurrence)
+ * @param contOpenKey Reference to total open brace counter (incremented)
+ * @return Line number of first '{' if this is the first, 0 otherwise
+ */
 int contOpenKeys(const std::string &trimmedLine, int &lineCont, int &contOpenKey)
 {
     int firstOpenKey = 0;
@@ -39,6 +66,19 @@ int contOpenKeys(const std::string &trimmedLine, int &lineCont, int &contOpenKey
     }
     return firstOpenKey;
 }
+
+/**
+ * @brief Counts closing braces and tracks the last occurrence
+ *
+ * Increments the close brace counter if the line ends with '}'.
+ * Records the line number of EVERY closing brace found
+ * (the last one is used for error reporting if extra braces exist).
+ *
+ * @param trimmedLine Line to check (already trimmed)
+ * @param lineCont Current line number (for tracking last occurrence)
+ * @param contCloseKey Reference to total close brace counter (incremented)
+ * @return Line number if line ends with '}', 0 otherwise
+ */
 int contCloseKeys(const std::string &trimmedLine, int &lineCont, int &contCloseKey)
 {
     int lastCloseKey = 0;
@@ -49,6 +89,22 @@ int contCloseKeys(const std::string &trimmedLine, int &lineCont, int &contCloseK
     }
     return lastCloseKey;
 }
+
+/**
+ * @brief Processes a config line and updates brace tracking state
+ *
+ * Calls contOpenKeys and contCloseKeys to count braces, then updates
+ * the tracking variables for first opening and last closing braces.
+ * These are used later to provide accurate error messages if braces
+ * are unbalanced.
+ *
+ * @param trimmedLine Line to process (already trimmed)
+ * @param lineCont Current line number
+ * @param contOpenKey Reference to total open brace counter
+ * @param contCloseKey Reference to total close brace counter
+ * @param firstOpenKey Reference to first open brace line (updated if first)
+ * @param lastCloseKey Reference to last close brace line (updated each time)
+ */
 void processConfigLine(const std::string &trimmedLine, int &lineCont, int &contOpenKey,
                        int &contCloseKey, int &firstOpenKey, int &lastCloseKey)
 {
@@ -60,6 +116,24 @@ void processConfigLine(const std::string &trimmedLine, int &lineCont, int &contO
         lastCloseKey = closeLine;
 }
 
+/**
+ * @brief Checks if a character is allowed in nginx-style config files
+ *
+ * Allowed characters:
+ * - Alphanumeric (a-z, A-Z, 0-9)
+ * - Path characters: / . _ -
+ * - Special: : * , = @ $ " ' (quotes)
+ * - Whitespace: space tab
+ * - Syntax: ; { }
+ * - Comments: #
+ * - Regex: ~ ^ \ | ( ) [ ] + ?
+ *
+ * Note: Regex characters added to support location patterns
+ * like "location ~ \.php$" or "location ^~ /static/".
+ *
+ * @param character Character to validate
+ * @return true if character is allowed, false otherwise
+ */
 static bool isValidConfigChar(char character)
 {
     unsigned char temp = static_cast<unsigned char>(character);
@@ -104,6 +178,17 @@ static bool isValidConfigChar(char character)
     }
 }
 
+/**
+ * @brief Validates all characters in a line against allowed character set
+ *
+ * Scans the entire line character by character. If an invalid character
+ * is found, adds an error and returns immediately (reports only first
+ * invalid character per line).
+ *
+ * @param trimmedLine Line to validate (already trimmed)
+ * @param lineCont Line number in the file
+ * @param errors Vector to accumulate error messages
+ */
 void checkInvalidCharacters(const std::string &trimmedLine, int lineCont, std::vector<std::string> &errors)
 {
     for (size_t i = 0; i < trimmedLine.size(); ++i)
@@ -119,11 +204,25 @@ void checkInvalidCharacters(const std::string &trimmedLine, int lineCont, std::v
     }
 }
 
+/**
+ * @brief Validates that opening and closing braces are balanced
+ *
+ * Checks three conditions:
+ * - contOpenKey > contCloseKey → Missing '}' (error at first '{')
+ * - contOpenKey < contCloseKey → Extra '}' (error at last '}')
+ * - contOpenKey == contCloseKey → Balanced (OK)
+ *
+ * @param contOpenKey Total count of opening braces '{'
+ * @param contCloseKey Total count of closing braces '}'
+ * @param firstOpenKey Line number of first '{'
+ * @param lastCloseKey Line number of last '}'
+ * @param filePath Path to config file (unused, suppressed)
+ * @param errors Vector to accumulate error messages
+ */
 void checkBraceBalance(int contOpenKey, int contCloseKey, int firstOpenKey,
                        int lastCloseKey, const std::string &filePath, std::vector<std::string> &errors)
 {
     (void)filePath; // No necesitamos filePath
-
     if (contOpenKey > contCloseKey)
     {
         std::stringstream message;
@@ -140,6 +239,38 @@ void checkBraceBalance(int contOpenKey, int contCloseKey, int firstOpenKey,
     }
 }
 
+/**
+ * @brief Validates the structural correctness of a config file
+ *
+ * Performs low-level syntax validation BEFORE parsing:
+ * 1. File accessibility
+ * 2. Character whitelist validation
+ * 3. Orphaned braces/semicolons detection
+ * 4. Brace balance verification
+ * 5. Comment handling (full-line and inline)
+ *
+ * This is a lightweight pre-flight check. It does NOT validate:
+ * - Directive semantics (handled by SemanticValidator)
+ * - Block nesting rules (handled by SemanticValidator)
+ * - Argument types (handled by DirectiveMetadata + ValueValidator)
+ *
+ * Validation process:
+ * 1. Open file
+ * 2. Read line by line
+ * 3. Skip empty lines and comments
+ * 4. Strip inline comments
+ * 5. Check for valid characters
+ * 6. Check for orphaned { or ;
+ * 7. Track brace counts
+ * 8. Verify brace balance at EOF
+ *
+ * All errors are accumulated (not fail-fast) to provide complete
+ * error reporting in a single pass.
+ *
+ * @param filePath Path to the configuration file to validate
+ * @param errors Vector to accumulate error messages
+ * @return true if structure is valid, false if errors were found
+ */
 bool validateStructure(const std::string &filePath, std::vector<std::string> &errors)
 {
     std::ifstream file(filePath.c_str());
@@ -160,6 +291,7 @@ bool validateStructure(const std::string &filePath, std::vector<std::string> &er
         if (!isEmptyOrComment(line))
         {
             std::string trimmed = trimLine(line);
+            // Strip inline comments
             size_t commentPos = trimmed.find('#');
             if (commentPos != std::string::npos)
             {
@@ -176,6 +308,7 @@ bool validateStructure(const std::string &filePath, std::vector<std::string> &er
         }
         lineCont++;
     }
+    // Final brace balance check
     checkBraceBalance(contOpenKey, contCloseKey, firstOpenKey, lastCloseKey,
                       filePath, errors);
     return errors.empty();
