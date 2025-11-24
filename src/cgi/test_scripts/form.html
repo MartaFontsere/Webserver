@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>CGI Test Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>CGI Test Form</h1>
+
+    <h2>GET Request Test</h2>
+    <form action="/cgi-bin/hello.php" method="GET">
+        <label>Name:</label>
+        <input type="text" name="name" value="World" />
+        <button type="submit">Send GET</button>
+    </form>
+
+    <hr>
+
+    <h2>POST Request Test</h2>
+    <form action="/cgi-bin/echo.py" method="POST">
+        <label>Message:</label>
+        <textarea name="message" rows="4">Hello from POST request!</textarea>
+        <button type="submit">Send POST</button>
+    </form>
+
+    <hr>
+
+    <h2>Environment Test</h2>
+    <form action="/cgi-bin/env.sh" method="GET">
+        <button type="submit">View Environment</button>
+    </form>
+</body>
+
+</html>
