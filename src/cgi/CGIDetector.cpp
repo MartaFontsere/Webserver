@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 
-static std::string getExtension(const std::string &path)
+std::string CGIDetector::getExtension(const std::string &path)
 {
     size_t lastDot = path.find_last_of('.');
     size_t questPos = path.find('?');
@@ -13,7 +13,7 @@ static std::string getExtension(const std::string &path)
     return path.substr(lastDot);
 }
 
-static std::string removeQueryString(const std::string &uri)
+std::string CGIDetector::removeQueryString(const std::string &uri)
 {
     size_t quest = uri.find('?');
 
@@ -22,7 +22,7 @@ static std::string removeQueryString(const std::string &uri)
     return uri.substr(0, quest);
 }
 
-static bool isCGIRequest(const std::string &uri, const std::vector<std::string> &cgiExsts)
+bool CGIDetector::isCGIRequest(const std::string &uri, const std::vector<std::string> &cgiExsts)
 {
     std::string ext = getExtension(uri);
 
@@ -34,7 +34,7 @@ static bool isCGIRequest(const std::string &uri, const std::vector<std::string> 
     return false;
 }
 
-static std::string getCGIExecutable(const std::string &scriptPath, const std::vector<std::string> &cgiPaths, 
+std::string CGIDetector::getCGIExecutable(const std::string &scriptPath, const std::vector<std::string> &cgiPaths, 
                                     const std::vector<std::string> &cgiExsts)
 {
     std::string ext = getExtension(scriptPath);
@@ -49,11 +49,10 @@ static std::string getCGIExecutable(const std::string &scriptPath, const std::ve
     return "";
 }
 
-static std::string resolveScriptPath(const std::string &uri, const std::string &root)
+std::string CGIDetector::resolveScriptPath(const std::string &uri, const std::string &root)
 {
     std::string headUri = removeQueryString(uri);
     char firstUri = headUri[0];
-    char lastUri = headUri[headUri.size() - 1];
     char lastRoot = root[root.size() - 1];
 
     if (headUri.empty())
