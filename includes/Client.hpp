@@ -6,6 +6,23 @@
 #include <ctime>
 #include "HttpRequest.hpp"
 #include "HttpResponse.hpp"
+
+// HARDCODEADO, va en configfile
+#define WWW_ROOT "./www" // raíz de los archivos web
+
+/*
+Define un document root donde estarán tus archivos web. Por ejemplo:
+    WWW_ROOT "./www"
+
+
+Si recibes /index.html, el servidor busca:
+    ./www/index.html
+
+Si recibes /css/style.css → busca ./www/css/style.css.
+
+Esto evita que sirvas archivos del sistema fuera de tu carpeta web.
+*/
+
 class Client
 {
 public:
@@ -52,8 +69,21 @@ private:
 
     HttpResponse _httpResponse;
 
+    // Límite razonable para servir en memoria. Ajustar según recursos.
+    static const size_t MAX_STATIC_FILE_SIZE = 10 * 1024 * 1024; // 10 MB SE PUEDE DECLARAR ASI A PELO?
+
     // Helpper
     void applyConnectionHeader();
+    bool validateMethod();
+    std::string sanitizePath(const std::string &path);
+    std::string buildFullPath(const std::string &cleanPath);
+    bool serveStaticFile(const std::string &fullPath);
+    bool readFileToString(const std::string &fullPath, std::string &out, size_t size); // Helpper para serveStaticFile
+
+    std::string determineMimeType(const std::string &path);
+
+    // HARDCODEADO, va en configfile -> Funciona como lookup rápido para saber qué Content-Type poner según extensión
+    std::map<std::string, std::string> mimeTypes;
 };
 
 /*

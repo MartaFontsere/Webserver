@@ -34,6 +34,12 @@ void HttpResponse::setErrorResponse(int code)
 
     switch (code)
     {
+    case 403:
+        _statusCode = 403;
+        _statusMessage = "Forbidden";
+        _body = "<html><body><h1>403 Forbidden</h1></body></html>";
+        break;
+
     case 404:
         _statusCode = 404;
         _statusMessage = "Not Found";
@@ -44,6 +50,12 @@ void HttpResponse::setErrorResponse(int code)
         _statusCode = 405;
         _statusMessage = "Method Not Allowed";
         _body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
+        break;
+
+    case 413:
+        _statusCode = 413;
+        _statusMessage = "Request Entity Too Large";
+        _body = "<html><body><h1>413 Request Entity Too Large</h1></body></html>";
         break;
 
     case 500:

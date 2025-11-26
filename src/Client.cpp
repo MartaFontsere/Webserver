@@ -1,6 +1,17 @@
 #include "Client.hpp"
 #include <arpa/inet.h> // inet_ntoa()
 #include <iostream>    // para imprimir mensajes
+#include <sys/stat.h>
+#include <fstream> // para ifstream
+#include <sstream> // para ostringstream
+
+#include <sys/stat.h>
+#include <fcntl.h>   // open
+#include <unistd.h>  // close, read
+#include <sstream>   // ostringstream
+#include <cerrno>    // errno
+#include <limits>    // numeric_limits
+#include <algorithm> // std::min
 
 /*
 ¿Por qué necesitamos Client.cpp?
@@ -20,6 +31,16 @@ La lógica de parseHeaders, Content-Length, etc. se moverá a una clase HttpRequ
 
 Client::Client(int fd, const sockaddr_in &addr) : _clientFd(fd), _addr(addr), _closed(false), _writeBuffer(), _writeOffset(0), _lastActivity(time(NULL)), _requestComplete(false)
 {
+    mimeTypes.insert(std::make_pair("html", "text/html"));
+    mimeTypes.insert(std::make_pair("css", "text/css"));
+    mimeTypes.insert(std::make_pair("js", "application/javascript"));
+    mimeTypes.insert(std::make_pair("png", "image/png"));
+    mimeTypes.insert(std::make_pair("jpg", "image/jpeg"));
+    mimeTypes.insert(std::make_pair("jpeg", "image/jpeg"));
+    mimeTypes.insert(std::make_pair("gif", "image/gif"));
+    mimeTypes.insert(std::make_pair("svg", "image/svg+xml"));
+    mimeTypes.insert(std::make_pair("ico", "image/x-icon"));
+    // HARDCODEADO, ESTO IRA EN EL CONFIGFILE SUPONGO
 }
 
 /*
@@ -389,7 +410,7 @@ if (_headersComplete && _contentLength > 0)
 
 */
 
-// HELPPER
+// HELPPERS
 void Client::applyConnectionHeader()
 {
     if (_httpRequest.isKeepAlive())
@@ -398,41 +419,1008 @@ void Client::applyConnectionHeader()
         _httpResponse.setHeader("Connection", "close");
 }
 
-bool Client::processRequest()
+bool Client::validateMethod()
 {
-    // 1) Reseteamos cualquier HttpResponse previa (estado limpio) -> Limpia HttpResponse previo
-    _httpResponse = HttpResponse(); // crea un HttpResponse por defecto y lo copia en el miembro //AQUÍ O AL ACABAR DE USARLO LO DEJAMOS LISTO PARA LA PRÓXIMA??? LA PRIMERA VEZ QUE SE USE YA SE CREA SOLO CON CLIENT, ASI QUE NO PASARÍA NADA
-
-    // 2) Validar método HTTP (por ahora solo admitimos GET)
     const std::string &method = _httpRequest.getMethod();
     if (method != "GET")
     {
         // Respondemos con 405 Method Not Allowed (contenido + headers dentro de HttpResponse)
         _httpResponse.setErrorResponse(405);
         applyConnectionHeader(); // Así el servidor maneja keep alive corretamente tanto en rutas validas como en invalidas (erroes), siempre coherente
-        return true;             // hemos generado una respuesta válida -> no es un fallo fatal
+        return false;
+    }
+    return true;
+}
+
+// Devuelve "__FORBIDDEN__" si detecta path traversal o ruta inválida
+// Devuelve "/" si path es "/".
+std::string Client::sanitizePath(const std::string &path)
+{
+    if (path.empty())
+        return std::string("/"); // si nos piden una ruta vacía, servimos raíz
+
+    // Debe empezar por '/'
+    if (path[0] != '/')
+        return "__FORBIDDEN__";
+
+    std::vector<std::string> allParts;
+    size_t i = 1; // saltamos la primera '/' para evitar vacío al dividir
+    while (i <= path.size())
+    {
+        size_t j = path.find('/', i);
+        std::string part;
+        if (j == std::string::npos)
+        {
+            part = path.substr(i);
+            i = path.size() + 1;
+        }
+        else
+        {
+            part = path.substr(i, j - i);
+            i = j + 1;
+        }
+        if (part.empty() || part == ".")
+        {
+            // ignorar
+            continue;
+        }
+        else if (part == "..")
+        {
+            if (allParts.empty())
+            {
+                // intento de escapar por encima del root -> prohibido
+                return std::string("__FORBIDDEN__");
+            }
+            allParts.pop_back();
+        }
+        else
+            allParts.push_back(part);
     }
 
-    // 2. Validar ruta
-    const std::string &path = _httpRequest.getPath();
+    // Reconstruir ruta limpia
+    std::string cleanPath = "/";
+    for (size_t k = 0; k < allParts.size(); ++k)
+    {
+        cleanPath += allParts[k];
+        if (k + 1 < allParts.size())
+            cleanPath += "/";
+    }
 
-    if (path != "/") // caso para empezar
+    // Si la ruta termina en '/', añadimos index.html
+    if (!path.empty() && path[path.size() - 1] == '/')
+        cleanPath += (cleanPath.size() > 1 ? "/index.html" : "index.html");
+
+    // Si quedó vacío, devolver "/"
+    if (cleanPath.empty())
+        return "/";
+
+    return cleanPath;
+}
+/*
+Aquí solo decides si la ruta es inválida o peligrosa.
+No generas respuesta aún.
+Solo transformas un input a un resultado lógico.
+
+Esto lo hace predecible, testeable y modular.
+
+"__FORBIDDEN__" es un sentinel value.
+
+Otros servidores usan:
+    return false;
+    throw ForbiddenException();
+    códigos enum como:
+        enum PathStatus { OK, FORBIDDEN, NOT_FOUND };
+
+Pero dado que tu flujo es simple, "__FORBIDDEN__" funciona perfectamente.
+
+Si luego quieres mejorarlo:
+    ✔️ puedes cambiarlo a un enum
+    ✔️ o a un objeto tipo PathResult
+
+Pero de momento asi está perfecto
+
+
+¿Qué es un "path traversal"?
+    Es un tipo de ataque en el que un cliente intenta salir del directorio permitido usando rutas como:
+        /../../etc/passwd
+        /imagenes/../secretos/clave.txt
+    En lenguaje de rutas, .. significa “sal del directorio actual”.
+
+    El navegador envía la ruta, y si tu servidor la concatena sin validar:
+        WWW_ROOT + "/../../etc/passwd"
+
+    ➡️ El atacante podría acceder a archivos fuera de tu web root.
+
+    Esto es crítico en cualquier webserver.
+
+
+CÓDIGO:
+Tu función pretende hacer una primera limpieza rápida
+
+0. Firma
+std::string Client::sanitizePath(const std::string &path)
+    Entrada: path tal como viene en la petición HTTP (por ejemplo "/index.html", "/a/../b", "/foo//bar").
+
+    Salida: una ruta "limpia" normalizada (por ejemplo "/a/b" o "/index.html"), o la cadena especial "__FORBIDDEN__" para indicar que el path es inválido/peligroso.
+
+1. Si el path está vacío → devolvemos "/"
+if (path.empty())
+    return "/";
+
+    Simplemente evita rutas raras tipo:
+    GET HTTP/1.1 → path vacío → servimos raíz /.
+
+2. Siguiente paso: “Asegurarnos que empieza por /”
+    if (cleanPath[0] != '/')
+        cleanPath = "/" + cleanPath;
+
+    Esto es simplemente un saneamiento sintáctico.
+    Si la primera letra no es '/', consideramos la petición inválida o maliciosa.
+    Tu servidor espera rutas absolutas, no relativas.
+        No intentamos arreglar rutas relativas: la especificación HTTP espera un request-target absoluto.
+    No intentamos arreglar rutas relativas: la especificación HTTP espera un request-target absoluto.
+    ! Resultado: devolver "__FORBIDDEN__" para que el controlador principal genere un 403 (o 400) - REVISAR
+
+
+3. De inicio rechazaba cualquier ".." explícito
+    if (path.find("..") != std::string::npos)
+        return "__FORBIDDEN__";
+
+    Esto es una defensa básica contra path traversal.
+    Si alguien pide:
+        GET /../etc/passwd
+
+    ➡️ detectamos ".."
+    ➡️ devolvemos "__FORBIDDEN__"
+
+        Es correcto y normal bloquear cualquier .. en sanitizePath, aunque haya casos donde NO saldría del root. Simplificado. A nivel de diseño no está permitido, y no podrias comprobar de forma segura si escapa del root, asi que siempre se bloquea
+
+    Pero OJO: esto NO seria suficiente en un servidor mas avanzado, porque existen variantes y trucos:
+        /.%2e/ (URL encoded)
+        %2e%2e/ (URL encoded double dot)
+        /foo/../bar
+        /foo//bar
+        /foo/./bar
+        /foo//../bar
+
+        O incluso:
+            /something/%2e%2e/secret
+
+        Cuando el servidor decodifica internamente %2e → “.”
+        El atacante consigue bypass.
+
+        Por eso la función sola no protege del todo. SanitizePath filtra basura obvia
+
+
+3.1. Versión mejorada, no devolvemos forbiden siempre, hay que gestionar varias situaciones
+
+| CASO                                       | ¿QUÉ DEVUELVE `sanitizePath()`? |
+| ------------------------------------------ | ------------------------------- |
+| Path vacío                                 | `"/"`                           |
+| Path no empieza por `/`                    | `"__FORBIDDEN__"`               |
+| Path intenta escapar (`..` escapando root) | `"__FORBIDDEN__"`               |
+| Path válido pero con `.` o `..` internos   | ruta normalizada                |
+| Path termina en `/`                        | añadir `index.html`             |
+
+Para ello vamos a dividir la ruta en partes
+    Porque es la única forma fiable de entender realmente qué significa una ruta, especialmente cuando incluye cosas como:
+        . (directorio actual)
+        .. (directorio padre)
+        // (doble slash)
+
+    rutas con basura (ej: /foo/../bar/././baz)
+
+    El servidor no puede adivinar qué significa una ruta solo buscando substrings como "..".
+    Pero sí puede interpretarla correctamente si la separa en segmentos y los procesa.
+
+¿Qué problema tiene la versión antigua?
+
+    Antes hacías algo como:
+        Si hay .. → FORBIDDEN
+        Si acaba en / → añade index.html
+        Quitar dobles barras quizá
+        Y poco más
+
+    ¿Y qué pasa?
+
+        Problema 1 → Falsos positivos
+            Hay rutas con .. que son seguras: /imagenes/../foto.jpg
+                Esto NO sale del root.
+                La versión antigua lo prohibía aunque fuera legítimo.
+
+        Problema 2 → Falsos negativos (inseguridad real)
+            Un atacante puede usar combinaciones:
+                /a/b/../../../../../etc/passwd
+
+            O encoded:
+                /a/%2e%2e/%2e%2e/etc/passwd
+
+            O mezclas raras:
+                /foo/bar/..///../secret
+
+            Si te limitas a find(".."), esto se te cuela seguro.
+
+        Problema 3 → Navegación real del filesystem
+            El servidor debe comportarse como si navegara por carpetas.
+            Eso significa:
+                "." → no hace nada
+                ".." → subir un nivel
+                "//" → no significa nada especial → se ignora el segmento vacío
+
+            La única forma de simularlo es mantener una pila de segmentos, igual que hace el sistema operativo.
+
+    La nueva lógica aporta:
+        Normalización correcta del path
+            Te toma algo raro como: /a/./b/../c///d/
+            y lo convierte en: /a/c/d/index.html
+
+        Seguridad real
+            Dividir en partes y manejar ".." con una pila permite decir:
+                ".." cuando tienes partes previas → OK
+                (/a/b/../c → /a/c)
+
+                ".." cuando NO hay nada previo → FORBIDDEN
+                (/../etc/passwd → ataque)
+
+            Es exactamente lo que hace un path canonicalizer real.
+
+        Compatibilidad con clientes reales
+            Los navegadores pueden enviar rutas con:
+                ./folder
+                folder/../other
+                folder//file
+                folder///././image
+                finales en /
+                múltiples barras
+                rutas vacías
+
+            Los servidores utilizan siempre la lógica basada en segmentos.
+
+        Separación de responsabilidades
+            sanitizePath() limpia y normaliza la ruta
+            Otra función (como buildFullPath()) une esa ruta con WWW_ROOT y hace stat()
+            Otra función decide si sirve el archivo o devuelve 404/403
+
+            Mucho más limpio, más profesional y más fácil de razonar.
+
+
+3.1.1. Preparación para dividir la ruta
+    std::vector<std::string> parts;
+    size_t i = 1; // evitar elemento vacío
+
+parts almacenará los segmentos limpios de la ruta (p. ej. ["blog", "2025", "post.html"]).
+
+size_t i = 1 porque path[0] es '/'. Empezamos a buscar desde el carácter 1 para no crear un segmento vacío antes del primer /.
+
+
+3.1.2 Bucle principal — dividir y procesar segmento a segmento
+while (i <= path.size())
+{
+    size_t j = path.find('/', i);
+    std::string part;
+
+    if (j == std::string::npos)
+    {
+        part = path.substr(i);
+        i = path.size() + 1;
+    }
+    else
+    {
+        part = path.substr(i, j - i);
+        i = j + 1;
+    }
+    ...
+}
+
+path.find('/', i) busca la próxima / empezando desde i.
+    Si no la encuentra, find devuelve std::string::npos.
+
+Si j == npos:
+    part = path.substr(i) toma desde i hasta el final.
+    i = path.size() + 1 fuerza la salida del while en la siguiente comprobación.
+
+Si j != npos:
+    part = path.substr(i, j - i) toma el segmento entre i y j-1.
+    i = j + 1 salta justo después de la / encontrada, para la próxima iteración.
+
+En resumen: esto parte la ruta por / produciendo cada componente en part.
+
+Ejemplo: "/a/b/c" → secuencia de part: "a", "b", "c".
+
+
+3.1.3. Ignorar vacíos y "."
+if (part.empty() || part == ".")
+{
+    continue;
+}
+
+Casos que generan part.empty():
+    entradas con // (doble slash) producen partes vacías.
+    rutas que empiezan o acaban con / pueden producir vacíos si no lo manejas.
+
+"." es el segmento que significa “el directorio actual” y no aporta nada; lo ignoramos.
+
+continue salta a la siguiente iteración sin añadir nada a parts.
+
+Ejemplo: "/foo//bar/./baz" → ignorará la parte vacía entre // y ignorará ..
+
+
+3.1.4. Tratar ".." (subir un nivel)
+else if (part == "..")
+{
+    if (parts.empty())
+        return "__FORBIDDEN__"; // escape detected
+    parts.pop_back();
+}
+
+".." significa “subir un nivel” (ir al padre).
+
+parts.pop_back() elimina el último segmento almacenado (simula subir un nivel).
+
+Importante: si parts está vacío y aparece .., eso significa que el cliente intenta salir por encima de la raíz (p.e. "/../etc/passwd"). Se considera malicioso y la función devuelve "__FORBIDDEN__".
+
+    Este return es la política segura cuando no puedes (o no quieres) resolver la ruta real con funciones del sistema.
+
+Ejemplo seguro: "/a/b/../c" → parts pasa de ["a","b"] a ["a"] luego se añade "c" → ["a","c"].
+
+
+3.1.5. Añadir segmento normal
+else
+{
+    parts.push_back(part);
+}
+
+Si part no es vacío, ni ".", ni "..", se añade como componente válido a parts.
+
+4. Reconstruir la ruta limpia
+std::string clean = "/";
+for (size_t k = 0; k < parts.size(); ++k)
+{
+    clean += parts[k];
+    if (k + 1 < parts.size())
+        clean += "/";
+}
+
+Construye la cadena final empezando con '/'.
+
+Añade cada segmento separados por '/'.
+
+Resultado: ruta normalizada sin . ni .. ni //.
+
+Ejemplo: parts = ["blog","post.html"] → clean = "/blog/post.html".
+
+
+5.Si termina en '/', añade index.html
+    if (cleanPath[cleanPath.size() - 1] == '/')
+        cleanPath += "index.html";
+
+
+Si la ruta original acababa en '/', asumimos que el cliente está pidiendo la “carpeta”, por lo que añadimos index.html.
+
+clean.size() > 1 se usa para evitar //index.html cuando la ruta limpia es solo "/".
+    Si cleanPath == "/", concatenar "index.html" resulta "/index.html".
+    Si cleanPath == "/foo", concatenar "/index.html" resulta "/foo/index.html".
+
+Ejemplos:
+
+path = "/" → cleanPath inicialmente "/", acaba en '/' → result "/index.html".
+
+path = "/blog/" → cleanPath "/blog" → add "/index.html" → "/blog/index.html".
+
+Comportamiento típico de nginx y apache.
+
+6. Devolver cleanPath
+Devuelve la ruta ya normalizada y lista para concatenar con WWW_ROOT y probar existencia con stat().
+
+
+Pasos reales y seguros:
+    safe = sanitizePath(path)
+    full = WWW_ROOT + safe
+    real = realpath(full) ← esto normaliza y resuelve ‘..’
+    Compruebas si real empieza por WWW_ROOT
+
+
+Cómo se usa en el resto del servidor
+
+    processRequest() o serveStaticFile() llamará a sanitizePath(path).
+        Si devuelve "__FORBIDDEN__" → responde 403.
+        Si devuelve "/something" → concatena WWW_ROOT + clean → hace stat() sobre esa ruta.
+            Si existe y es fichero → leer y servir.
+            Si no existe → 404.
+
+
+RESUMEN:
+    sanitizePath() hace:
+        Validación básica (prohibe "..")
+        Sintaxis limpia (añadir '/') (normalizar formato)
+        Añadir index.html
+    Esto es preparar la ruta que viene del cliente, path limpio pero superficial.
+
+    Lo que NO hace (y es normal):
+        Resolver %2e → .
+        Quitar . o ..
+        Asegurar físicamente que el archivo ecstá dentro del root
+        Detectar enlaces simbólicos -> acceso directo emmascarado
+            Es decir: que una ruta aparentemente segura en realidad haga que tu servidor acabe sirviendo un archivo privado.
+                /Users/marta/webserver/www/imagenes
+                    → acceso directo → /Users/marta/Documentos/Privado
+                Si alguien pide /imagenes/secreto.txt,
+                tu servidor podría acabar sirviendo un archivo privado.
+
+            Hay que tenerlo en cuenta para preguntarle al sistema:
+                “Oye, esta ruta que me han pasado… ¿de verdad dónde termina?”
+                “No me des la ruta tal cual está escrita: dame la ruta REAL del sistema.”
+            Ejemplo:
+                /Users/marta/webserver/www/imagenes → symlink → /Users/marta/Privado
+                User pide: /imagenes/secretos.txt
+                realpath te devuelve: /Users/marta/Privado/secretos.txt
+                    ¡Esto está fuera del root!
+                    ¡PELIGRO!
+                    Aquí es donde entra “check contra WWW_ROOT”. Es decir, checkear que la ruta empieza con WWW_ROOT
+
+
+    Al no poder usar la funcion realPath(), no podemos resolver todo esto 100%, pero hacemos aproximaciones
+
+    Lo que se hace luego, en buildFullPath():
+        Unir sanitizePath(path) con el WWW_ROOT
+        Convertirlo a ruta real (realpath)
+        Comprobar si se sigue dentro de WWW_ROOT
+        Evitar accesos fuera del root
+
+ */
+
+std::string Client::buildFullPath(const std::string &cleanPath)
+{
+    // Si sanitize decidió que esto es inseguro, no seguimos
+    if (cleanPath == "__FORBIDDEN__")
+        return "__FORBIDDEN__";
+
+    // Normalizamos WWW_ROOT: sin barra final
+    std::string root = WWW_ROOT;
+    if (!root.empty() && root[root.size() - 1] == '/')
+        root.erase(root.size() - 1);
+
+    // cleanPath siempre viene ya con un '/' inicial garantizado por sanitize
+    return root + cleanPath;
+}
+
+/*
+Aquí solo construyes rutas del sistema de archivos.
+Otro tipo de responsabilidad.
+
+Respeta el principio SRP (una sola responsabilidad)
+    sanitizePath() → valida y normaliza
+    buildFullPath() → construye la ruta final
+    serveStaticFile() → comprueba existencia, permisos, MIME, lectura, etc.
+
+ROOT
+    El root” = la carpeta raíz del servidor web = la carpeta que sí se puede enseñar.
+    Así que el objetivo final es que ninguna ruta, ni limpia ni sucia, salga de esa carpeta.
+    Tu servidor NUNCA debe permitir acceder a otra ruta que no sea desde el root
+
+NOTA IMPORTANTE
+
+ Mejor si WWW_ROOT es una ruta absoluta (p.e. /home/user/www). Si la config la deja relativa (ej: ./www), el servidor funcionará pero las comprobaciones de "escapado" son menos estrictas: es mejor definir WWW_ROOT absoluto en config. Si no puedes, documenta que config debe ser absoluto.
+
+
+    La detección de 404, 403, 200, 301, etc.
+    NO debe estar en buildFullPath().
+    Eso va en serveStaticFile() cuando:
+        haces stat
+        compruebas si es directorio
+        si existe el index
+        si no existe → 404
+        si no tienes permiso → 403
+
+ */
+
+bool Client::serveStaticFile(const std::string &fullPath)
+{
+    // 1) Caso prohibido desde buildFullPath o sanitize
+    if (fullPath == "__FORBIDDEN__")
+    {
+        _httpResponse.setErrorResponse(403);
+        applyConnectionHeader();
+        return false; // indica respuesta de error preparada
+    }
+
+    // Comprobar existencia con stat()
+    struct stat fileStat;
+    if (stat(fullPath.c_str(), &fileStat) != 0)
+    {
+        // stat no pudo acceder: ENOENT → 404, EACCES → 403
+        if (errno == EACCES)
+            _httpResponse.setErrorResponse(403);
+        else
+            _httpResponse.setErrorResponse(404);
+        applyConnectionHeader();
+        return false;
+    }
+
+    // 3) No aceptar directorios
+    if (S_ISDIR(fileStat.st_mode))
     {
         _httpResponse.setErrorResponse(404);
         applyConnectionHeader();
-        return true;
+        return false;
     }
 
-    // 3. Todo OK → generar respuesta 200
-    std::string body = "<html><body><h1>Hello World!</h1></body></html>";
+    // Protección contra archivos gigantes
+    // 4) Validar tamaño
+    if (fileStat.st_size < 0)
+    {
+        _httpResponse.setErrorResponse(500);
+        applyConnectionHeader();
+        return false;
+    }
+
+    size_t size = static_cast<size_t>(fileStat.st_size);
+    if (size > MAX_STATIC_FILE_SIZE)
+    {
+        _httpResponse.setErrorResponse(413); // Payload Too Large
+        applyConnectionHeader();
+        return false;
+    }
+
+    // Leer archivo
+    std::string content;
+    if (!readFileToString(fullPath, content, fileStat.st_size))
+    {
+        // open/read error → revisar errno
+        if (errno == EACCES)
+            _httpResponse.setErrorResponse(403);
+        else if (errno == ENOENT)
+            _httpResponse.setErrorResponse(404);
+        else if (errno == EFBIG)
+            _httpResponse.setErrorResponse(413);
+        else
+            _httpResponse.setErrorResponse(500);
+
+        applyConnectionHeader();
+        return false;
+    }
+    // MIME
+    std::string mime = determineMimeType(fullPath);
+
+    // Preparar respuesta OK
+    std::ostringstream oss;
+    oss << content.size();
 
     _httpResponse.setStatus(200, "OK");
-    _httpResponse.setHeader("Content-Type", "text/html");
-    _httpResponse.setHeader("Content-Length", std::to_string(body.size()));
+    _httpResponse.setHeader("Content-Type", mime);
+    _httpResponse.setHeader("Content-Length", oss.str());
     applyConnectionHeader();
-    _httpResponse.setBody(body);
+    _httpResponse.setBody(content);
 
-    std::cout << "\nProcess Request (fd=" << _clientFd << "):\n  method = GET\n  status = 200)\n";
+    std::cout << "[Client fd=" << _clientFd << "] Archivo servido: " << fullPath << "\n";
+    return true;
+}
+
+/*
+Esta función intenta servir un fichero estático (leerlo del disco y preparar _httpResponse con su contenido y cabeceras).
+Devuelve true si ha preparado correctamente la respuesta (200 OK con body), o false si se produjo un error y ya ha puesto una respuesta de error (403/404/413/500).
+
+
+Qué es stat?
+    stat es una llamada al sistema de Unix que te permite obtener información sobre un archivo o directorio: tamaño, permisos, tipo (fichero, directorio…), fechas, etc.
+
+    Piensa en stat() como:
+    “Oye kernel, cuéntame todo lo que sabes de este archivo.”
+
+
+📌 ¿Qué devuelve exactamente stat?
+La función:
+    int stat(const char *path, struct stat *buf);
+
+Rellena una estructura struct stat con datos como:
+
+✔️ Tipo de archivo
+    S_ISREG(st_mode) → fichero regular
+    S_ISDIR(st_mode) → directorio
+    S_ISLNK(st_mode) → enlace simbólico
+    etc.
+
+✔️ Permisos
+    st_mode también contiene los permisos (rwx) del archivo.
+
+✔️ Tamaño
+    st_size → tamaño en bytes.
+
+✔️ Fechas
+    st_mtime → última modificación
+    st_ctime → cambio de metadatos
+    st_atime → último acceso
+
+
+📁 ¿Para qué sirve en un webserver?
+    Es básico para implementar:
+
+    ✔️ 1. Comprobar si un path existe
+        Si stat devuelve -1 con errno == ENOENT → 404 Not Found
+
+    ✔️ 2. Saber si el path es un directorio
+        Si es un directorio sin / final → 301 redirect
+        Si es un directorio con / final → buscar índice (index.html)
+
+    ✔️ 3. Saber si tienes permiso para leer el archivo
+        Si !(st_mode & S_IROTH) → 403 Forbidden
+
+    ✔️ 4. Saber el tamaño del archivo para enviar el header Content-Length
+
+CÓDIGO
+
+struct stat fileStat;
+if (stat(fullPath.c_str(), &fileStat) != 0 || S_ISDIR(fileStat.st_mode))
+{
+    _httpResponse.setErrorResponse(404);
+    applyConnectionHeader();
+    return false;
+}
+
+    stat() consulta al sistema de ficheros y rellena fileStat con metadatos (tamaño, permisos, si es directorio, timestamps, etc).
+
+    stat(...) != 0 → stat falló (fichero no existe, permisos insuficientes, ruta inválida) → respondemos 404 Not Found.
+
+    S_ISDIR(fileStat.st_mode) comprueba si lo que hay en fullPath es un directorio; si es directorio también devolvemos 404 (normalmente no servimos directorios como fichero).
+
+    Importante: stat también devuelve errores por permisos (EACCES) — podrías devolver 403 en ese caso, pero aquí se normaliza a 404.
+
+
+if (fileStat.st_size > MAX_STATIC_FILE_SIZE)
+{
+    _httpResponse.setErrorResponse(413); // Payload Too Large
+    applyConnectionHeader();
+    return false;
+}
+Antes de abrir y leer todo el archivo, nos aseguramos de que podamos soportarlo en memoria, sino salimos.
+
+
+std::string mime = getMimeType(fullPath);
+
+Calcula el tipo MIME (ej. text/html, image/png) a partir de la extensión del fullPath (ver tu getMimeType).
+
+
+_httpResponse.setStatus(200, "OK");
+_httpResponse.setHeader("Content-Type", mime);
+_httpResponse.setHeader("Content-Length", std::to_string(content.size()));
+applyConnectionHeader();
+_httpResponse.setBody(content);
+
+Construimos la respuesta con:
+
+    200 OK
+
+    Content-Type: <mime>
+
+    Content-Length: <nbytes> — aquí se pone el tamaño exacto del body. IMPORTANTE: en C++98 std::to_string no existe; usa std::ostringstream para convertir size() a string (ver nota abajo).
+
+    applyConnectionHeader() — añade la cabecera Connection según tu política (keep-alive o close) y posiblemente Keep-Alive con timeout/max.
+
+    setBody(content) — coloca el contenido leído como body de la respuesta.
+
+
+Conceptos nuevos que aparecen aquí (resumen)
+
+    stat(): llamada POSIX que devuelve metadatos del fichero (tamaño, tipo, permisos, timestamps).
+
+    S_ISDIR(mode): macro para comprobar si mode es un directorio.
+
+    ifstream + ios::binary: abrir fichero en modo binario (sin transformaciones).
+
+    MIME type: tipo de contenido que indica al cliente cómo interpretar el body (text/html, image/png...).
+
+    Content-Length: número exacto de bytes del body; necesario si no usas chunked.
+
+    applyConnectionHeader(): utilidad para añadir Connection (y posiblemente Keep-Alive) según tu política.
+
+*/
+
+/*
+ACLARACIÓN
+
+LLAMAR A READ FILE TO STRING SIN PROTECCIÓN PREVIA
+        👉 Esto funciona perfectamente para ficheros pequeños o medianos.
+        ❌ Pero se convierte en un peligro serio si el cliente pide ficheros enormes.
+
+    Ejemplo típico:
+        Te piden que sirvas un archivo de 2 GB.
+        Tu servidor intenta hacer out.resize(2 * 1024 * 1024 * 1024)
+        ¡Boom!
+            Consumes toda tu RAM
+            Matas al servidor
+            El proceso es expulsado por el OOM Killer
+            Cliente sin respuesta
+            Server KO para todos los demás usuarios
+
+        ➡️ Un servidor profesional nunca lee archivos grandes enteros en memoria.
+
+    Para eso usaremos una constante que ponga un limite razonable para servir en memoria
+        static const size_t MAX_STATIC_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+    Significa:
+        Solo acepto servir archivos pequeños mediante lectura completa.
+        Si el archivo es mayor, NO lo leeré entero a memoria, sino que:
+            O bien respondo 413 Payload Too Large
+            O bien lo sirvo por streaming, trozo a trozo (lo veremos luego)
+            O devuelvo un 404 como si no existiera (menos profesional)
+
+        10 MB es un ejemplo. Podría ser:
+            1 MB → muy estricto
+            50 MB → razonable
+            100 MB → más generoso pero arriesgado
+
+        En servidores reales se usa un límite para proteger el servidor.
+
+    Por eso hacemos la protección contra archivos grandes:
+        if (static_cast<size_t>(size) > MAX_STATIC_FILE_SIZE)
+            return false; // o marcar error 413
+
+    ¿Por qué es necesaria esta mejora?
+        ✔️ Evita que el servidor consuma toda la RAM
+            Un atacante podría llamarte con:
+                GET /video_HD_9GB.mp4 HTTP/1.1
+
+            Sin límite → tu servidor muere.
+
+        ✔️ Evita un DDoS involuntario
+            Cualquier fichero enorme en tu /www puede tumbarte.
+                    DDoS = Distributed Denial of Service.
+                        Muchas máquinas (o un atacante simulando muchas) te envían peticiones diseñadas para bloquear, saturar o colapsar tu servidor, hasta dejarlo inutilizado.
+
+        ✔️ Servidores reales usan límites
+            NGINX:
+                client_max_body_size
+                proxy_buffer_size
+                sendfile para evitar lectura a memoria
+
+            Apache:
+                LimitRequestBody
+                LimitXMLRequestBody
+
+    De primeras piensas, “Yo no voy a tener archivos gigantes en mi disco, así que no me afectaría, ¿no? No tengo que protegerlo”
+        En principio sí, si tú controlas 100% qué ficheros hay en tu carpeta www/.
+
+        Pero…
+            El evaluador puede poner cualquier archivo en tu directorio.
+
+            En tu máquina personal o en un servidor real, cualquier usuario con permiso podría subir un archivo enorme (upload, repositorio, backups, etc.)
+
+            Y lo más importante:
+            tu servidor no decide qué archivo existe: lo decide el sistema de ficheros.
+
+            Aunque tú creas que no hay archivos grandes… sí podrían aparecer.
+
+        Ejemplo realista
+            Tú crees que tu carpeta solo tiene:
+                /www/index.html (3 KB)
+                /www/style.css (1 KB)
+
+
+            Pero puede existir fuera de tu carpeta web pero dentro de la ruta accesible por error:
+                /home/user/Descargas/Movie_4K_120GB.mkvEjemplo realista
+
+            Tú crees que tu carpeta solo tiene:
+                /www/index.html (3 KB)
+                /www/style.css (1 KB)
+
+            Pero puede existir fuera de tu carpeta web pero dentro de la ruta accesible por error:
+                /home/user/Descargas/Movie_4K_120GB.mkv
+
+            Si por un error en tu routing construyes ese path, tu servidor intenta leerlo → RAM muerta.
+
+            Un atacante puede pedir cualquier ruta inventada. Si ese path casualmente existe en el disco (por cualquier motivo):
+                copia de un ISO
+                un backup
+                un archivo olvidado
+                algo generado por otro proceso
+                un archivo que el evaluador pone para probarte
+
+            …tu servidor intenta leerlo antes de decidir qué responder.
+*/
+
+bool Client::readFileToString(const std::string &fullPath, std::string &out, size_t size)
+{
+    // Abrir fichero (intentar no seguir symlinks si está disponible)
+    int flags = O_RDONLY;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW; // suma esta flag
+#endif
+    int fd = open(fullPath.c_str(), flags);
+    if (fd < 0)
+    {
+        // errno queda establecido por open()
+        return false;
+    }
+
+    out.clear();
+    out.resize(size); // reservar memoria exacta
+
+    size_t total = 0;
+    while (total < size)
+    {
+        ssize_t bytesRead = read(fd, &out[total], size - total);
+        if (bytesRead < 0)
+        {
+            if (errno == EINTR)
+                continue; // reintentar
+
+            // Error real
+            close(fd);
+            return false;
+        }
+        if (bytesRead == 0)
+        {
+            // EOF inesperado
+            break;
+        }
+        total += static_cast<size_t>(bytesRead);
+    }
+
+    close(fd);
+
+    // Si se leyó menos (EOF), ajustamos
+    if (total < size)
+        out.resize(total);
+
+    return true;
+}
+
+/*
+0. Firma de la función
+    fullPath → ruta absoluta del fichero (ya garantizada, validada, sin "..", etc.).
+
+    out → donde se guardará el contenido.
+
+    size → el tamaño exacto del fichero, ya obtenido con stat() en serveStaticFile.
+
+1. Abrimos el fichero de manera segura
+        int flags = O_RDONLY;
+    #ifdef O_NOFOLLOW
+        flags |= O_NOFOLLOW;
+    #endif
+        int fd = open(fullPath.c_str(), flags);
+
+O_RDONLY -> Abrimos solo para leer.
+
+O_NOFOLLOW -> Protege de este ataque:
+    /www/index.html → es un symlink hacia /etc/passwd
+
+        O_NOFOLLOW es una flag opcional de open() (no existe en todos los sistemas, por eso siempre la rodeamos con #ifdef O_NOFOLLOW).
+
+        Su función: impedir que open() siga un symlink (enlace simbólico).
+
+        Si open() detecta que el path final es un symlink fallará inmediatamente y pondrá: errno = ELOOP
+
+
+Con O_NOFOLLOW, open() fallará, evitando fuga de archivos del sistema.
+Es una protección opcional (solo existe en algunos sistemas), por eso va con #ifdef.
+
+✔ El open devuelve un fd (file descriptor)
+
+Si es < 0, hubo error.
+    errno queda configurado, y serveStaticFile() se encargará de transformarlo en:
+        403 si EACCES
+        404 si ENOENT
+        500 en otros casos
+
+    La función NO decide el código → responsabilidad bien distribuida.
+
+
+2. Reservamos memoria en el string
+    out.clear(); -> Eliminamos contenido previo.
+    out.resize(size); -> Reserva size bytes exactos para leer el fichero entero.
+
+Esto es eficiente y evita realocaciones.
+
+3. Bucle de lectura segura
+    size_t total = 0;
+    while (total < size)
+    {
+        ssize_t r = read(fd, &out[total], size - total);
+
+read(fd, buffer, bytes)
+Intenta leer hasta los bytes restantes (size - total).
+Pero read no garantiza que lea todo:
+puede devolver 1 byte, 200 bytes, 0, etc.
+Por eso el bucle.
+
+Caso 1 —> Error real de lectura
+    if (bytesRead < 0)
+    {
+        if (errno == EINTR)
+            continue;   // reintentar
+
+                ✔ EINTR: señal del sistema interrumpió la lectura
+
+                Esto pasa muy a menudo en servidores reales.
+
+                Lo correcto es reintentar la lectura.
+
+                Muy profesional que lo contemples.
+
+    close(fd);
+    return false;
+        Cualquier otro error → devolvemos false y dejamos a errno contar la historia.
+
+Caso 2 —> bytesRead == 0: EOF inesperado
+    if (bytesRead == 0)
+    {
+        break;
+    }
+
+    Si nos llega un 0 antes de terminar el tamaño esperado:
+    💥 El archivo se ha truncado, o está corrupto, o algo raro ha pasado.
+
+    Lo tratamos como lectura incompleta (no como error total).
+    Más tarde ajustamos el tamaño.
+
+📈 Caso 3 — Lectura correcta
+        total += static_cast<size_t>(bytesRead);
+
+    Vamos acumulando bytes leídos.
+
+
+4. Cerramos el descriptor
+    close(fd);
+Vital: no fugamos descriptores (puede agotar recursos del servidor).
+
+5. Ajuste final si hubo EOF antes de tiempo
+    if (total < size)
+        out.resize(total);
+
+    Porque reservamos size, pero si solo hemos leído total, quedan bytes basura al final.
+
+    Así garantizamos que out.size() coincide con lo realmente leído.
+
+*/
+
+std::string Client::determineMimeType(const std::string &fullPath)
+{
+    size_t dot = fullPath.find_last_of('.');
+    if (dot == std::string::npos)
+        return "application/octet-stream";
+
+    std::string fileExtension = fullPath.substr(dot + 1);
+
+    std::map<std::string, std::string>::const_iterator it = mimeTypes.find(fileExtension);
+    if (it != mimeTypes.end())
+        return it->second;
+
+    return "application/octet-stream";
+}
+
+/*
+find_last_of('.') busca la última aparición de un punto en el nombre del archivo.
+    Ej: "index.html" → dot = 5
+    "archivo" → dot = npos (no hay punto)
+        "application/octet-stream" es el tipo MIME genérico que se usa cuando no sabemos el tipo de archivo (no se reconoce la extensión). En HTTP es un MIME genérico para archivos binarios desconocidos.
+
+fileExtension = path.substr(dot + 1) → obtiene la extensión del archivo (dot + 1 significa que hace el substring desde lo que hay justo despues del punto, hasta el final).
+    "index.html" → fileExtension = "html"
+    "archivo" → no hay extensión
+
+mimeTypes es un std::map<std::string, std::string> con los tipos MIME conocidos:
+*/
+
+bool Client::processRequest()
+{
+    // 1) Reseteamos cualquier HttpResponse previa (estado limpio) -> Limpia HttpResponse previo
+    _httpResponse = HttpResponse(); // crea un HttpResponse por defecto y lo copia en el miembro //? AQUÍ O AL ACABAR DE USARLO LO DEJAMOS LISTO PARA LA PRÓXIMA??? LA PRIMERA VEZ QUE SE USE YA SE CREA SOLO CON CLIENT, ASI QUE NO PASARÍA NADA
+
+    // 2) Validar método HTTP (por ahora solo admitimos GET)
+    if (!validateMethod())
+        return true; // hemos generado una respuesta válida -> no es un fallo fatal, es un error que mandamos como respuesta, por lo que devolvemos true
+
+    // 3. Obtener ruta en bruto y comprobar peligros
+    std::string rawPath = sanitizePath(_httpRequest.getPath());
+
+    // 4. Construir ruta real dentro de WWW_ROOT
+    std::string fullPath = buildFullPath(rawPath);
+
+    // 5. Servir archivo estático
+    if (!serveStaticFile(fullPath))
+        return true;
+
     return true;
 }
 
