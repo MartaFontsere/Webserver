@@ -6,9 +6,17 @@
 14.11.2025 - Creación de la rama Process-and-send-response, con el mismo prototipo que el anterior pero las responsabilidades divididas entre client y HttpResponse       
 14.11.2025 - Creación de la rama Server-engine para centrar el desarrollo de la lógica interna del servidor
 
-Test:
+Test multiclient:
  * Terminal 1:                                  
        - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
  * Terminal 2:                                    
        - python3 script.py
+
+
+Test timeout:
+* Terminal 1:                                  
+       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - ./server
+ * Terminal 2:
+       - nc localhost 8080
