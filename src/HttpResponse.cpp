@@ -68,7 +68,10 @@ void HttpResponse::setErrorResponse(int code)
 
     // Headers necesarios mínimos
     _headers["Content-Type"] = "text/html";
-    _headers["Content-Length"] = std::to_string(_body.size());
+
+    std::ostringstream length;
+    length << _body.size();
+    _headers["Content-Length"] = length.str();
 }
 
 std::string HttpResponse::buildResponse() const

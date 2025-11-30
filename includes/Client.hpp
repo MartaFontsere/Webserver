@@ -41,12 +41,19 @@ public:
     bool flushWrite();            // intenta enviar bytes pendientes (usa send())
     bool hasPendingWrite() const; // true si queda data por enviar
     void markClosed();
-    bool isRequestComplete() const; // BORRAR????
+    bool isRequestComplete() const; // TODO: BORRAR????
     const HttpRequest &getHttpRequest() const;
+
+    // timeout helpers
+    time_t getLastActivity() const;
+    bool isTimedOut(time_t now, int timeoutSec) const;
+
+    // preparar para la próxima request cuando hay keep-alive
+    void resetForNextRequest();
 
 private:
     int _clientFd;     // file descriptor del socket del cliente
-    sockaddr_in _addr; // dirección IP y puerto del cliente   *****SI DEJO ESTE PONER IGUAL EN EL SERVER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    sockaddr_in _addr; // dirección IP y puerto del cliente   // TODO *****SI DEJO ESTE PONER IGUAL EN EL SERVER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool _closed;      // indica si la conexión está cerrada
 
     // lectura/parseo
@@ -70,7 +77,7 @@ private:
     HttpResponse _httpResponse;
 
     // Límite razonable para servir en memoria. Ajustar según recursos.
-    static const size_t MAX_STATIC_FILE_SIZE = 10 * 1024 * 1024; // 10 MB SE PUEDE DECLARAR ASI A PELO?
+    static const size_t MAX_STATIC_FILE_SIZE = 10 * 1024 * 1024; // TODO: 10 MB SE PUEDE DECLARAR ASI A PELO?
 
     // Helpper
     void applyConnectionHeader();

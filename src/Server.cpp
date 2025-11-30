@@ -574,7 +574,7 @@ void Server::run()
 
     while (true)
     {
-        int ready = poll(_pollFds.data(), _pollFds.size(), -1); // el -1 significa que espera indefinidamente hasta que algo ocurra
+        int ready = poll(_pollFds.data(), _pollFds.size(), 5000); // antes tenia -1, significa que espera indefinidamente hasta que algo ocurra. Pongo 5 segundos de timeout, evita que el servidor se quede bloqueado indefinidamente y permite revisar timeouts periódicamente
         if (ready < 0)
         {
             if (errno == EINTR)
@@ -582,63 +582,68 @@ void Server::run()
             perror("poll");
             break;
         }
+        time_t now = time(NULL);
 
-        // Nueva conexión entrante - Revisamos el servidor
-        if (_pollFds.size() > 0 && (_pollFds[0].revents & POLLIN))
+        // Aceptar nuevas conexiones entrantes - Revisamos el servidor
+        if (!_pollFds.empty() && (_pollFds[0].revents & POLLIN))
             acceptNewClient();
 
-        // Actividad en clientes existentes - Recorremos el resto revisando todos los clientes
+        // Procesar clientes existentes - Recorremos el resto revisando todos los clientes
         for (size_t i = 1; i < _pollFds.size();)
         {
             int fd = _pollFds[i].fd;
             Client *client = _clientsByFd[fd];
+
+            // 🧹 Si no hay cliente asociado, limpiamos el fd del poll
             if (!client)
             {
-                // 🧹 Si no hay cliente asociado, limpiamos el fd del poll
-                std::cerr << "[Warning] FD " << fd << " sin cliente asociado, eliminando de poll.\n";
                 _pollFds.erase(_pollFds.begin() + i);
-                continue; // No incrementamos i porque el erase ya mueve los elementos
-            }
-            // ESTE TROZO DE ARRIBA PUEDE SER UN POCO REDUNDANTE, PORQUE TEORICAMENTE YA ESTA CONTROLADO EN CLEANUPCLOSEDCLIENTS, pero se supone que por doble seguridad. igual Quitamos???
-
-            // 🔹 Errores o desconexiones
-            if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
-            {
-                client->markClosed();
-                ++i;
                 continue;
             }
-            if (_pollFds[i].revents & POLLIN && !client->isClosed())
+
+            // ✅ VERIFICACIÓN DE TIMEOUT PRIMERO (MÁS EFICIENTE)
+            checkClientTimeout(client, fd, now);
+
+            // Si el cliente sigue activo, procesar eventos
+            if (!client->isClosed())
             {
-                handleClientEvent(_pollFds[i].fd);
-                // Si dentro del handler se marcó cerrado → no seguimos con POLLOUT
-                if (client->isClosed())
+                // Errores de conexión
+                if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
                 {
-                    ++i;
+                    client->markClosed();
+                    i++; // No te saltas clientes porque cleanupClosedClients() se ejecuta después del bucle completo
                     continue;
                 }
-            }
-            // 🔹 Escritura (cuando había datos pendientes)
-            if (_pollFds[i].revents & POLLOUT && !client->isClosed())
-            {
-                if (!client->flushWrite())
+                // Lectura de datos
+                if (_pollFds[i].revents & POLLIN)
                 {
-                    // flushWrite ya marcó closed si era error/EOF
-                    ++i;
-                    continue; // si falló, el cleanup se encargará luego
+                    handleClientData(client, i);
                 }
-
-                // Si ya no queda nada por enviar, desactivamos POLLOUT
-                if (!client->hasPendingWrite())
-                    _pollFds[i].events &= ~POLLOUT;
+                // Escritura de datos
+                if (_pollFds[i].revents & POLLOUT)
+                {
+                    handleClientWrite(client, i);
+                    // Si se cerró durante la escritura (flushWrite marcó closed si era error/EOF), pasar al siguiente
+                    if (client->isClosed())
+                    {
+                        ++i;
+                        continue;
+                    }
+                }
             }
-            ++i;
+
+            // Solo incrementar si no borramos el elemento
+            if (i < _pollFds.size() && _pollFds[i].fd == fd)
+            {
+                ++i;
+            }
         }
 
         // Limpiar clientes cerrados
         cleanupClosedClients();
     }
 }
+
 /*
 17.11.25
 Ahora, cuando entramos en handle client, dentro se gestiona que si hay algun error salga de handle y siga con el bucle. El problema, es que si por ejemplo hay un cliente con datos disponibles para leer y también tenia datos pendientes para escribir (o el socket es write ready, que casi siempre lo es aunque no tengas pendientes) tendrá ambos revents, POLLIN y POLLOUT, por lo que después de handle client podría entrar en el for de POLLOUT y llamar a flusWrite sobre un cliente ya cerrado dentro de handle client. No es super grave, porque el propio fluswrite marcaría closed y saldria al encontrar problemas en el send, pero es innecesario llegar hasta ahí
@@ -1103,6 +1108,17 @@ Despues se recorren el resto de índices de la lista _pollFds, que son los clien
 
 */
 
+void Server::checkClientTimeout(Client *client, int fd, time_t now)
+{
+    const int CLIENT_TIMEOUT = 30;
+    if (client->isTimedOut(now, CLIENT_TIMEOUT))
+    {
+        std::cout << "[Timeout] Cliente fd " << fd
+                  << " inactivo más de " << CLIENT_TIMEOUT << " segundos, cerrando.\n";
+        client->markClosed();
+    }
+}
+
 void Server::acceptNewClient()
 {
     while (true)
@@ -1192,40 +1208,32 @@ Así liberas memoria y evitas que poll() siga vigilando un socket muerto.
 
 */
 
-void Server::handleClientEvent(int fd)
+void Server::handleClientData(Client *client, size_t pollIndex)
 {
-    Client *client = _clientsByFd[fd];
-    if (!client)
-        return;
-
-    // Leer datos
     if (!client->readRequest())
-        return; // error o desconexión del cliente → el cleanup lo eliminará
+        return; // error o desconexión del cliente → el cleanup lo eliminará-> ya marcó closed
 
-    // 👇 Si la request aún no está completa, no hacemos nada todavía, seguimos esperando más datos
-    if (!client->isRequestComplete())
-        return; // falta data, seguimos esperando más POLLIN
-
-    // 3) Procesar la request y generar la respuesta
-    if (!client->processRequest())
-        return; // si algún error grave → desconexión
-
-    // 4) Enviar respuesta
-    if (!client->sendResponse())
-        return; // Error, el cliente se cerrará solo, cleanup lo limpiará después
-
+    // Procesar la request y generar la respuesta + Enviar respuesta
+    if (client->isRequestComplete())
+    {
+        if (!client->processRequest() || !client->sendResponse())
+            return; // Error -> ya marcó closed, cleanup lo limpiará después
+    }
     // Activar POLLOUT solo si hay datos pendientes
     if (client->hasPendingWrite())
     {
-        for (size_t i = 1; i < _pollFds.size(); ++i)
-        {
-            if (_pollFds[i].fd == fd)
-            {
-                _pollFds[i].events |= POLLOUT;
-                break;
-            }
-        }
+        _pollFds[pollIndex].events |= POLLOUT;
     }
+}
+
+void Server::handleClientWrite(Client *client, size_t pollIndex)
+{
+    if (!client->flushWrite())
+        return; // Error -> ya marcó closed
+
+    // Actualizar eventos POLLOUT -> Si ya no queda nada por enviar, desactivamos POLLOUT
+    if (!client->hasPendingWrite())
+        _pollFds[pollIndex].events &= ~POLLOUT;
 }
 
 /*

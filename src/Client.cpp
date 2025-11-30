@@ -5,7 +5,6 @@
 #include <fstream> // para ifstream
 #include <sstream> // para ostringstream
 
-#include <sys/stat.h>
 #include <fcntl.h>   // open
 #include <unistd.h>  // close, read
 #include <sstream>   // ostringstream
@@ -177,15 +176,26 @@ bool Client::readRequest()
 {
     char buffer[1024];
     int bytesRead = recv(_clientFd, buffer, sizeof(buffer), 0);
-    if (bytesRead <= 0)
+    if (bytesRead < 0)
     {
-        if (bytesRead == 0)
-            std::cout << "[Info] Cliente (fd: " << _clientFd << ") cerró la conexión normalmente.\n";
-        else
-            std::cerr << "[Error] Fallo al leer del cliente con recv() (fd: " << _clientFd << "): " << strerror(errno) << "\n";
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            // Si devuelve esto, no sigfnifica error, no hay datos ahora mismo (socket non-blocking). Por eso no tenemos que cerrar el socket en este caso, a diferencia del resto
+            return true;
+        }
+        std::cerr << "[Error] Fallo al leer del cliente con recv() (fd: " << _clientFd << "): " << strerror(errno) << "\n";
         _closed = true;
         return false;
     }
+    else if (bytesRead == 0)
+    {
+        // cliente cerró la conexión por su lado
+        std::cout << "[Info] Cliente (fd: " << _clientFd << ") cerró la conexión normalmente.\n";
+        _closed = true;
+        return false;
+    }
+
+    // bytesRead > 0
     std::cout << "\nEmpezando a leer la Request (fd: " << _clientFd << ").\n";
     _rawRequest.append(buffer, bytesRead);
 
@@ -1549,8 +1559,7 @@ bool Client::sendResponse()
     {
         // mantener la conexión abierta para próximas peticiones
         // además limpiar buffers de request para la siguiente
-        _httpRequest.reset(); // <-- limpia headers, body, etc.
-        _requestComplete = false;
+        resetForNextRequest();
         std::cout << "[Client] Respuesta completa, manteniendo conexión (keep-alive fd: " << _clientFd << ")\n    Esperando nueva request" << std::endl;
     }
 
@@ -1891,3 +1900,32 @@ client._httpRequest.getPath(); // ❌ acceso directo a miembro privado
 Así que getHttpRequest() sirve como interfaz de acceso controlado.
 Conclusión: es buena práctica mantenerlo, aunque no imprescindible.
 */
+
+time_t Client::getLastActivity() const
+{
+    return _lastActivity;
+}
+
+bool Client::isTimedOut(time_t now, int timeoutSec) const
+{
+    // Si por alguna razón 'now' es anterior o igual a la última actividad,
+    // no consideramos que haya timeout.
+    if (now <= _lastActivity)
+        return false;
+
+    // Tiempo transcurrido desde la última actividad
+    time_t elapsed = now - _lastActivity;
+
+    // Si ha pasado más que el límite, hay timeout
+    return elapsed > timeoutSec;
+}
+
+void Client::resetForNextRequest()
+{
+    _httpRequest.reset();
+    _httpResponse = HttpResponse();
+    _requestComplete = false;
+    _rawRequest.clear();
+    _writeBuffer.clear();
+    _writeOffset = 0;
+}

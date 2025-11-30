@@ -16,7 +16,9 @@ private:
     int createAndBind(const char *port);
     int setNonBlocking(int fd);
     void acceptNewClient();
-    void handleClientEvent(int fd);
+    void handleClientData(Client *client, size_t pollIndex);
+    void handleClientWrite(Client *client, size_t pollIndex);
+    void checkClientTimeout(Client *client, int fd, time_t now);
     void cleanupClosedClients();
 
 public:
