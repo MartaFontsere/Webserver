@@ -29,7 +29,7 @@ Test Post/Delete:
        - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
 * Terminal 2:                
-       - test-post-delete.sh
+       - ./test-post-delete.sh
 
 (opcion 2)
 * Terminal:                                  
