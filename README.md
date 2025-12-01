@@ -13,10 +13,27 @@ Test multiclient:
  * Terminal 2:                                    
        - python3 script.py
 
-
+                                  
 Test timeout:
 * Terminal 1:                                  
        - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
  * Terminal 2:
        - nc localhost 8080
+
+
+Test Post/Delete:
+
+(opcion 1)
+* Terminal 1:                                  
+       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - ./server
+* Terminal 2:
+       - test-post-delete.sh
+
+(opcion 2)
+* Terminal:                                  
+       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - ./server
+* Navegador:                         
+       - localhost:8080/test.html
