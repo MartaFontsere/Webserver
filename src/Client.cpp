@@ -208,6 +208,14 @@ bool Client::readRequest()
     std::cout << "[Debug] Parseando request del cliente fd " << _clientFd << std::endl;
     if (_httpRequest.parse(_rawRequest))
     {
+        // ✅ Verificar SI el parse fue exitoso PERO con error de tamaño
+        if (_httpRequest.isBodyTooLarge())
+        {
+            _httpResponse.setErrorResponse(413);
+            applyConnectionHeader();
+            _requestComplete = true; // ✅ Marcar como completa PARA RESPONDER
+            return true;             // No es error fatal, hay respuesta que enviar
+        }
         std::cout << "✅ Request completa (client fd: " << _clientFd << ")\n";
         _requestComplete = true;
         _rawRequest.clear(); // 👈 limpiamos el buffer raw porque la información queda almacenada en _httpRequest, asi rawRequest queda limpio para la próxima request
@@ -432,7 +440,7 @@ void Client::applyConnectionHeader()
 bool Client::validateMethod()
 {
     const std::string &method = _httpRequest.getMethod();
-    if (method != "GET")
+    if (method != "GET" && method != "POST" && method != "DELETE")
     {
         // Respondemos con 405 Method Not Allowed (contenido + headers dentro de HttpResponse)
         _httpResponse.setErrorResponse(405);
@@ -1421,6 +1429,15 @@ bool Client::processRequest()
     if (!validateMethod())
         return true; // hemos generado una respuesta válida -> no es un fallo fatal, es un error que mandamos como respuesta, por lo que devolvemos true
 
+    const std::string &method = _httpRequest.getMethod();
+
+    if (method == "GET")
+        return handleGet();
+    else if (method == "POST")
+        return handlePost();
+    else if (method == "DELETE")
+        return handleDelete();
+
     // 3. Obtener ruta en bruto y comprobar peligros
     std::string rawPath = sanitizePath(_httpRequest.getPath());
 
@@ -1431,7 +1448,10 @@ bool Client::processRequest()
     if (!serveStaticFile(fullPath))
         return true;
 
-    return true;
+    // Esto no debería pasar
+    _httpResponse.setErrorResponse(405);
+    applyConnectionHeader();
+    return true; // ✅ Correcto - respuesta de error configurada
 }
 
 /*
@@ -1531,6 +1551,267 @@ Notas importantes sobre diseño y flujo
         Cuando añadas más rutas, processRequest() puede delegar a un pequeño enrutador que busque handlers por path y method. Mantén processRequest() como punto de entrada.
 
  */
+
+bool Client::handleGet()
+{
+    // Obtener ruta en bruto y comprobar peligros
+    std::string rawPath = sanitizePath(_httpRequest.getPath());
+
+    // Construir ruta real dentro de WWW_ROOT
+    std::string fullPath = buildFullPath(rawPath);
+
+    // Servir archivo estático (configura la respuesta tanto de éxito como de error)
+    serveStaticFile(fullPath);
+    return true; // Siempre hay respuesta HTTP
+}
+
+bool Client::handlePost()
+{
+    // 1. Por ahora, solo permitimos POST en /upload
+    if (_httpRequest.getPath() != "/upload")
+    {
+        _httpResponse.setErrorResponse(403); // Forbidden
+        applyConnectionHeader();
+        return true; // Respuesta lista, no error fatal
+    }
+    std::cout << "[DEBUG] POST path: " << _httpRequest.getPath() << std::endl;
+
+    // 2. Transfer-Encoding: chunked
+    //  TODO: Si el cliente envía chunked encoding → no soportado. REVISAR SI HAY QUE ACEPTQRLO O RECHAZAR CON 411/400 o que
+    if (_httpRequest.isChunked())
+    {
+        _httpResponse.setStatus(501, "Not Implemented");
+        _httpResponse.setHeader("Content-Type", "text/html");
+        _httpResponse.setBody("<html><body><h1>501 Not Implemented</h1>"
+                              "<p>Chunked uploads are not supported.</p>"
+                              "</body></html>");
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 4. Crear/verificar directorio de uploads si no existe
+    std::string uploadDir = std::string(WWW_ROOT) + "/uploads";
+
+    struct stat st;
+    if (stat(uploadDir.c_str(), &st) == -1) // si falla la carpeta no existe o algo raro
+    {
+        // NO existe → solo lo creamos si realmente es ENOENT
+        if (errno == ENOENT)
+        {
+            if (mkdir(uploadDir.c_str(), 0755) == -1) // Permisos 0755 → lectura + escritura para owner, lectura para otros. Si falla, damos error del servidor
+            {
+                _httpResponse.setErrorResponse(500);
+                applyConnectionHeader();
+                return true;
+            }
+        }
+        else
+        {
+            // stat falló por otra razón → error
+            _httpResponse.setErrorResponse(500);
+            applyConnectionHeader();
+            return true;
+        }
+    }
+    else // stat no falla
+    {
+        // Existe: asegurar que es un directorio
+        if (!S_ISDIR(st.st_mode))
+        {
+            _httpResponse.setErrorResponse(500);
+            applyConnectionHeader();
+            return true;
+        }
+    }
+
+    // Comprobar permisos de escritura explícitamente
+    if (access(uploadDir.c_str(), W_OK) != 0)
+    {
+        _httpResponse.setErrorResponse(500);
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 5. Generar nombre de archivo único (muy baja colisión)
+    std::ostringstream ss;
+    time_t now = time(NULL);
+    pid_t pid = getpid();
+    int rnd = rand();
+
+    ss << "upload_" << now << "_" << pid << "_" << rnd << ".dat";
+
+    std::string filename = ss.str();
+    std::string filepath = uploadDir + "/" + filename;
+
+    // 6. Escribir archivo de forma robusta (open/write/fsync)
+    // O_CREAT | O_EXCL garantiza que no se sobrescribe un archivo existente.
+
+    int fd = open(filepath.c_str(),
+                  O_WRONLY | O_CREAT | O_EXCL,
+                  0644);
+    if (fd == -1)
+    {
+        _httpResponse.setErrorResponse(500);
+        applyConnectionHeader();
+        return true;
+    }
+
+    const std::string &body = _httpRequest.getBody(); // Referencia para evitar copia
+    const char *buf = body.data();                    // aunque body ya tiene los datos, no puedes usarlos directamente con write, porque trabaja con punteros a bytes
+    size_t total = body.size();
+    size_t written = 0; // para saber cuánto llevamos escrito
+
+    while (written < total) // write() puede escribir menos bytes de los pedidos, por eso hacemos bucle
+    {
+        ssize_t ret = write(fd, buf + written, total - written);
+        if (ret < 0)
+        {
+            if (errno == EINTR)
+                continue; // Si una señal interrumpe write → repetir.
+
+            // Error real → eliminar archivo incompleto
+            close(fd);
+            unlink(filepath.c_str()); // Limpiamos el archivo corrupto con unlink()
+            _httpResponse.setErrorResponse(500);
+            applyConnectionHeader();
+            return true;
+        }
+        written += static_cast<size_t>(ret);
+    }
+
+    fsync(fd); // Fuerza la escritura del archivo físicamente a disco.
+               // Cuando haces write():
+               // Datos van al buffer del kernel (en RAM)
+               // Kernel decide cuándo escribirlos realmente en disco
+               // Podría tardar segundos si el sistema está ocupado
+    close(fd);
+
+    // 7. Preparar respuesta HTTP 201 Created
+    _httpResponse.setStatus(201, "Created");
+    _httpResponse.setHeader("Content-Type", "text/html");
+    _httpResponse.setHeader("Location", "/uploads/" + filename);
+
+    std::ostringstream html;
+    html << "<html><body>"
+         << "<h1>Upload successful</h1>"
+         << "<p>Saved as: " << filename << " (" << total << " bytes)</p>"
+         << "</body></html>";
+
+    std::string htmlBody = html.str();
+    _httpResponse.setBody(htmlBody);
+
+    std::ostringstream len;
+    len << htmlBody.size();
+    _httpResponse.setHeader("Content-Length", len.str());
+
+    applyConnectionHeader();
+
+    std::cout << "[POST] Upload OK => " << filename
+              << " (" << total << " bytes)" << std::endl;
+
+    return true;
+}
+
+/*
+TODO: en el primer párrafo, revisar si quiero quizás usar 404 en vez de 403 o permitir subrutas
+
+*/
+
+bool Client::handleDelete()
+{
+    // 1. Sanitizar ruta (igual que en GET)
+    std::string rawPath = sanitizePath(_httpRequest.getPath());
+    std::string fullPath = buildFullPath(rawPath);
+
+    // 2. Verificar que no es una ruta prohibida
+    //    (path traversal, etc. - ya gestionado por sanitizePath)
+
+    if (fullPath == "__FORBIDDEN__")
+    {
+        _httpResponse.setErrorResponse(403); // Forbidden
+        applyConnectionHeader();
+        return true;
+    }
+    std::cout << "[DEBUG] DELETE fullPath: " << fullPath << std::endl;
+
+    // 3. Verificar que el archivo existe
+    struct stat fileStat;
+    if (stat(fullPath.c_str(), &fileStat) != 0)
+    {
+        if (errno == ENOENT)
+        // ❌ El archivo no existe
+
+        {
+            _httpResponse.setErrorResponse(404); // Not Found
+        }
+        else if (errno == EACCES)
+        // ❌ No tenemos permiso para siquiera ver si existe
+
+        {
+            _httpResponse.setErrorResponse(403); // Forbidden - no permisos para ver
+        }
+        else
+        // ❌ Otro error (dispositivo, enlace roto, etc.)
+
+        {
+            _httpResponse.setErrorResponse(500); // Internal Server Error
+        }
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 4. No permitir borrar directorios (seguridad)
+    if (S_ISDIR(fileStat.st_mode))
+    {
+        _httpResponse.setErrorResponse(403); // Forbidden
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 5. Verificar permisos de escritura en el directorio padre
+    //    (stat() puede funcionar pero remove() fallar por permisos)
+
+    std::string parentDir = fullPath.substr(0, fullPath.find_last_of('/'));
+    if (parentDir.empty())
+        parentDir = ".";
+
+    if (access(parentDir.c_str(), W_OK) != 0)
+    {
+        _httpResponse.setErrorResponse(403); // Forbidden - no permisos para borrar
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 6. Intentar borrar el archivo
+    if (std::remove(fullPath.c_str()) != 0) // si falla
+    {
+        if (errno == EACCES || errno == EPERM)
+        {
+            _httpResponse.setErrorResponse(403); // Forbidden - permisos
+        }
+        else if (errno == EISDIR)
+        {
+            _httpResponse.setErrorResponse(403); // Forbidden - es directorio
+                                                 // Esto no debería pasar porque ya verificamos S_ISDIR,
+            // pero por si acaso (symlinks a directorios)
+        }
+        else
+        {
+            _httpResponse.setErrorResponse(500); // Internal Server Error
+        }
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 7. Respuesta exitosa (204 No Content - estándar para DELETE exitoso)
+    _httpResponse.setStatus(204, "No Content");
+    _httpResponse.setHeader("Content-Length", "0"); // opcional pero recomendable
+    applyConnectionHeader();
+    // NOTA: 204 No Content no debe tener body según RFC
+
+    std::cout << "[DELETE] Archivo borrado: " << fullPath << std::endl;
+    return true;
+}
 
 bool Client::sendResponse()
 {

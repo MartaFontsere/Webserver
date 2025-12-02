@@ -55,7 +55,8 @@ void HttpResponse::setErrorResponse(int code)
     case 413:
         _statusCode = 413;
         _statusMessage = "Request Entity Too Large";
-        _body = "<html><body><h1>413 Request Entity Too Large</h1></body></html>";
+        _body = "<html><body><h1>413 Request Entity Too Large</h1>"
+                "<p>Maximum body size is 10MB</p></body></html>";
         break;
 
     case 500:

@@ -17,6 +17,8 @@ public:
     const std::map<std::string, std::string> &getHeaders() const;
     /*const std::string &getSpecificHeader(const std::string &key) const;*/
     int getParsedBytes() const;
+    // 🆕 Nuevo getter
+    bool isBodyTooLarge() const;
 
     bool headersComplete() const;
     bool isChunked() const;
@@ -32,6 +34,7 @@ private:
     bool _isChunked;
     bool _keepAlive;  // true → mantener abierta
     int _parsedBytes; // número de bytes consumidos del rawRequest por el parse exitoso
+    bool _bodyTooLarge;
 
     // elementos del request
     std::string _method;
@@ -42,10 +45,13 @@ private:
 
     // control del body
     int _contentLength;
+    // Constante
+    static const size_t MAX_BODY_SIZE;
 
     // parsing helpers
     bool parseHeaders(const std::string &rawRequest);
     bool parseBody(const std::string &rawRequest);
+    bool parseChunkedBody(const std::string &chunkedData);
 };
 
 /*

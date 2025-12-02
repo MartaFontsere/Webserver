@@ -76,12 +76,20 @@ private:
 
     HttpResponse _httpResponse;
 
-    // Límite razonable para servir en memoria. Ajustar según recursos.
+    // Límite razonable para servir archivos en memoria. Ajustar según recursos.
     static const size_t MAX_STATIC_FILE_SIZE = 10 * 1024 * 1024; // TODO: 10 MB SE PUEDE DECLARAR ASI A PELO?
+    /*Propósito: Límite cuando tú SIRVES archivos a clientes
+        Ejemplo: Cliente pide GET /big-video.mp4
+            Tú lees el archivo del disco y lo envías
+            Protege tu RAM al leer archivos grandes
+*/
 
     // Helpper
     void applyConnectionHeader();
     bool validateMethod();
+    bool handleGet();
+    bool handlePost();
+    bool handleDelete();
     std::string sanitizePath(const std::string &path);
     std::string buildFullPath(const std::string &cleanPath);
     bool serveStaticFile(const std::string &fullPath);

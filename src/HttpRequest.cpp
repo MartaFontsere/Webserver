@@ -4,7 +4,23 @@
 #include <cstring>   // para atoi
 #include <strings.h> // para strcasecmp
 
-HttpRequest::HttpRequest() : _headersComplete(false), _isChunked(false), _keepAlive(false), _parsedBytes(0), _contentLength(-1)
+const size_t HttpRequest::MAX_BODY_SIZE = 10 * 1024 * 1024;
+/*
+Las constantes compartidas deben ser miembros de la clase, no locales de función, pero su definición va en el .cpp por
+    Mejor encapsulamiento: Si cambias el valor, solo recompilas HttpRequest.cpp, no todos los archivos que incluyan el header
+    Es más fácil de configurar (cuando luego tenga el archivo de configuración)
+        const size_t HttpRequest::MAX_BODY_SIZE = Config::getMaxBodySize();
+
+POR QUÉ MIEMBRO DE CLASE?
+    UNICA FUENTE DE VERDAD: Un solo lugar para cambiar el valor
+    COMPARTIDA: Todos los métodos de la clase la pueden usar
+    FÁCIL DE ENCONTRAR: Está declarada en el .hpp de la clase
+    CONSISTENTE: Mismo límite en todo el parsing del body
+
+
+*/
+
+HttpRequest::HttpRequest() : _headersComplete(false), _isChunked(false), _keepAlive(false), _parsedBytes(0), _bodyTooLarge(false), _contentLength(-1)
 {
 }
 
@@ -25,6 +41,7 @@ bool HttpRequest::parse(const std::string &rawRequest)
     {
         if (!parseBody(rawRequest))
             return false; // aún no tenemos todo el cuerpo
+                          // TODO: SI el body es demasiado largo envia false tambien, por lo que se quedara siempre abierto esperando todo el cuerpo? no habria que cerar como error o algo?
     }
 
     // ✅ Si llegamos aquí, ya tenemos todo completo
@@ -381,22 +398,35 @@ bool HttpRequest::parseBody(const std::string &rawRequest)
     // Localizamos el inicio del body: justo después de "\r\n\r\n"
     size_t bodyStart = rawRequest.find("\r\n\r\n");
     if (bodyStart == std::string::npos)
-        return false;
-    bodyStart += 4;
+        return false; // No se han recibido todos los headers aún
+    bodyStart += 4;   // Saltar "\r\n\r\n" (4 caracteres)
+
+    // 🛡️ SEGURIDAD: Validar tamaño máximo del body (10MB por ejemplo)
+    size_t contentLen = static_cast<size_t>(_contentLength);
+    if (contentLen > MAX_BODY_SIZE)
+    {
+        _bodyTooLarge = true;
+        // ✅ IMPORTANTE: Devolvemos TRUE para marcar request "completa"
+        // pero con error, así el cliente recibe respuesta 413
+        return true;
+    }
 
     if (_isChunked)
     {
-        // 🔸 TO DO: parsear chunked (más adelante)
+        // ⚠️ Chunked encoding: el cliente envía el body en trozos
+        // Ejemplo: "5\r\nhello\r\n0\r\n\r\n"
+        // Esto es común en POST grandes
+        // TODO: parsear chunked (más adelante)
         // de momento podemos marcarlo como no soportado
 
         // Para que compile y funcione sin chunked, consideramos que chunked ya no está presente.
         // Devolver true para no bloquear (o false si quieres forzar error).
 
-        std::cerr << "[Warning] Chunked body aún no implementado\n";
+        std::cerr << "[Warning] Chunked body aún no implementado para POST\n";
         return true;
     }
 
-    // Si hay Content-Length, esperamos a tener todo el cuerpo
+    // Si hay Content-Length, sabemos exactamente cuántos bytes leer. Esperamos a tener todo el cuerpo
     size_t bodyBytes = rawRequest.size() - bodyStart;
     if (bodyBytes < static_cast<size_t>(_contentLength))
         return false; // aún falta data. Si no tenemos todavía todos los bytes del body, volvemos al bucle y esperamos a la siguiente vuelta
@@ -408,6 +438,13 @@ bool HttpRequest::parseBody(const std::string &rawRequest)
 }
 
 /*
+¿Por qué es importante?
+    POST envía datos en el body (formularios, archivos, JSON)
+    Necesitamos leer exactamente los bytes que el cliente envió
+    Content-Length nos dice cuántos bytes esperar
+
+
+
 size_t bodyStart = _request.find("\r\n\r\n") + 4;
     _request contiene toda la petición recibida hasta ahora, incluyendo headers y body.
     find("\r\n\r\n") devuelve la posición del primer \r\n\r\n, es decir, el final de los headers.
@@ -457,6 +494,11 @@ const std::string &HttpRequest::getBody() const
 const std::map<std::string, std::string> &HttpRequest::getHeaders() const
 {
     return _headers;
+}
+
+bool HttpRequest::isBodyTooLarge() const
+{
+    return _bodyTooLarge;
 }
 
 bool HttpRequest::headersComplete() const
