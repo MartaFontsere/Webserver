@@ -17,4 +17,6 @@ std::string headerToEnvName(const std::string &headerName);
 
 std::string toUpperCase(const std::string &str);
 
+void stringToCString(const std::string &source, char *dest);
+
 #endif

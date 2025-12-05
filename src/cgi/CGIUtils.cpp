@@ -46,9 +46,19 @@ std::string headerToEnvName(const std::string &headerName)
     return "HTTP_" + toUpperCase(result);
 }
 
-std::string toUpperCase(std::string &str)
+std::string toUpperCase(const std::string &str)
 {
+    std::string result;
     for (int i = 0; i < (int)str.length(); i++)
-        str[i] = std::toupper(str[i]);
-    return str;
+        result += std::toupper(str[i]);
+    return result;
+}
+
+void stringToCString(const std::string &source, char *dest)
+{
+    for (size_t i = 0; i < source.size(); ++i)
+    {
+        dest[i] = source[i];
+    }
+    dest[source.size()] = '\0';
 }

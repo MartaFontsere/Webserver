@@ -4,6 +4,7 @@
 #include "hardcoded/Request.hpp"
 #include <string>
 #include <sstream>
+#include <iostream>
 #include <map>
 #include <vector>
 

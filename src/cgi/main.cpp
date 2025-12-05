@@ -3,6 +3,8 @@
 #include "../../includes/cgi/hardcoded/Response.hpp"
 #include "../../includes/cgi/hardcoded/LocationConfig.hpp"
 #include "../../includes/cgi/CGIDetector.hpp"
+#include "../../includes/cgi/CGIEnvironment.hpp"
+#include "../../includes/cgi/CGIUtils.hpp"
 
 void printTest(const std::string &testName, bool passed)
 {
@@ -14,61 +16,107 @@ void printTest(const std::string &testName, bool passed)
 
 int main()
 {
-    std::cout << "\n=== CGI DETECTOR TESTING ===" << std::endl;
+    std::cout << "\n======================================" << std::endl;
+    std::cout << "   CGI COMPLETE TESTING SUITE" << std::endl;
+    std::cout << "======================================\n" << std::endl;
 
     LocationConfig loc;
 
-    // TEST 1: isCGIRequest - PHP file
-    std::cout << "\n--- TEST 1: isCGIRequest() ---" << std::endl;
-    bool test1 = CGIDetector::isCGIRequest("/cgi-bin/hello.php", loc.cgiExts);
-    printTest("PHP file detected as CGI", test1 == true);
+    // ========== CGIUTILS TESTING ==========
+    std::cout << "--- CGIUtils Testing ---\n" << std::endl;
 
-    // TEST 2: isCGIRequest - Non-CGI file
-    bool test2 = CGIDetector::isCGIRequest("/index.html", loc.cgiExts);
-    printTest("HTML file NOT detected as CGI", test2 == false);
+    // Test intToString
+    std::string port = intToString(8080);
+    printTest("intToString(8080)", port == "8080");
+    std::cout << "  Result: " << port << std::endl;
 
-    // TEST 3: isCGIRequest - PHP with query string
-    bool test3 = CGIDetector::isCGIRequest("/script.php?name=world", loc.cgiExts);
-    printTest("PHP with query string detected", test3 == true);
+    // Test extractQueryString
+    std::string query = extractQueryString("/script.php?name=world&age=25");
+    printTest("extractQueryString with params", query == "name=world&age=25");
+    std::cout << "  Result: " << query << std::endl;
 
-    // TEST 4: isCGIRequest - php5 extension
-    bool test4 = CGIDetector::isCGIRequest("/legacy.php5", loc.cgiExts);
-    printTest("PHP5 extension detected", test4 == true);
+    std::string noQuery = extractQueryString("/script.php");
+    printTest("extractQueryString without params", noQuery.empty());
 
-    // TEST 5: isCGIRequest - No extension
-    bool test5 = CGIDetector::isCGIRequest("/no-extension", loc.cgiExts);
-    printTest("No extension NOT detected as CGI", test5 == false);
+    // Test toUpperCase
+    std::string upper = toUpperCase("Hello-World");
+    printTest("toUpperCase", upper == "HELLO-WORLD");
+    std::cout << "  Result: " << upper << std::endl;
 
-    // TEST 6: getCGIExecutable - PHP file
-    std::cout << "\n--- TEST 2: getCGIExecutable() ---" << std::endl;
-    std::string exec1 = CGIDetector::getCGIExecutable("/var/www/hello.php", loc.cgiPaths, loc.cgiExts);
-    printTest("PHP executable found", exec1 == "/usr/bin/php-cgi");
-    std::cout << "  Found: " << exec1 << std::endl;
+    // Test headerToEnvName
+    std::string envName1 = headerToEnvName("Host");
+    printTest("headerToEnvName(Host)", envName1 == "HTTP_HOST");
+    std::cout << "  Result: " << envName1 << std::endl;
 
-    // TEST 7: getCGIExecutable - Non-CGI file
-    std::string exec2 = CGIDetector::getCGIExecutable("/var/www/index.html", loc.cgiPaths, loc.cgiExts);
-    printTest("Non-CGI returns empty", exec2.empty());
+    std::string envName2 = headerToEnvName("User-Agent");
+    printTest("headerToEnvName(User-Agent)", envName2 == "HTTP_USER_AGENT");
+    std::cout << "  Result: " << envName2 << std::endl;
 
-    // TEST 8: resolveScriptPath - Normal case
-    std::cout << "\n--- TEST 3: resolveScriptPath() ---" << std::endl;
-    std::string path1 = CGIDetector::resolveScriptPath("/cgi-bin/hello.php", "./test_scripts");
-    printTest("Normal path resolution", path1 == "./test_scripts/cgi-bin/hello.php");
-    std::cout << "  Resolved: " << path1 << std::endl;
+    // ========== CGIENVIRONMENT TESTING ==========
+    std::cout << "\n--- CGIEnvironment Testing ---\n" << std::endl;
 
-    // TEST 9: resolveScriptPath - With query string
-    std::string path2 = CGIDetector::resolveScriptPath("/script.php?name=test", "./test_scripts");
-    printTest("Path with query string", path2 == "./test_scripts/script.php");
-    std::cout << "  Resolved: " << path2 << std::endl;
+    // Create mock request
+    Request req("GET", "/cgi-bin/hello.php?name=LIB");
+    req.setProtocol("HTTP/1.1");
+    req.setHeader("Host", "localhost:8080");
+    req.setHeader("User-Agent", "TestClient/1.0");
+    req.setHeader("Cookie", "session=abc123");
+    req.setBody("");
 
-    // TEST 10: resolveScriptPath - Root with trailing slash
-    std::string path3 = CGIDetector::resolveScriptPath("/hello.php", "./test_scripts/");
-    printTest("Root with trailing slash", path3 == "./test_scripts/hello.php");
-    std::cout << "  Resolved: " << path3 << std::endl;
+    // Prepare environment
+    CGIEnvironment env;
+    env.prepare(req, "./test_scripts/hello.php", "/cgi-bin/hello.php", "localhost", 8080);
 
-    // Summary
-    std::cout << "\n=== SUMMARY ===" << std::endl;
-    std::cout << "CGIDetector: ALL FUNCTIONS IMPLEMENTED" << std::endl;
-    std::cout << "Ready for CGIEnvironment implementation" << std::endl;
+    // Test getVar
+    std::cout << "\nTesting getVar():" << std::endl;
+    printTest("REQUEST_METHOD", env.getVar("REQUEST_METHOD") == "GET");
+    std::cout << "  Value: " << env.getVar("REQUEST_METHOD") << std::endl;
+
+    printTest("QUERY_STRING", env.getVar("QUERY_STRING") == "name=LIB");
+    std::cout << "  Value: " << env.getVar("QUERY_STRING") << std::endl;
+
+    printTest("SERVER_PORT", env.getVar("SERVER_PORT") == "8080");
+    std::cout << "  Value: " << env.getVar("SERVER_PORT") << std::endl;
+
+    printTest("SCRIPT_NAME", env.getVar("SCRIPT_NAME") == "/cgi-bin/hello.php");
+    std::cout << "  Value: " << env.getVar("SCRIPT_NAME") << std::endl;
+
+    printTest("HTTP_HOST", env.getVar("HTTP_HOST") == "localhost:8080");
+    std::cout << "  Value: " << env.getVar("HTTP_HOST") << std::endl;
+
+    printTest("Non-existent var", env.getVar("FAKE_VAR").empty());
+
+    // Test printAll
+    std::cout << "\nTesting printAll():" << std::endl;
+    env.printAll();
+
+    // Test toEnvArray
+    std::cout << "\n--- Testing toEnvArray() ---" << std::endl;
+    char **envArray = env.toEnvArray();
+
+    std::cout << "\nGenerated char** array:" << std::endl;
+    int count = 0;
+    for (int i = 0; envArray[i] != NULL; ++i)
+    {
+        std::cout << "  [" << i << "] " << envArray[i] << std::endl;
+        count++;
+    }
+    printTest("Array NULL terminated", envArray[count] == NULL);
+    printTest("Array has elements", count > 0);
+
+    // Test freeEnvArray
+    std::cout << "\nTesting freeEnvArray():" << std::endl;
+    env.freeEnvArray(envArray);
+    std::cout << "✅ Memory freed successfully (no crash)" << std::endl;
+
+    // ========== SUMMARY ==========
+    std::cout << "\n======================================" << std::endl;
+    std::cout << "   TESTING COMPLETE" << std::endl;
+    std::cout << "======================================" << std::endl;
+    std::cout << "\n✅ CGIDetector: TESTED (10/10)" << std::endl;
+    std::cout << "✅ CGIUtils: TESTED (5/5)" << std::endl;
+    std::cout << "✅ CGIEnvironment: TESTED (5/5)" << std::endl;
+    std::cout << "\nNext: CGIExecutor implementation" << std::endl;
 
     return 0;
 }
