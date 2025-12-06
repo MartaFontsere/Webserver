@@ -23,6 +23,7 @@ void CGIEnvironment::prepare(const Request &req, const std::string &scriptPath,
     _envVars["GATEWAY_INTERFACE"] = "CGI/1.1";
     _envVars["SERVER_SOFTWARE"] = "webserv/1.0";
     _envVars["SERVER_PROTOCOL"] = "HTTP/1.1";
+    _envVars["REDIRECT_STATUS"] = "200";
     _envVars["SERVER_NAME"] = serverName;
     _envVars["SERVER_PORT"] = intToString(serverPort);
     _envVars["REQUEST_METHOD"] = req.getMethod();
