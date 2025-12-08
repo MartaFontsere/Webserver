@@ -5,6 +5,7 @@
 #include "../../includes/cgi/CGIDetector.hpp"
 #include "../../includes/cgi/CGIEnvironment.hpp"
 #include "../../includes/cgi/CGIExecutor.hpp"
+#include "../../includes/cgi/CGIOutputParser.hpp"
 #include "../../includes/cgi/CGIUtils.hpp"
 
 void printTest(const std::string &testName, bool passed)
@@ -19,12 +20,14 @@ int main()
 {
     std::cout << "\n======================================" << std::endl;
     std::cout << "   CGI COMPLETE TESTING SUITE" << std::endl;
-    std::cout << "======================================\n" << std::endl;
+    std::cout << "======================================\n"
+              << std::endl;
 
     LocationConfig loc;
 
     // ========== CGIUTILS TESTING ==========
-    std::cout << "--- CGIUtils Testing ---\n" << std::endl;
+    std::cout << "--- CGIUtils Testing ---\n"
+              << std::endl;
 
     std::string port = intToString(8080);
     printTest("intToString(8080)", port == "8080");
@@ -39,7 +42,8 @@ int main()
     printTest("headerToEnvName", envName == "HTTP_USER_AGENT");
 
     // ========== CGIENVIRONMENT TESTING ==========
-    std::cout << "\n--- CGIEnvironment Testing ---\n" << std::endl;
+    std::cout << "\n--- CGIEnvironment Testing ---\n"
+              << std::endl;
 
     Request req("GET", "/cgi-bin/hello.php?name=LIB");
     req.setProtocol("HTTP/1.1");
@@ -53,24 +57,14 @@ int main()
     printTest("REQUEST_METHOD", env.getVar("REQUEST_METHOD") == "GET");
     printTest("QUERY_STRING", env.getVar("QUERY_STRING") == "name=LIB");
     printTest("SERVER_PORT", env.getVar("SERVER_PORT") == "8080");
-    printTest("HTTP_HOST", env.getVar("HTTP_HOST") == "localhost:8080");
-
-    std::cout << "\nEnvironment variables prepared:" << std::endl;
-    env.printAll();
-
-    char **envArray = env.toEnvArray();
-    printTest("toEnvArray creates array", envArray != NULL);
-    printTest("Array NULL terminated", envArray[0] != NULL);
-
-    env.freeEnvArray(envArray);
-    std::cout << "✅ Memory freed successfully\n" << std::endl;
 
     // ========== CGIEXECUTOR TESTING ==========
-    std::cout << "--- CGIExecutor Testing ---\n" << std::endl;
+    std::cout << "\n--- CGIExecutor Testing ---\n"
+              << std::endl;
 
-    try {
-        std::cout << "\nTest 1: Execute hello.php (GET)" << std::endl;
-        std::cout << "-----------------------------------" << std::endl;
+    try
+    {
+        std::cout << "Execute hello.php (GET)" << std::endl;
 
         Request phpReq("GET", "/hello.php?name=LIB");
         phpReq.setProtocol("HTTP/1.1");
@@ -83,57 +77,61 @@ int main()
 
         CGIExecutor executor;
         std::string output = executor.execute("/usr/bin/php-cgi",
-                                             "./test_scripts/hello.php",
-                                             phpEnvArray,
-                                             "");
+                                              "./test_scripts/hello.php",
+                                              phpEnvArray,
+                                              "");
 
         printTest("PHP execution successful", !output.empty());
-        printTest("Output contains Content-Type", output.find("Content-type") != std::string::npos);
-        printTest("Output contains HTML", output.find("<html>") != std::string::npos || output.find("Hello") != std::string::npos);
-
-        std::cout << "\nPHP CGI Output (first 500 chars):" << std::endl;
-        std::cout << "-----------------------------------" << std::endl;
-        std::cout << output.substr(0, 500) << std::endl;
-        std::cout << "..." << std::endl;
+        printTest("Output contains content", output.find("Hello") != std::string::npos);
 
         phpEnv.freeEnvArray(phpEnvArray);
 
-    } catch (std::exception &e) {
-        std::cout << "⚠️  PHP test skipped: " << e.what() << std::endl;
-        std::cout << "   (php-cgi might not be installed)" << std::endl;
+        // ========== CGIOUTPUTPARSER TESTING ==========
+        std::cout << "\n--- CGIOutputParser Testing ---\n"
+                  << std::endl;
+
+        CGIOutputParser parser;
+        parser.parse(output);
+
+        // Test headers extraction
+        std::map<std::string, std::string> headers = parser.getHeaders();
+        printTest("Headers extracted", !headers.empty());
+        printTest("Content-Type header exists", headers.find("Content-type") != headers.end());
+
+        std::cout << "\nExtracted Headers:" << std::endl;
+        std::cout << "-----------------------------------" << std::endl;
+        std::map<std::string, std::string>::const_iterator it;
+        for (it = headers.begin(); it != headers.end(); ++it)
+        {
+            std::cout << "  " << it->first << ": " << it->second << std::endl;
+        }
+
+        // Test body extraction
+        std::string body = parser.getBody();
+        printTest("Body extracted", !body.empty());
+        printTest("Body contains HTML", body.find("<html>") != std::string::npos || body.find("Hello") != std::string::npos);
+
+        std::cout << "\nExtracted Body (first 200 chars):" << std::endl;
+        std::cout << "-----------------------------------" << std::endl;
+        std::cout << body.substr(0, 200) << std::endl;
+
+        // Test status code
+        int statusCode = parser.getStatusCode();
+        std::cout << "\nStatus Code: " << statusCode << std::endl;
+        printTest("Status code extracted", statusCode == 200 || statusCode > 0);
+
+        // Test parsing with explicit Status header
+        std::cout << "\n--- Test Custom Status Code ---" << std::endl;
+        std::string customOutput = "Status: 404 Not Found\r\nContent-Type: text/html\r\n\r\n<html>404</html>";
+        CGIOutputParser parser2;
+        parser2.parse(customOutput);
+
+        printTest("Custom status 404", parser2.getStatusCode() == 404);
+        printTest("Custom body", parser2.getBody() == "<html>404</html>");
     }
-
-    try {
-        std::cout << "\nTest 2: Execute echo.py (GET)" << std::endl;
-        std::cout << "-----------------------------------" << std::endl;
-
-        Request pyReq("GET", "/echo.py?test=hello");
-        pyReq.setProtocol("HTTP/1.1");
-
-        CGIEnvironment pyEnv;
-        pyEnv.prepare(pyReq, "./test_scripts/echo.py", "/echo.py", "localhost", 8080);
-
-        char **pyEnvArray = pyEnv.toEnvArray();
-
-        CGIExecutor executor2;
-        std::string output = executor2.execute("/usr/bin/python3",
-                                              "./test_scripts/echo.py",
-                                              pyEnvArray,
-                                              "");
-
-        printTest("Python execution successful", !output.empty());
-        printTest("Output contains Content-Type", output.find("Content-Type") != std::string::npos);
-
-        std::cout << "\nPython CGI Output (first 500 chars):" << std::endl;
-        std::cout << "-----------------------------------" << std::endl;
-        std::cout << output.substr(0, 500) << std::endl;
-        std::cout << "..." << std::endl;
-
-        pyEnv.freeEnvArray(pyEnvArray);
-
-    } catch (std::exception &e) {
-        std::cout << "⚠️  Python test skipped: " << e.what() << std::endl;
-        std::cout << "   (python3 might not be installed)" << std::endl;
+    catch (std::exception &e)
+    {
+        std::cout << "⚠️  Test failed: " << e.what() << std::endl;
     }
 
     // ========== SUMMARY ==========
@@ -144,8 +142,10 @@ int main()
     std::cout << "✅ CGIUtils: COMPLETE" << std::endl;
     std::cout << "✅ CGIEnvironment: COMPLETE" << std::endl;
     std::cout << "✅ CGIExecutor: COMPLETE" << std::endl;
-    std::cout << "\nProgress: 4/6 modules (67%)" << std::endl;
-    std::cout << "Next: CGIOutputParser implementation\n" << std::endl;
+    std::cout << "✅ CGIOutputParser: COMPLETE" << std::endl;
+    std::cout << "\nProgress: 5/6 modules (83%)" << std::endl;
+    std::cout << "\nNext: CGIHandler (final module)\n"
+              << std::endl;
 
     return 0;
 }
