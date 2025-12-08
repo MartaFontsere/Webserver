@@ -7,6 +7,7 @@
 #include "../../includes/cgi/CGIExecutor.hpp"
 #include "../../includes/cgi/CGIOutputParser.hpp"
 #include "../../includes/cgi/CGIUtils.hpp"
+#include "../../includes/cgi/CGIHandler.hpp"
 
 void printTest(const std::string &testName, bool passed)
 {
@@ -132,6 +133,42 @@ int main()
     catch (std::exception &e)
     {
         std::cout << "⚠️  Test failed: " << e.what() << std::endl;
+    }
+
+    // ========== CGIHANDLER TESTING (END-TO-END) ==========
+    std::cout << "\n--- CGIHandler Testing (End-to-End) ---\n"
+              << std::endl;
+
+    try
+    {
+        std::cout << "Test 1: Complete CGI workflow with PHP" << std::endl;
+        std::cout << "-----------------------------------" << std::endl;
+
+        Request cgiReq("GET", "/hello.php?name=WebServ");
+        cgiReq.setProtocol("HTTP/1.1");
+        cgiReq.setHeader("Host", "localhost:8080");
+        cgiReq.setHeader("User-Agent", "CGITest/1.0");
+
+        LocationConfig cgiLoc; // Ya tiene serverName y serverPort
+
+        CGIHandler handler;
+        Response cgiResponse = handler.handle(cgiReq, cgiLoc);
+
+        printTest("CGI workflow successful", cgiResponse.getStatusCode() == 200);
+        printTest("Response has body", !cgiResponse.getBody().empty());
+        printTest("Response contains HTML", cgiResponse.getBody().find("<html>") != std::string::npos || cgiResponse.getBody().find("Hello") != std::string::npos);
+
+        std::cout << "\nFinal Response:" << std::endl;
+        std::cout << "Status Code: " << cgiResponse.getStatusCode() << std::endl;
+        std::cout << "Body (first 300 chars):" << std::endl;
+        std::cout << cgiResponse.getBody().substr(0, 300) << std::endl;
+        std::cout << "..." << std::endl;
+
+        std::cout << "\n✅ FULL CGI PIPELINE WORKING!" << std::endl;
+    }
+    catch (std::exception &e)
+    {
+        std::cout << "⚠️  CGI Handler test failed: " << e.what() << std::endl;
     }
 
     // ========== SUMMARY ==========

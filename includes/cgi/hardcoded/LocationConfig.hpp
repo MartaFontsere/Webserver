@@ -9,6 +9,8 @@ struct LocationConfig
     std::string root;
     std::vector<std::string> cgiPaths;
     std::vector<std::string> cgiExts;
+    std::string serverName;
+    int serverPort;
 
     LocationConfig()
     {
@@ -17,6 +19,8 @@ struct LocationConfig
         cgiExts.push_back(".php");
         cgiExts.push_back(".php5");
         cgiExts.push_back(".phtml");
+        serverName = "localhost";
+        serverPort = 8080;
     }
 };
 

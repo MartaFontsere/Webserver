@@ -5,8 +5,8 @@ Response::Response() : _statusCode(200), _statusMessage("OK")
 {
 }
 
-Response::Response(int code, const std::string &message)
-    : _statusCode(code), _statusMessage(message)
+Response::Response(int code, const std::string &body)
+    : _statusCode(code), _body(body)
 {
 }
 
