@@ -23,6 +23,7 @@ This module allows the web server to execute dynamic scripts (PHP, Python, Bash,
 
 ### Processing Pipeline
 
+```
 HTTP Request
 ↓
 ┌─────────────────────────────────────────────────┐
@@ -39,6 +40,7 @@ HTTP Request
 └─────────────────────────────────────────────────────────┘
 ↓
 HTTP Response
+```
 
 ### Modules (6 components)
 
@@ -536,7 +538,7 @@ kill(_childPid, SIGKILL);
 ## 👥 Authors
 
 **PatriPomes**
-**@pamanzana**
+**@pamanzan**
 
 ---
 
