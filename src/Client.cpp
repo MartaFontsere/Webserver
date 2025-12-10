@@ -239,8 +239,6 @@ El objeto _httpRequest se crea automáticamente cuando se construye el Client, i
 Simplemente, cuando leas del socket en readRequest(), irás acumulando los datos en _requestBuffer, y cuando veas que está completa, llamarás a:
     _httpRequest.parse(_requestBuffer);
 
-
-
 resumen del flujo completo
     1️⃣ poll() detecta POLLIN.
     2️⃣ handleClientEvent() llama a readRequest().
@@ -261,7 +259,6 @@ resumen del flujo completo
 Ahora mismo tu flujo es así:
 
 recv() → procesas → send() → cliente cierra → servidor marca _closed → cleanup lo borra
-
 
 ✅ Funciona, pero es HTTP/1.0 style: cada petición = nueva conexión.
 
@@ -296,7 +293,6 @@ Qué significa bytesRead == 0
 
                 Entonces podrías cambiar el comportamiento de readRequest()
 
-
 Entonces tu servidor debería:
     Detectar si el cliente quiere mantener la conexión viva.
     No marcar _closed = true en ese caso.
@@ -330,7 +326,6 @@ _request += buffer; o   _request.append(buffer, bytesRead);
     Guardamos los datos leídos en la petición completa del cliente (_request es un std::string).
     Así podemos recibir datos por partes si la petición llega fragmentada.
 
-
 Una petición HTTP puede contener cabecera (headers) y cuerpo (body) —y deberías controlar ambas, al menos mínimamente, si quieres un servidor correcto o extensible.
 
 Estructura general de una petición HTTP:
@@ -348,7 +343,6 @@ Estructura general de una petición HTTP:
         Content-Length: 27\r\n
         \r\n
         {"nombre": "Marta", "edad": 25}
-
 
 Partes principales
     🔸 a) Request line
@@ -385,8 +379,6 @@ Para tu servidor actual (básico), lo ideal sería:
     Parsear las cabeceras → guarda si existe Content-Length.
     Si Content-Length > 0, espera leer exactamente esos bytes más para tener el body completo.
     Cuando tengas todo (headers + body) → procesas la petición.
-
-
 
 ➤ Cosas clave:
 
@@ -537,7 +529,6 @@ Si luego quieres mejorarlo:
 
 Pero de momento asi está perfecto
 
-
 ¿Qué es un "path traversal"?
     Es un tipo de ataque en el que un cliente intenta salir del directorio permitido usando rutas como:
         /../../etc/passwd
@@ -550,7 +541,6 @@ Pero de momento asi está perfecto
     ➡️ El atacante podría acceder a archivos fuera de tu web root.
 
     Esto es crítico en cualquier webserver.
-
 
 CÓDIGO:
 Tu función pretende hacer una primera limpieza rápida
@@ -578,7 +568,6 @@ if (path.empty())
         No intentamos arreglar rutas relativas: la especificación HTTP espera un request-target absoluto.
     No intentamos arreglar rutas relativas: la especificación HTTP espera un request-target absoluto.
     ! Resultado: devolver "__FORBIDDEN__" para que el controlador principal genere un 403 (o 400) - REVISAR
-
 
 3. De inicio rechazaba cualquier ".." explícito
     if (path.find("..") != std::string::npos)
@@ -608,7 +597,6 @@ if (path.empty())
         El atacante consigue bypass.
 
         Por eso la función sola no protege del todo. SanitizePath filtra basura obvia
-
 
 3.1. Versión mejorada, no devolvemos forbiden siempre, hay que gestionar varias situaciones
 
@@ -701,7 +689,6 @@ Para ello vamos a dividir la ruta en partes
 
             Mucho más limpio, más profesional y más fácil de razonar.
 
-
 3.1.1. Preparación para dividir la ruta
     std::vector<std::string> parts;
     size_t i = 1; // evitar elemento vacío
@@ -709,7 +696,6 @@ Para ello vamos a dividir la ruta en partes
 parts almacenará los segmentos limpios de la ruta (p. ej. ["blog", "2025", "post.html"]).
 
 size_t i = 1 porque path[0] es '/'. Empezamos a buscar desde el carácter 1 para no crear un segmento vacío antes del primer /.
-
 
 3.1.2 Bucle principal — dividir y procesar segmento a segmento
 while (i <= path.size())
@@ -745,7 +731,6 @@ En resumen: esto parte la ruta por / produciendo cada componente en part.
 
 Ejemplo: "/a/b/c" → secuencia de part: "a", "b", "c".
 
-
 3.1.3. Ignorar vacíos y "."
 if (part.empty() || part == ".")
 {
@@ -761,7 +746,6 @@ Casos que generan part.empty():
 continue salta a la siguiente iteración sin añadir nada a parts.
 
 Ejemplo: "/foo//bar/./baz" → ignorará la parte vacía entre // y ignorará ..
-
 
 3.1.4. Tratar ".." (subir un nivel)
 else if (part == "..")
@@ -780,7 +764,6 @@ Importante: si parts está vacío y aparece .., eso significa que el cliente int
     Este return es la política segura cuando no puedes (o no quieres) resolver la ruta real con funciones del sistema.
 
 Ejemplo seguro: "/a/b/../c" → parts pasa de ["a","b"] a ["a"] luego se añade "c" → ["a","c"].
-
 
 3.1.5. Añadir segmento normal
 else
@@ -807,11 +790,9 @@ Resultado: ruta normalizada sin . ni .. ni //.
 
 Ejemplo: parts = ["blog","post.html"] → clean = "/blog/post.html".
 
-
 5.Si termina en '/', añade index.html
     if (cleanPath[cleanPath.size() - 1] == '/')
         cleanPath += "index.html";
-
 
 Si la ruta original acababa en '/', asumimos que el cliente está pidiendo la “carpeta”, por lo que añadimos index.html.
 
@@ -830,13 +811,11 @@ Comportamiento típico de nginx y apache.
 6. Devolver cleanPath
 Devuelve la ruta ya normalizada y lista para concatenar con WWW_ROOT y probar existencia con stat().
 
-
 Pasos reales y seguros:
     safe = sanitizePath(path)
     full = WWW_ROOT + safe
     real = realpath(full) ← esto normaliza y resuelve ‘..’
     Compruebas si real empieza por WWW_ROOT
-
 
 Cómo se usa en el resto del servidor
 
@@ -845,7 +824,6 @@ Cómo se usa en el resto del servidor
         Si devuelve "/something" → concatena WWW_ROOT + clean → hace stat() sobre esa ruta.
             Si existe y es fichero → leer y servir.
             Si no existe → 404.
-
 
 RESUMEN:
     sanitizePath() hace:
@@ -875,7 +853,6 @@ RESUMEN:
                     ¡Esto está fuera del root!
                     ¡PELIGRO!
                     Aquí es donde entra “check contra WWW_ROOT”. Es decir, checkear que la ruta empieza con WWW_ROOT
-
 
     Al no poder usar la funcion realPath(), no podemos resolver todo esto 100%, pero hacemos aproximaciones
 
@@ -919,7 +896,6 @@ ROOT
 NOTA IMPORTANTE
 
  Mejor si WWW_ROOT es una ruta absoluta (p.e. /home/user/www). Si la config la deja relativa (ej: ./www), el servidor funcionará pero las comprobaciones de "escapado" son menos estrictas: es mejor definir WWW_ROOT absoluto en config. Si no puedes, documenta que config debe ser absoluto.
-
 
     La detección de 404, 403, 200, 301, etc.
     NO debe estar en buildFullPath().
@@ -1018,13 +994,11 @@ bool Client::serveStaticFile(const std::string &fullPath)
 Esta función intenta servir un fichero estático (leerlo del disco y preparar _httpResponse con su contenido y cabeceras).
 Devuelve true si ha preparado correctamente la respuesta (200 OK con body), o false si se produjo un error y ya ha puesto una respuesta de error (403/404/413/500).
 
-
 Qué es stat?
     stat es una llamada al sistema de Unix que te permite obtener información sobre un archivo o directorio: tamaño, permisos, tipo (fichero, directorio…), fechas, etc.
 
     Piensa en stat() como:
     “Oye kernel, cuéntame todo lo que sabes de este archivo.”
-
 
 📌 ¿Qué devuelve exactamente stat?
 La función:
@@ -1048,7 +1022,6 @@ Rellena una estructura struct stat con datos como:
     st_mtime → última modificación
     st_ctime → cambio de metadatos
     st_atime → último acceso
-
 
 📁 ¿Para qué sirve en un webserver?
     Es básico para implementar:
@@ -1083,7 +1056,6 @@ if (stat(fullPath.c_str(), &fileStat) != 0 || S_ISDIR(fileStat.st_mode))
 
     Importante: stat también devuelve errores por permisos (EACCES) — podrías devolver 403 en ese caso, pero aquí se normaliza a 404.
 
-
 if (fileStat.st_size > MAX_STATIC_FILE_SIZE)
 {
     _httpResponse.setErrorResponse(413); // Payload Too Large
@@ -1092,11 +1064,9 @@ if (fileStat.st_size > MAX_STATIC_FILE_SIZE)
 }
 Antes de abrir y leer todo el archivo, nos aseguramos de que podamos soportarlo en memoria, sino salimos.
 
-
 std::string mime = getMimeType(fullPath);
 
 Calcula el tipo MIME (ej. text/html, image/png) a partir de la extensión del fullPath (ver tu getMimeType).
-
 
 _httpResponse.setStatus(200, "OK");
 _httpResponse.setHeader("Content-Type", mime);
@@ -1115,7 +1085,6 @@ Construimos la respuesta con:
     applyConnectionHeader() — añade la cabecera Connection según tu política (keep-alive o close) y posiblemente Keep-Alive con timeout/max.
 
     setBody(content) — coloca el contenido leído como body de la respuesta.
-
 
 Conceptos nuevos que aparecen aquí (resumen)
 
@@ -1213,7 +1182,6 @@ LLAMAR A READ FILE TO STRING SIN PROTECCIÓN PREVIA
                 /www/index.html (3 KB)
                 /www/style.css (1 KB)
 
-
             Pero puede existir fuera de tu carpeta web pero dentro de la ruta accesible por error:
                 /home/user/Descargas/Movie_4K_120GB.mkvEjemplo realista
 
@@ -1309,7 +1277,6 @@ O_NOFOLLOW -> Protege de este ataque:
 
         Si open() detecta que el path final es un symlink fallará inmediatamente y pondrá: errno = ELOOP
 
-
 Con O_NOFOLLOW, open() fallará, evitando fuga de archivos del sistema.
 Es una protección opcional (solo existe en algunos sistemas), por eso va con #ifdef.
 
@@ -1322,7 +1289,6 @@ Si es < 0, hubo error.
         500 en otros casos
 
     La función NO decide el código → responsabilidad bien distribuida.
-
 
 2. Reservamos memoria en el string
     out.clear(); -> Eliminamos contenido previo.
@@ -1376,7 +1342,6 @@ Caso 2 —> bytesRead == 0: EOF inesperado
         total += static_cast<size_t>(bytesRead);
 
     Vamos acumulando bytes leídos.
-
 
 4. Cerramos el descriptor
     close(fd);
@@ -1475,7 +1440,6 @@ processRequest devuelve:
             ...
         De momento no tengo errores que requieran cerrar el cliente PERO TENER EN CUENTA PARA EL FUTURO, COSAS A AÑADIR!!!!!!!!!!!!!!!!!!!
 
-
 Explicación del código:
 
 if (!_requestComplete) return true;
@@ -1528,7 +1492,6 @@ Construcción del body y headers 200:
     Content-Length: número de bytes del body. Muy importante en HTTP/1.1 si no usas chunked. Aquí usamos std::to_string(body.size()) — claro y legible.
 
     setBody: guarda el body en el objeto HttpResponse para que buildResponse() lo inserte al final.
-
 
 Notas importantes sobre diseño y flujo
     processRequest() no envía.
@@ -1877,12 +1840,9 @@ Principios sencillos antes de tocar código
 
     POLLOUT es la notificación de poll() que te dice “esto ahora es escribible”; la activas cuando tienes datos pendientes y la desactivas cuando acabas.
 
-
-
 Queremos mantener un método intuitivo como:
 
     bool Client::sendResponse(const std::string &msg);
-
 
 Y que dentro se encargue de:
     añadir al buffer (_writeBuffer),
@@ -1905,8 +1865,6 @@ Explicación de flujo (paso a paso):
             Si no hay keep-alive, marcar _closed = true para que cleanupClosedClients() lo borre.
 
             Si hay keep-alive, mantener la conexión abierta.
-
-
 
 Qué pasa con poll() y POLLOUT
     Esto lo entenderás mejor ahora que tienes clara la separación:
@@ -2005,7 +1963,6 @@ Entonces:
 
 🧩 Esto evita que intentes enviar cuando ya no hay nada pendiente.
 
-
 2.
 const char *buf = _writeBuffer.data() + _writeOffset;
 size_t remaining = _writeBuffer.size() - _writeOffset;
@@ -2021,7 +1978,6 @@ size_t remaining = _writeBuffer.size() - _writeOffset;
         → buf apunta al byte 10
         → remaining = tamaño_total - 10
 
-
 3.
 ssize_t s = send(_clientFd, buf, remaining, 0);
 
@@ -2034,7 +1990,6 @@ Pero en modo no bloqueante, send() puede:
     devolver -1 con otro errno → error grave;
 
     devolver 0 → el cliente cerró la conexión.
-
 
 4.
 Si se enviaron bytes...alignas
@@ -2067,7 +2022,6 @@ if (s > 0) {
 
 🧩 Esto permite enviar la respuesta en trozos, si el sistema solo deja enviar parte (por ejemplo, 4 KB cada vez).
 
-
 5.
 Si send() devuelve error temporal...
 
@@ -2093,7 +2047,6 @@ o devolvió 0 → el peer cerró la conexión.
 
 Entonces marcamos _closed = true para que el servidor lo elimine más tarde.
 
-
 Nota: flushWrite() solo hace una llamada a send() por invocación en esta versión (podrías hacer un while para intentar mandar todo en loops, pero con non-blocking es suficiente intentar una vez; si queda, poll te avisará con POLLOUT).
 
 */
@@ -2113,7 +2066,6 @@ bool Client::sendResponse(const std::string &msg)
     std::cout << "[Info] Respuesta enviada al cliente (fd: " << _clientFd << ")\n";
     return true;
 }
-
 
 ➤ Qué hace:
     Llama a send() para escribir el mensaje en el socket del cliente
@@ -2172,11 +2124,9 @@ Cuando el Server (u otra parte del código) quiera acceder al contenido ya parse
 const HttpRequest &req = client.getHttpRequest();
 std::cout << req.getMethod() << " " << req.getPath() << std::endl;
 
-
 Si no lo tienes, tendrías que hacer algo feo tipo:
 
 client._httpRequest.getPath(); // ❌ acceso directo a miembro privado
-
 
 Así que getHttpRequest() sirve como interfaz de acceso controlado.
 Conclusión: es buena práctica mantenerlo, aunque no imprescindible.

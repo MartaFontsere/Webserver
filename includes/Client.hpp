@@ -6,6 +6,8 @@
 #include <ctime>
 #include "HttpRequest.hpp"
 #include "HttpResponse.hpp"
+#include <vector>
+#include <string.h>
 
 // HARDCODEADO, va en configfile
 #define WWW_ROOT "./www" // raíz de los archivos web

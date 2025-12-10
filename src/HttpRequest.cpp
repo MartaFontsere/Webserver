@@ -17,7 +17,6 @@ POR QUÉ MIEMBRO DE CLASE?
     FÁCIL DE ENCONTRAR: Está declarada en el .hpp de la clase
     CONSISTENTE: Mismo límite en todo el parsing del body
 
-
 */
 
 HttpRequest::HttpRequest() : _headersComplete(false), _isChunked(false), _keepAlive(false), _parsedBytes(0), _bodyTooLarge(false), _contentLength(-1)
@@ -64,7 +63,6 @@ HttpRequest
     Devuelve true o false desde parse() según si ya tiene todo lo necesario.
 
     👉 Así que HttpRequest devuelve el estado, y Client lo usa para marcar su _requestComplete.
-
 
 Queremos que HttpRequest::parse() haga esto, de forma progresiva:
     Ver si ya tenemos el final de los headers → si no, seguimos leyendo.
@@ -171,7 +169,6 @@ Extraer solo la parte de las cabeceras (sin el body)
 
     Así que extraemos solo esa parte.
 
-
 4.
 Leer línea por línea
 
@@ -205,7 +202,6 @@ std::string line;
 
             Es decir, el carácter \n está ahí, pero el string no lo convierte en salto de línea por sí mismo; simplemente lo contiene.
 
-
         std::istringstream permite leer el string como si fuera texto “en streaming”
             Cuando haces:
                 std::istringstream ss(text);
@@ -213,8 +209,6 @@ std::string line;
                 “Quiero tratar el contenido del string text como si fuera una entrada de texto (como std::cin) que puedo leer línea a línea o palabra a palabra”.
 
             No cambia nada en el contenido: simplemente te da una forma de recorrerlo.
-
-
 
     Usar getline() con un istringstream
         getline() se usa para leer líneas completas (hasta el carácter de salto de línea \n)
@@ -228,7 +222,6 @@ std::string line;
             El \n no se incluye en line
 
         🔸 Devuelve false cuando ya no quedan líneas
-
 
     por qué no usar directamente el string?
         Porque un std::string no tiene posición de lectura.
@@ -249,8 +242,6 @@ Resumen:
 | `getline(ss, line)`      | Lee hasta `\n` y guarda una línea                       |
 | `>>` con `istringstream` | Extrae “palabras” separadas por espacios o tabs         |
 
-
-
 5.
 Primera línea → método, path y versión
 
@@ -269,7 +260,6 @@ if (!std::getline(ss, line))
         _path = /index.html
         _version = HTTP/1.1
 
-
 std::getline(ss, line);
 lee la primera línea completa (por ejemplo: "GET /index.html HTTP/1.1")
 
@@ -285,7 +275,6 @@ Son un bloque independiente que se ejecuta siempre, después del if.
 
     Al acabar el bloque se borra esa variable firstLine. Las llaves {} crean un bloque local temporal para que variables como firstLine existan solo ahí dentro
 
-
 ahora quiero separar los tres elementos de esa línea:
 std::istringstream firstLine(line);
 firstLine >> _method >> _path >> _version;
@@ -297,14 +286,12 @@ Lo que ocurre es:
 
 👉 Así consigues dividir
 
-
 6.
 while (std::getline(ss, line))
 {
     if (line == "\r" || line.empty())
         break;
 Aquí se procesan las siguientes líneas, hasta llegar a una línea vacía (\r\n), que marca el final de las cabeceras.
-
 
 7. Separar clave y valor:
 size_t pos = line.find(":");
@@ -335,7 +322,6 @@ val.pop_back()
 y !val.empty()
     Antes de tocar la cadena, siempre se comprueba que no esté vacía, para evitar errores o undefined behavior si se accede a val[0] o val.back().
 
-
 9. Guardar en el mapa de cabeceras
 _headers[key] = val;
 Guardamos el header en un mapa (std::map<std::string, std::string>), para luego poder acceder fácilmente a cualquier valor
@@ -358,7 +344,6 @@ strcasecmp(a, b)
     Devuelve 0 si son iguales (ignorando el caso).
 
     Devuelve un valor negativo o positivo si son distintas.
-
 
 ¿Por qué .c_str()?
     Porque strcasecmp trabaja con C-strings (const char*), no con objetos std::string.
@@ -442,8 +427,6 @@ bool HttpRequest::parseBody(const std::string &rawRequest)
     POST envía datos en el body (formularios, archivos, JSON)
     Necesitamos leer exactamente los bytes que el cliente envió
     Content-Length nos dice cuántos bytes esperar
-
-
 
 size_t bodyStart = _request.find("\r\n\r\n") + 4;
     _request contiene toda la petición recibida hasta ahora, incluyendo headers y body.

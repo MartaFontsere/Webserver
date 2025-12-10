@@ -121,7 +121,6 @@ std::ostringstream oss;
 
     Es la forma más limpia (y compatible con C++98) de crear strings grandes concatenando muchas partes.
 
-
 Status Line
     oss << _httpVersion << " " << _statusCode << " " << _statusMessage << "\r\n";
 
