@@ -12,6 +12,8 @@
 #include <limits>    // numeric_limits
 #include <algorithm> // std::min
 
+#include "Autoindex.hpp"
+
 /*
 ¿Por qué necesitamos Client.cpp?
 
@@ -462,6 +464,8 @@ std::string Client::sanitizePath(const std::string &path)
         return "__FORBIDDEN__";
 
     std::vector<std::string> allParts;
+    bool endsWithSlash = (path.size() > 1 && path[path.size() - 1] == '/');
+
     size_t i = 1; // saltamos la primera '/' para evitar vacío al dividir
     while (i <= path.size())
     {
@@ -505,12 +509,17 @@ std::string Client::sanitizePath(const std::string &path)
     }
 
     // Si la ruta termina en '/', añadimos index.html
-    if (!path.empty() && path[path.size() - 1] == '/')
-        cleanPath += (cleanPath.size() > 1 ? "/index.html" : "index.html");
+    // if (!path.empty() && path[path.size() - 1] == '/')
+    // cleanPath += (cleanPath.size() > 1 ? "/index.html" : "index.html");
+
+    // Mantener barra final si la tenía
+    if (endsWithSlash && cleanPath[cleanPath.size() - 1] != '/')
+        cleanPath += "/";
 
     // Si quedó vacío, devolver "/"
-    if (cleanPath.empty())
-        return "/";
+    // TODO: REVISAR, necesario?
+    // if (cleanPath.empty())
+    // return "/";
 
     return cleanPath;
 }
@@ -932,14 +941,15 @@ NOTA IMPORTANTE
 
  */
 
-bool Client::serveStaticFile(const std::string &fullPath)
+void Client::serveStaticFile(const std::string &fullPath)
 {
+    std::cout << "entrooooooooooooooooooooo" << std::endl;
     // 1) Caso prohibido desde buildFullPath o sanitize
     if (fullPath == "__FORBIDDEN__")
     {
         _httpResponse.setErrorResponse(403);
         applyConnectionHeader();
-        return false; // indica respuesta de error preparada
+        return; // indica respuesta de error preparada
     }
 
     // Comprobar existencia con stat()
@@ -952,15 +962,7 @@ bool Client::serveStaticFile(const std::string &fullPath)
         else
             _httpResponse.setErrorResponse(404);
         applyConnectionHeader();
-        return false;
-    }
-
-    // 3) No aceptar directorios
-    if (S_ISDIR(fileStat.st_mode))
-    {
-        _httpResponse.setErrorResponse(404);
-        applyConnectionHeader();
-        return false;
+        return; // TODO: esto es necesario??? si se hace en el handle get...
     }
 
     // Protección contra archivos gigantes
@@ -969,7 +971,7 @@ bool Client::serveStaticFile(const std::string &fullPath)
     {
         _httpResponse.setErrorResponse(500);
         applyConnectionHeader();
-        return false;
+        return;
     }
 
     size_t size = static_cast<size_t>(fileStat.st_size);
@@ -977,7 +979,7 @@ bool Client::serveStaticFile(const std::string &fullPath)
     {
         _httpResponse.setErrorResponse(413); // Payload Too Large
         applyConnectionHeader();
-        return false;
+        return;
     }
 
     // Leer archivo
@@ -995,7 +997,7 @@ bool Client::serveStaticFile(const std::string &fullPath)
             _httpResponse.setErrorResponse(500);
 
         applyConnectionHeader();
-        return false;
+        return;
     }
     // MIME
     std::string mime = determineMimeType(fullPath);
@@ -1011,7 +1013,7 @@ bool Client::serveStaticFile(const std::string &fullPath)
     _httpResponse.setBody(content);
 
     std::cout << "[Client fd=" << _clientFd << "] Archivo servido: " << fullPath << "\n";
-    return true;
+    return;
 }
 
 /*
@@ -1422,6 +1424,7 @@ mimeTypes es un std::map<std::string, std::string> con los tipos MIME conocidos:
 
 bool Client::processRequest()
 {
+    std::cout << "******************************* ENTRO" << std::endl;
     // 1) Reseteamos cualquier HttpResponse previa (estado limpio) -> Limpia HttpResponse previo
     _httpResponse = HttpResponse(); // crea un HttpResponse por defecto y lo copia en el miembro //? AQUÍ O AL ACABAR DE USARLO LO DEJAMOS LISTO PARA LA PRÓXIMA??? LA PRIMERA VEZ QUE SE USE YA SE CREA SOLO CON CLIENT, ASI QUE NO PASARÍA NADA
 
@@ -1430,6 +1433,7 @@ bool Client::processRequest()
         return true; // hemos generado una respuesta válida -> no es un fallo fatal, es un error que mandamos como respuesta, por lo que devolvemos true
 
     const std::string &method = _httpRequest.getMethod();
+    std::cout << "******************************* LLEGO" << std::endl;
 
     if (method == "GET")
         return handleGet();
@@ -1438,15 +1442,7 @@ bool Client::processRequest()
     else if (method == "DELETE")
         return handleDelete();
 
-    // 3. Obtener ruta en bruto y comprobar peligros
-    std::string rawPath = sanitizePath(_httpRequest.getPath());
-
-    // 4. Construir ruta real dentro de WWW_ROOT
-    std::string fullPath = buildFullPath(rawPath);
-
-    // 5. Servir archivo estático
-    if (!serveStaticFile(fullPath))
-        return true;
+    std::cout << "******************************* LLEGO" << std::endl;
 
     // Esto no debería pasar
     _httpResponse.setErrorResponse(405);
@@ -1556,9 +1552,56 @@ bool Client::handleGet()
 {
     // Obtener ruta en bruto y comprobar peligros
     std::string rawPath = sanitizePath(_httpRequest.getPath());
+    std::cout << "******************************* Raw Path pedido:" << rawPath << std::endl;
 
     // Construir ruta real dentro de WWW_ROOT
     std::string fullPath = buildFullPath(rawPath);
+    std::cout << "******************************* Full Path pedido:" << fullPath << std::endl;
+
+    // Comprobar existencia con stat()
+    struct stat fileStat;
+    if (stat(fullPath.c_str(), &fileStat) != 0)
+    {
+        // stat no pudo acceder: ENOENT → 404, EACCES → 403
+        if (errno == EACCES)
+            _httpResponse.setErrorResponse(403);
+        else
+            _httpResponse.setErrorResponse(404);
+        applyConnectionHeader();
+        return true;
+    }
+
+    // 3) No aceptar directorios
+    // if (S_ISDIR(fileStat.st_mode))
+    // {
+    //    _httpResponse.setErrorResponse(404);
+    //    applyConnectionHeader();
+    //    return false;
+    //}
+
+    // 3) NUEVO: Si es directorio delegar en Autoindex, que decide:
+    //    1. ¿Existe un archivo por defecto? (index.html)
+    //    2. Si existe → lo sirve
+    //    3. Si NO existe pero autoindex está activado → genera listado de directorio
+    //    4. Si NO existe y autoindex está desactivado → 403
+
+    if (S_ISDIR(fileStat.st_mode))
+    {
+        std::cout << "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$" << _httpRequest.getPath() << std::endl;
+        // Obtener configuración temporal
+        TempRouteConfig config = getTempRouteConfig(_httpRequest.getPath()); // TODO: Rehacer
+        std::cout << "[DEBUG] Se pide servir un directorio. Entrando en AUTOINDEX" << std::endl;
+
+        // Usar Autoindex para manejar el directorio
+        Autoindex::handleDirectory(
+            this,                   // Puntero a este Client
+            fullPath,               // Ruta en disco
+            _httpRequest.getPath(), // URL solicitada
+            config.autoindex,       // ¿Autoindex activado?
+            config.defaultFile      // Archivo por defecto (ej: "index.html")
+        );
+        return true; // Siempre hay respuesta lista, aunque handledirectory devuelva false, tenemos que devolver true para que siga el ciclo.
+    }
 
     // Servir archivo estático (configura la respuesta tanto de éxito como de error)
     serveStaticFile(fullPath);
@@ -2209,4 +2252,52 @@ void Client::resetForNextRequest()
     _rawRequest.clear();
     _writeBuffer.clear();
     _writeOffset = 0;
+}
+
+// Helpers autoindex
+
+bool Client::sendHtmlResponse(const std::string &html)
+{
+    _httpResponse.setStatus(200, "OK");
+    _httpResponse.setHeader("Content-Type", "text/html; charset=utf-8");
+    // Es importante el charset para caracteres especiales.
+    // TODO: hay que poner el mime no? no solo sera tipo html
+
+    std::ostringstream len;
+    len << html.size();
+    _httpResponse.setHeader("Content-Length", len.str()); // buscar cuántos bytes de HTML enviar
+
+    applyConnectionHeader();
+    _httpResponse.setBody(html); // Guardamos el HTML en el cuerpo de la respuesta
+
+    return true;
+} // TODO:revisar lo de mime y tambien si en serve static file mejor llamar a esto
+
+bool Client::sendError(int errorCode)
+{
+    _httpResponse.setErrorResponse(errorCode);
+    applyConnectionHeader();
+    return true;
+}
+
+// Configuración temporal (reemplazar cuando se termine config)
+Client::TempRouteConfig Client::getTempRouteConfig(const std::string &path)
+{
+    TempRouteConfig config;
+    config.autoindex = false; // Por defecto OFF
+    config.defaultFile = "index.html";
+    std::cout << "hay autoindex????: " << config.autoindex << std::endl;
+
+    // Configurar rutas ESPECÍFICAS con autoindex ON
+    // Aquí pondrías tu lógica temporal
+    if (path.find("/tests/files") == 0 ||
+        path.find("/tests/public") == 0 ||
+        path.find("/tests/uploads") == 0)
+    {
+        config.autoindex = true;
+        std::cout << "[DEBUG] Autoindex ON para: " << path << std::endl;
+        // TODO: Acabar de entender el criterio para poner autoindex ON
+    }
+    std::cout << "hay autoindex????: " << config.autoindex << std::endl;
+    return config;
 }

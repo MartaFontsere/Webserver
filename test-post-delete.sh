@@ -3,7 +3,7 @@
 echo "=== Iniciando pruebas del servidor ==="
 
 # 1. Crear archivo de prueba
-echo "Contenido de prueba" > www/test.txt
+echo "Contenido de prueba" > www/tests/post-delete/test.txt
 echo "✅ test.txt creado"
 
 # 2. Probar POST con curl
@@ -12,8 +12,8 @@ curl -s -X POST -d "Datos de prueba POST" http://localhost:8080/upload | grep -q
 
 # 3. Probar DELETE con curl
 echo -n "Probando DELETE... "
-curl -s -X DELETE http://localhost:8080/test.txt
-if [ ! -f "www/test.txt" ]; then
+curl -s -X DELETE http://localhost:8080/tests/post-delete/test.txt
+if [ ! -f "www/tests/post-delete/test.txt" ]; then
     echo "✅"
 else
     echo "❌"
@@ -24,5 +24,5 @@ echo "=== Archivos en uploads/: ==="
 ls -la www/uploads/ 2>/dev/null || echo "No hay uploads/"
 
 # 5. Limpiar
-rm -f www/test.txt
+rm -f www/tests/post-delete/test.txt
 echo "✅ Test completado"

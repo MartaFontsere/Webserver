@@ -51,6 +51,24 @@ public:
     // preparar para la próxima request cuando hay keep-alive
     void resetForNextRequest();
 
+    void serveStaticFile(const std::string &fullPath);
+
+    // métodos helper para Autoindex
+    bool sendHtmlResponse(const std::string &html);
+    bool sendError(int errorCode);
+
+    //! TEMPORAL:
+    // Método temporal para obtener configuración (hasta que terminemos todo lo de config)
+    struct TempRouteConfig
+    {
+        bool autoindex;
+        std::string defaultFile;
+    };
+    TempRouteConfig getTempRouteConfig(const std::string &path);
+    // Finalidad de la estructura:
+    // ✔ Decide si autoindex está activado para esa ruta
+    // ✔ Decide qué archivo usar como “default” (index.html)
+
 private:
     int _clientFd;     // file descriptor del socket del cliente
     sockaddr_in _addr; // dirección IP y puerto del cliente   // TODO *****SI DEJO ESTE PONER IGUAL EN EL SERVER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -92,7 +110,6 @@ private:
     bool handleDelete();
     std::string sanitizePath(const std::string &path);
     std::string buildFullPath(const std::string &cleanPath);
-    bool serveStaticFile(const std::string &fullPath);
     bool readFileToString(const std::string &fullPath, std::string &out, size_t size); // Helpper para serveStaticFile
 
     std::string determineMimeType(const std::string &path);
