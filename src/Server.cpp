@@ -42,7 +42,6 @@ En el destructor, comprobamos si el socket se creó (_serverFd != -1), y lo cerr
     Los recursos (como sockets) deben liberarse automáticamente cuando el objeto se destruye.
 Es la limpieza final: si el servidor se destruye (programa acaba o objeto eliminado), hay que liberar los recursos del sistema: cerrar sockets y liberar memoria de new Client(...).
 
-
 El dueño del file descriptor (FD) debe ser el objeto Client.
 El Server crea y destruye clientes, pero no cierra sockets directamente, solo borra los objetos Client.
 
@@ -116,17 +115,10 @@ Así, si algo intenta usarlo luego, falla de manera predecible en lugar de provo
     En sistemas complejos (timeouts, desconexiones abruptas, señales de error, etc.), pueden producirse varios caminos que intenten cerrar el mismo cliente.
     Si ya marcaste _closed = true, el destructor sabe que no tiene que volver a hacerlo.
 
-
-
-
-
-
-
 Cuestiones críticas
     Si algun Client* ya fue borrado antes en run(), no debería estar en el map. El destructor no comprueba doble-liberación porque supone coherencia.
 
     Es correcto cerrar FDs antes de delete del objeto cliente porque el objeto cliente podría ya intentar cerrar el FD en su destructor; aquí cerramos por seguridad (si tu Client ya cierra el fd en su destructor, esto podría redundar — pero cerrar dos veces un fd numérico que ya se cerró reapunta a otro descriptor si no manejas bien; por eso la responsabilidad de cerrar debería ser única preferentemente). En nuestro código cerramos el fd en el servidor para evitar fugas si Client no lo cerró.
-
 
 Remember iteradores:
     it->first → es la clave (por ejemplo, 1, 2, …)
@@ -234,7 +226,6 @@ En nuestro servidor, necesitamos un socket que:
 
     👉 La función createAndBind() se encarga de crear ese socket y vincularlo (bind) al puerto donde escuchará.
 
-
 Por qué recibe un const char *port en lugar de std::string
     Esto es simplemente por compatibilidad con funciones de C antiguas.
     socket(), bind(), htons() y atoi() son funciones de la librería C, no de C++.
@@ -243,8 +234,6 @@ Por qué recibe un const char *port en lugar de std::string
 
     Así que cuando en el constructor del servidor hacemos _serverFd = createAndBind(_port.c_str());
     ... lo que estamos haciendo es convertir el std::string a const char* para que lo pueda usar atoi().
-
-
 
 La función crea y configura el socket para escuchar conexiones:
     Crear socket(), configurar SO_REUSEADDR, preparar sockaddr_in y bind() al puerto solicitado. Devuelve el descriptor o -1 en error.
@@ -282,7 +271,6 @@ setsockopt(... SO_REUSEADDR ...)
         bind(sockfd, ...);
         listen(sockfd, ...);
 
-
         El sistema operativo (Linux, macOS, etc.) reserva el puerto que le has indicado.
         Por ejemplo, si pides el puerto 8080, el sistema dice:
 
@@ -310,7 +298,6 @@ setsockopt(... SO_REUSEADDR ...)
         Error: bind() failed
         Address already in use
 
-
         🧩 3️⃣ Qué significa “reiniciar el servidor”
 
         No es que tu código se “reinicie solo”.
@@ -332,7 +319,6 @@ setsockopt(... SO_REUSEADDR ...)
         $ ./webserv
         Error: bind() failed: Address already in use
 
-
         💥 Este error se da porque el sistema operativo aún tiene el puerto 8080 bloqueado en TIME_WAIT.
 
         🧩 4️⃣ Qué hace setsockopt(SO_REUSEADDR)
@@ -346,7 +332,6 @@ setsockopt(... SO_REUSEADDR ...)
 
         No afecta a la seguridad ni al funcionamiento normal.
         Solo acelera el ciclo de desarrollo y evita que tengas que esperar medio minuto cada vez que haces un cambio en el código.
-
 
         Si no estoy en TIME_WAIT, ¿para qué quiero SO_REUSEADDR? ¿No hace nada, o incluso puede fastidiar algo?”
 
@@ -370,7 +355,6 @@ bind() → asocia el socket al puerto del sistema operativo.
 
 💡 Si bind() falla, puede ser porque ya hay otro programa usando ese puerto.
 
-
 *** Explicación más en profundidad:
 
 sockaddr_in es una estructura de C (no de C++) que describe una dirección de red IPv4.
@@ -382,7 +366,6 @@ Su definición simplificada es más o menos así:
         struct in_addr sin_addr;   // Dirección IP (también en formato network byte order)
         unsigned char  sin_zero[8]; // Relleno (no se usa, pero mantiene el tamaño)
     };
-
 
 🔹 Qué representa
     Piensa que un socket es como un enchufe universal, pero para que el sistema operativo sepa a qué puerto y a qué IP quieres enchufarte, tienes que darle una dirección completa.
@@ -409,10 +392,8 @@ Su definición simplificada es más o menos así:
                         “Tranquilo, trata este puntero como si apuntara a una sockaddr genérica.”
                 No cambia los datos en memoria, solo la forma en que los interpretamos.
 
-
     Esto es porque la función no sabe si le estás pasando una dirección IPv4 (sockaddr_in), IPv6 (sockaddr_in6), o Unix domain socket (sockaddr_un).
     El cast solo le dice: “tranquilo, es del tipo genérico sockaddr*, pero realmente contiene una dirección IPv4”.
-
 
     🧠 Ejemplo: el bloque real de código
         struct sockaddr_in addr;
@@ -508,9 +489,6 @@ Por defecto, un socket en Linux es bloqueante.
 
     Esto es esencial para usar poll, select, o epoll — mecanismos que te dicen cuándo un socket está listo para leer o escribir, sin quedarte bloqueado.
 
-
-
-
 Esta funcion hace que el socket no bloquee.
 
 fcntl(fd, F_GETFL, 0) obtiene las flags actuales del descriptor fd.
@@ -524,7 +502,6 @@ Así, si haces accept() y no hay clientes esperando, la llamada no se queda cong
     Osea, en modo non-blocking, accept(), recv() y send() no bloquearán. En su lugar devolverán -1 y errno en EAGAIN/EWOULDBLOCK si no hay datos/disponibilidad. poll() se usa para evitar llamadas en momentos con posibilidad de bloqueo.
 
 Esto será esencial más adelante cuando usemos poll().
-
 
 ******Profundización:
     Qué es fcntl
@@ -690,15 +667,10 @@ Recordatorio rápido: poll() puede devolver varios flags a la vez
 
     Es decir, errores asíncronos (HUP/ERR) se gestionan antes de tocar el socket, así no intentas I/O en un fd con problemas.
 
-
 4) ¿Por qué mover ++i al final (o controlarlo manualmente)?
     En la versión nueva gestionas i manualmente (incrementas en cada rama con ++i cuando proceda) para poder continue y no incrementar en ramas donde ya hiciste erase. Es una forma segura de iterar cuando en algunas ramas haces erase() del vector _pollFds.
     Antes tenías un for (i=1; i<_pollFds.size(); ++i) y en las ramas llamabas erase() seguido de continue. Eso también funcionaba porque en el continue evitabas el ++i, y la iteración volvía a comprobar el nuevo _pollFds[i].
     La versión nueva simplemente hace explícito el control del i para evitar confusiones cuando añades condiciones continue en varios puntos — es más fácil razonar y menos propenso a errores sutiles.
-
-
-
-
 
  */
 
@@ -734,7 +706,6 @@ ACTUALIZACIÓN información:
 
 Tienes un poll() configurado solo con POLLIN, algo como esto:
     pfds[i].events = POLLIN;
-
 
 Entonces:
     poll() te avisa solo cuando hay algo que leer (datos entrantes).
@@ -810,7 +781,6 @@ Qué pasa cuando terminas de escribir todo
 
     Esto mantiene el bucle eficiente y evita que poll() te despierte sin necesidad.
 
-
 ****DUDA: En el caso de una sola peticion, eso activa pollin, luego envio respuesta y se queda a medias, para la siguiente vuelta sigue activo pollin de esa misma petición o se desactiva si no hay mas peticiones y entonces como hay cosas pendientes se activa solo el pollout y tengo que detectarlo?
 
 Caso: llega una única petición
@@ -858,7 +828,6 @@ Caso: llega una única petición
     Entonces, en la próxima llamada a poll(),
     el kernel te despertará cuando el socket vuelva a estar listo para escribir.
 
-
 Qué ocurre en la siguiente vuelta del bucle
     Como ya no hay nada que leer (no más POLLIN),
     el único motivo por el que poll() te despertará será:
@@ -869,7 +838,6 @@ Qué ocurre en la siguiente vuelta del bucle
         if (pfds[i].revents & POLLOUT)
             client->flushWrite();
 
-
     Y ahí envías lo que te quedaba pendiente en _writeBuffer.
     Cuando terminas (ya se envió todo), haces:
 
@@ -878,13 +846,10 @@ Qué ocurre en la siguiente vuelta del bucle
     Y el socket vuelve a estar solo con POLLIN activado,
     esperando nuevas peticiones.
 
-
-
 Entonces, si se queda a medias, ¿el pollin se desactiva y se activa pollout?
     ✅ Exactamente.
     El kernel deja de marcar POLLIN porque ya leíste todo,
     y tú, manualmente, activas POLLOUT para que te avise cuando puedas seguir enviando.
-
 
 Resumen rápido
 
@@ -899,7 +864,6 @@ Tú tienes que decidir qué tipo de eventos quieres monitorizar en cada momento.
 | --------- | --------------- | ------------------------------------------------------------------------------------ |
 | `events`  | Tú (tu código)  | Qué condiciones quieres que `poll()` vigile (por ejemplo: `POLLIN`, `POLLOUT`, etc.) |
 | `revents` | El kernel       | Qué condiciones **se cumplieron realmente** cuando `poll()` despertó.                |
-
 
 Cuando el socket se queda sin datos (ya leíste todo)
     Después de hacer recv() y vaciar el buffer,
@@ -991,7 +955,6 @@ Piensa en poll() como un vigilante que está atento a varios sockets a la vez y 
 
 Entonces tú puedes actuar sin quedarte bloqueada esperando.
 
-
 Así, en cada ciclo:
 
     Si el socket del servidor tiene actividad → significa que hay un nuevo cliente que quiere conectarse→ haces accept() y lo añades a tu lista de pollfd.
@@ -1000,10 +963,8 @@ Así, en cada ciclo:
 
     Si la petición está completa → generas una respuesta y se la envías con sendResponse().
 
-
 👉 el socket (la puerta real de comunicación)
 👉 y poll() (el vigilante que observa esas puertas).
-
 
 Vamos a crear:
 
@@ -1019,14 +980,12 @@ Cada iteración del bucle:
         Si el fd es el del servidor → hay una nueva conexión (accept()).
         Si es otro → ese cliente ha mandado algo o está listo para recibir respuesta.
 
-
 **** CÓDIGO: Explicación línea a línea (lo esencial)
 
 1.
 Creamos un pollfd para el socket del servidor y registramos POLLIN (nos interesa cuando haya nuevas conexiones).
 
 Guardamos ese pollfd en _pollFds en la posición 0: convenimos que índice 0 será siempre socket servidor.
-
 
 2.
 poll(_pollFds.data(), _pollFds.size(), -1)
@@ -1040,7 +999,6 @@ Si errno == EINTR → reacción adecuada: volver a llamar a poll() (esto evita t
 Si hay otro error → imprimimos y salimos del bucle.
 
 ready indica cuántos fds tienen revents no nulos, pero no lo usamos directamente para optimizar el escaneo.
-
 
 3. if (_pollFds.size() > 0 && (_pollFds[0].revents & POLLIN))
             acceptNewClient();
@@ -1062,8 +1020,6 @@ El operador & (AND bit a bit) sirve para comprobar si el bit de POLLIN está act
 
 significa:
 👉 “Si hay al menos un socket registrado y el socket del servidor tiene un evento POLLIN (una nueva conexión entrante), entonces acepto esa conexión.”
-
-
 
 ***Duda:  pero como se llega a saber que alguien se quiere conectar? como llega esa información al fd del servidor?
     Cuando creas un socket de servidor, _serverFd no es solo un número cualquiera, es un descriptor de archivo que el kernel asocia con tu aplicación.
@@ -1092,8 +1048,6 @@ Es decir:
 
 Si hay un nuevo cliente esperando a ser aceptado, entramos en acceptNewClient()
 
-
-
 4.
 for (size_t i = 1; i < _pollFds.size(); ++i)
 {
@@ -1101,7 +1055,6 @@ for (size_t i = 1; i < _pollFds.size(); ++i)
         handleClientEvent(_pollFds[i].fd);
 
 Despues se recorren el resto de índices de la lista _pollFds, que son los clientes ya conectados, para evaluar si hay algun revent tipo Pollin (peticiones que haya pendientes de leer). En tal caso, se llama a handleClientEvent
-
 
 5. Revisar si en el proceso ha habido clientes que se han cerrado y hay que limpiar
 }
@@ -1188,7 +1141,6 @@ Pasos por nuevo cliente:
         revents → inicializado a 0, lo rellena poll() luego.
         Añadimos el nuevo socket (fd) a la lista _pollFds para que poll() empiece a vigilar este cliente también.
 
-
 ***DUDA: _clientsByFd y _pollFds sirven para cosas distintas y complementarias.
     Cuando aceptas un cliente
         accept() te da un clientFd
@@ -1266,7 +1218,6 @@ Esta línea es clave, se llama a readRequest para:
 
     👉 Si devuelve false, el servidor no responde todavía, sale y solo espera más datos la próxima vez.
 
-
 ***DUDA: PERO SI AUN FALTA POR LLEGAR, NO TENEMOS QUE ENTRAR MAS A READREQUEST, POR SI VENIA POR PARTES O NO HA PODIDO LEERLO TODO PORQUE EL BUFFER ERA MAS PEQUEÑO QUE EL TAMAÑO DE LA PETICION?
     Tu intuición es totalmente correcta: el servidor no se queda bloqueado esperando a que llegue el resto, sino que vuelve al bucle principal. Pero eso no significa que la petición se “olvide”: el cliente sigue registrado y poll() lo volverá a despertar cuando haya más datos disponibles.
 
@@ -1285,7 +1236,6 @@ Esta línea es clave, se llama a readRequest para:
 
     👉 Esto es no bloqueante y reactivo: nunca te quedas “esperando dentro” de una función.
 ***FIN DUDA
-
 
 */
 
@@ -1361,7 +1311,6 @@ void Server::run()
     }
 }
 
-
 1️⃣ while(true)
     Este es el bucle principal del servidor, el loop infinito del servidor.
 
@@ -1378,7 +1327,6 @@ void Server::run()
     clientLen le dice a accept() cuánto espacio tiene para escribir esos datos.
     Por eso lo inicializas con sizeof(clientAddr) — no porque clientAddr tenga datos, sino para que accept() sepa cuánto puede llenar (el tamaño de la estructura).
 
-
     sockaddr_in es una estructura de C definida en los headers del sistema, concretamente en:
         #include <netinet/in.h>
 
@@ -1391,12 +1339,9 @@ void Server::run()
 
         sockaddr_in clientAddr;
 
-
         y es exactamente equivalente a:
 
         struct sockaddr_in clientAddr;
-
-
 
 2️⃣ accept()
     int clientFd = accept(_serverFd, (struct sockaddr*)&clientAddr, &clientLen);
@@ -1424,8 +1369,6 @@ void Server::run()
 
         De lo contrario, accept() se quedará esperando hasta que alguien se conecte.
 
-
-
 3️⃣ response
 
     Aquí estamos construyendo una respuesta HTTP completa.
@@ -1435,7 +1378,6 @@ void Server::run()
     Content-Length: 12
 
     Hello world!
-
 
     🔸 Primera línea:
     El estado de la respuesta → “200 OK” significa que todo ha ido bien.
@@ -1450,7 +1392,6 @@ void Server::run()
     🔸 Cuerpo:
     El texto real que queremos enviar → "Hello world!"
 
-
     En las respuestas y peticiones HTTP, las líneas no terminan solo con \n,
     sino con \r\n, que significa:
 
@@ -1460,7 +1401,6 @@ void Server::run()
 
     🔹 Viene del estándar original de los protocolos de red (influenciado por Telnet y por máquinas antiguas).
     🔹 Es una forma obligatoria en HTTP/1.0 y HTTP/1.1 para marcar los saltos de línea en los headers.
-
 
 3️⃣ send()
     send(clientFd, response, strlen(response), 0);
@@ -1478,7 +1418,6 @@ void Server::run()
 
     Eso permite que si abres el navegador en http://localhost:8080, o haces curl http://localhost:8080
     veas “Hello world!” directamente en pantalla 🎉
-
 
 4️⃣ close()
     close(clientFd);

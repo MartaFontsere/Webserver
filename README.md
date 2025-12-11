@@ -6,6 +6,19 @@
 14.11.2025 - Creación de la rama Process-and-send-response, con el mismo prototipo que el anterior pero las responsabilidades divididas entre client y HttpResponse       
 14.11.2025 - Creación de la rama Server-engine para centrar el desarrollo de la lógica interna del servidor
 
+IMPORTANTE: si al ejecutar el servidor aparece este mensaje: 
+ - Error en bind(): Address already in use
+ - ❌ Error: no se pudo crear el socket.
+Quiere decir que se ha quedado el socket abierto
+
+Para gestionarlo:
+
+- Listarlos (verás el PID): lsof -i :8080
+- Matar el proceso que esté usando el puerto: kill -9 <PID>
+                     
+
+TESTS:
+
 Test multiclient:
  * Terminal 1:                                  
        - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
