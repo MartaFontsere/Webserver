@@ -106,6 +106,7 @@ private:
     void applyConnectionHeader();
     bool validateMethod();
     bool handleGet();
+    // bool handleHead();
     bool handlePost();
     bool handleDelete();
     std::string sanitizePath(const std::string &path);

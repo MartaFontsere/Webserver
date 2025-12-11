@@ -442,7 +442,7 @@ void Client::applyConnectionHeader()
 bool Client::validateMethod()
 {
     const std::string &method = _httpRequest.getMethod();
-    if (method != "GET" && method != "POST" && method != "DELETE")
+    if (method != "GET" && method != "POST" && method != "DELETE" && method != "HEAD")
     {
         // Respondemos con 405 Method Not Allowed (contenido + headers dentro de HttpResponse)
         _httpResponse.setErrorResponse(405);
@@ -1437,6 +1437,8 @@ bool Client::processRequest()
 
     if (method == "GET")
         return handleGet();
+    // else if (method == "HEAD")
+    //  return handleHead();
     else if (method == "POST")
         return handlePost();
     else if (method == "DELETE")
