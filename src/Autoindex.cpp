@@ -160,7 +160,6 @@ namespace Autoindex
 
     handleDirectory() implementa justamente este flujo.
 
-
     Por lo tanto, esta función decide si servir un defaultFile (p. ej. index.html) o generar el listado si autoindexEnabled == true. En caso contrario, envía error 403.
 
     La llama tu manejador principal de rutas en el servidor
@@ -453,7 +452,6 @@ generateListing() únicamente se llama:
     ✔️ cuando no existe un archivo index
     ✔️ cuando autoindex está activado
 
-
 CÓDIGO:
 
 1. Apertura del directorio
@@ -468,12 +466,10 @@ if (!dir)
     Si falla → no podemos leer la carpeta.
     En vez de 404 se devuelve 403 Forbidden, porque técnicamente sí existe, pero no se puede acceder.
 
-
 2. Crear buffer HTML
 std::ostringstream html;
 
     ostringstream permite construir un string largo de forma eficiente.
-
 
 3. Cabecera HTML + CSS
     html << "<!DOCTYPE html>\n"

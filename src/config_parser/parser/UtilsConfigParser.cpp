@@ -1,11 +1,4 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <cstdlib>
-#include "../../../includes/config_parser/parser/DirectiveParser.hpp"
-#include "../../../includes/config_parser/parser/BlockParser.hpp"
+#include "../../../includes/config_parser/parser/UtilsConfigParser.hpp"
 
 /**
  * @brief Removes leading and trailing whitespace from a string
@@ -202,4 +195,94 @@ BlockParser readConfigFile(const std::string &filePath)
         throw std::runtime_error(message.str());
     }
     return root;
+}
+
+/**
+ * @brief Initializes and executes the complete configuration parsing pipeline
+ *
+ * Main entry point for the configuration parser module. Orchestrates the
+ * complete validation and parsing process in three phases:
+ *
+ * === PARSING PIPELINE ===
+ *
+ * PHASE 1: Structural Validation (StructuralValidator)
+ *   - Validates balanced braces { }
+ *   - Checks semicolon placement
+ *   - Verifies block syntax correctness
+ *   - Detects unclosed blocks/directives
+ *   Result: Early failure if file structure is malformed
+ *
+ * PHASE 2: Syntactic Parsing (BlockParser + DirectiveParser)
+ *   - Reads and tokenizes configuration file
+ *   - Builds hierarchical block tree
+ *   - Parses directives and their arguments
+ *   - Handles nested blocks (http, server, location)
+ *   Result: Complete configuration tree (BlockParser)
+ *
+ * PHASE 3: Semantic Validation (SemanticValidator)
+ *   - Validates directive names and contexts
+ *   - Checks argument counts and types
+ *   - Verifies required directives present
+ *   - Detects invalid configurations
+ *   Result: Semantically correct configuration ready for use
+ *
+ * Error handling:
+ * - Structural errors: Stops immediately, prints all errors found
+ * - Parsing errors: Throws runtime_error with line number
+ * - Semantic errors: Generates report with all violations
+ *
+ * Output:
+ * - Success: "✅ Valid configuration"
+ * - Failure: Detailed error report with line numbers and explanations
+ *
+ * Example usage:
+ *   int result = initConfigParser("config/webserv.conf");
+ *   if (result != 0) {
+ *       std::cerr << "Configuration parsing failed" << std::endl;
+ *       return 1;
+ *   }
+ *   // Configuration is valid, proceed with server startup
+ *
+ * @param configPath Path to nginx-style configuration file to parse
+ * @return 0 on success (configuration valid), 1 on failure (errors found)
+ *
+ * @note Prints error messages to stderr and success message to stdout
+ * @note Does not modify any global state - only validates the configuration
+ * @see validateStructure() for Phase 1 (structural validation)
+ * @see readConfigFile() for Phase 2 (parsing)
+ * @see SemanticValidator::validate() for Phase 3 (semantic validation)
+ */
+int initConfigParser(const std::string &configPath)
+{
+    try
+    {
+        // PHASE 1: Structural validation (braces, semicolons)
+        std::vector<std::string> structuralErrors;
+        if (!validateStructure(configPath, structuralErrors))
+        {
+            // Display structural errors with formatting
+            std::cerr << "❌ Structural validation failed with "
+                      << structuralErrors.size() << " error(s):" << std::endl;
+            for (size_t i = 0; i < structuralErrors.size(); ++i)
+                std::cerr << structuralErrors[i] << std::endl;
+            return 1;
+        }
+        // PHASE 2: Parse configuration into tree structure
+        BlockParser root = readConfigFile("src/test.conf");
+        // PHASE 3: Semantic validation (directives, contexts, types)
+        SemanticValidator validator;
+        if (!validator.validate(root))
+        {
+            validator.printReport();
+            return 1;
+        }
+
+        std::cout << "✅ Configuración válida" << std::endl;
+    }
+    catch (std::exception &e)
+    {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    return 0;
 }
