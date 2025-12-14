@@ -22,4 +22,6 @@ BlockParser readConfigFile(const std::string &filePath);
 
 int initConfigParser(const std::string &configPath);
 
+BlockParser parseAndValidateConfig(const std::string &configPath);
+
 #endif

@@ -143,7 +143,7 @@ void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock, ServerCo
     std::vector<BlockParser> nestedBlocks = serverBlock.getNestedBlocks();
     std::vector<LocationConfig> locations;
 
-    for (int i = 0; i < nestedBlocks.size(); i++)
+    for (size_t i = 0; i < nestedBlocks.size(); i++)
     {
         LocationConfig loc = buildLocation(nestedBlocks[i]);
         locations.push_back(loc);
@@ -171,13 +171,20 @@ ServerConfig ConfigBuilder::buildServer(const BlockParser &serverBlock)
 
 std::vector<ServerConfig> ConfigBuilder::buildFromBlockParser(const BlockParser &root)
 {
-    std::vector<BlockParser> serverBlocks = root.getNestedBlocks();
+    std::vector<BlockParser> rootBlocks = root.getNestedBlocks();
     std::vector<ServerConfig> servers;
-
-    for (int i = 0; i < serverBlocks.size(); i++)
+    for (size_t i = 0; i < rootBlocks.size(); i++)
     {
-        ServerConfig srv = buildServer(serverBlocks[i]);
-        servers.push_back(srv);
+        if (rootBlocks[i].getName() == "http")
+        {
+            std::vector<BlockParser> serverBlocks = rootBlocks[i].getNestedBlocks();
+            for (size_t j = 0; j < serverBlocks.size(); j++)
+            {
+                ServerConfig srv = buildServer(serverBlocks[j]);
+                servers.push_back(srv);
+            }
+        }
     }
+
     return servers;
 }
