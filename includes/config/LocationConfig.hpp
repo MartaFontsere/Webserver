@@ -13,7 +13,7 @@ private:
     std::vector<std::string> _methods;
     std::vector<std::string> _cgiPaths;
     std::vector<std::string> _cgiExts;
-    std::map<int, std::string> _errorPage;
+    std::map<int, std::string> _errorPages;
     int _returnCode;
     std::string _returnUrl;
     size_t _bodySize;
@@ -33,7 +33,7 @@ public:
     const std::vector<std::string> &getMethods() const;
     const std::vector<std::string> &getCgiPaths() const;
     const std::vector<std::string> &getCgiExts() const;
-    const std::map<int, std::string> &getErrorPage() const;
+    const std::map<int, std::string> &getErrorPages() const;
     int getReturnCode() const;
     const std::string &getReturnUrl() const;
     size_t getBodySize() const;
@@ -46,7 +46,7 @@ public:
     void setMethods(const std::vector<std::string> &methods);
     void setCgiPaths(const std::vector<std::string> &cgiPaths);
     void setCgiExts(const std::vector<std::string> &cgiExts);
-    void setErrorPage(const std::map<int, std::string> &errorPage);
+    void setErrorPages(const std::map<int, std::string> &errorPage);
     void setReturnCode(int returnCode);
     void setReturnUrl(const std::string &returnUrl);
     void setBodySize(size_t bodySize);

@@ -6,7 +6,7 @@ LocationConfig::LocationConfig() : _returnCode(0), _bodySize(1048576), _autoinde
 
 LocationConfig::LocationConfig(const LocationConfig &other)
     : _root(other._root), _index(other._index), _methods(other._methods),
-      _cgiPaths(other._cgiPaths), _cgiExts(other._cgiExts), _errorPage(other._errorPage),
+      _cgiPaths(other._cgiPaths), _cgiExts(other._cgiExts), _errorPages(other._errorPages),
       _returnCode(other._returnCode), _returnUrl(other._returnUrl),
       _bodySize(other._bodySize), _pattern(other._pattern), _uploadPath(other._uploadPath),
       _autoindex(other._autoindex)
@@ -22,7 +22,7 @@ LocationConfig &LocationConfig::operator=(const LocationConfig &other)
         _methods = other._methods;
         _cgiPaths = other._cgiPaths;
         _cgiExts = other._cgiExts;
-        _errorPage = other._errorPage;
+        _errorPages = other._errorPages;
         _returnCode = other._returnCode;
         _returnUrl = other._returnUrl;
         _bodySize = other._bodySize;
@@ -62,9 +62,9 @@ const std::vector<std::string> &LocationConfig::getCgiExts() const
     return _cgiExts;
 }
 
-const std::map<int, std::string> &LocationConfig::getErrorPage() const
+const std::map<int, std::string> &LocationConfig::getErrorPages() const
 {
-    return _errorPage;
+    return _errorPages;
 }
 
 int LocationConfig::getReturnCode() const
@@ -122,9 +122,9 @@ void LocationConfig::setCgiExts(const std::vector<std::string> &cgiExts)
     _cgiExts = cgiExts;
 }
 
-void LocationConfig::setErrorPage(const std::map<int, std::string> &errorPage)
+void LocationConfig::setErrorPages(const std::map<int, std::string> &errorPages)
 {
-    _errorPage = errorPage;
+    _errorPages = errorPages;
 }
 
 void LocationConfig::setReturnCode(int returnCode)

@@ -19,6 +19,10 @@ private:
     std::vector<std::string> getDirectiveValues(const BlockParser &block, const std::string &directiveName);
     int getDirectiveValueAsInt(const BlockParser &block, const std::string &directiveName);
 
+    void parseAutoindex(const BlockParser &locationBlock, LocationConfig &location);
+    void parseReturn(const BlockParser &locationBlock, LocationConfig &location);
+    void parseErrorPages(const BlockParser &locationBlock, LocationConfig &location);
+
 public:
     ConfigBuilder();
     ~ConfigBuilder();
