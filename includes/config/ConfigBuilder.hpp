@@ -21,7 +21,9 @@ private:
 
     void parseAutoindex(const BlockParser &locationBlock, LocationConfig &location);
     void parseReturn(const BlockParser &locationBlock, LocationConfig &location);
-    void parseErrorPages(const BlockParser &locationBlock, LocationConfig &location);
+    void locationParseErrorPages(const BlockParser &locationBlock, LocationConfig &location);
+    void serverParseErrorPages(const BlockParser &serverBlock, ServerConfig &server);
+    void serverParseLocation(const BlockParser &serverBlock, ServerConfig &server);
 
 public:
     ConfigBuilder();

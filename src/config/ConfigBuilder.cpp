@@ -80,7 +80,7 @@ void ConfigBuilder::parseReturn(const BlockParser &locationBlock, LocationConfig
     else
         location.setReturnCode(0);
 }
-void ConfigBuilder::parseErrorPages(const BlockParser &locationBlock, LocationConfig &location)
+void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock, LocationConfig &location)
 {
     std::vector<DirectiveToken> directives = locationBlock.getDirectives();
     std::map<int, std::string> errorMap;
@@ -114,11 +114,59 @@ LocationConfig ConfigBuilder::buildLocation(const BlockParser &locationBlock)
 
     parseAutoindex(locationBlock, location);
     parseReturn(locationBlock, location);
-    parseErrorPages(locationBlock, location);
+    locationParseErrorPages(locationBlock, location);
 
     return location;
 }
 
-std::vector<ServerConfig> buildFromBlockParser(const BlockParser &root);
+void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock, ServerConfig &server)
+{
+    std::vector<DirectiveToken> directives = serverBlock.getDirectives();
+    std::map<int, std::string> errorMap;
+    for (size_t i = 0; i < directives.size(); ++i)
+    {
+        if (directives[i].name == "error_page")
+        {
+            if (directives[i].values.size() >= 2)
+            {
+                int code = stringToInt(directives[i].values[0]);
+                std::string path = directives[i].values[1];
+                errorMap[code] = path;
+            }
+        }
+    }
+    server.setErrorPages(errorMap);
+}
 
-ServerConfig buildServer(const BlockParser &serverBlock);
+void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock, ServerConfig &server)
+{
+    std::vector<BlockParser> nestedBlocks = serverBlock.getNestedBlocks();
+    std::vector<LocationConfig> locations;
+
+    for (int i = 0; i < nestedBlocks.size(); i++)
+    {
+        LocationConfig loc = buildLocation(nestedBlocks[i]);
+        locations.push_back(loc);
+    }
+
+    server.setLocations(locations);
+}
+
+ServerConfig ConfigBuilder::buildServer(const BlockParser &serverBlock)
+{
+    ServerConfig server;
+
+    server.setListen(getDirectiveValueAsInt(serverBlock, "listen"));
+    server.setHost(getDirectiveValue(serverBlock, "host"));
+    server.setServerNames(getDirectiveValues(serverBlock, "server_name"));
+    server.setRoot(getDirectiveValue(serverBlock, "root"));
+    server.setIndex(getDirectiveValues(serverBlock, "index"));
+    server.setClientMaxBodySize(getDirectiveValueAsInt(serverBlock, "client_max_body_size"));
+
+    serverParseErrorPages(serverBlock, server);
+    serverParseLocation(serverBlock, server);
+
+    return server;
+}
+
+std::vector<ServerConfig> buildFromBlockParser(const BlockParser &root);
