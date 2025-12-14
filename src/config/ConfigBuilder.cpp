@@ -174,7 +174,7 @@ std::vector<ServerConfig> ConfigBuilder::buildFromBlockParser(const BlockParser 
     std::vector<BlockParser> serverBlocks = root.getNestedBlocks();
     std::vector<ServerConfig> servers;
 
-    for (int i = 0; serverBlocks.size(); i++)
+    for (int i = 0; i < serverBlocks.size(); i++)
     {
         ServerConfig srv = buildServer(serverBlocks[i]);
         servers.push_back(srv);
