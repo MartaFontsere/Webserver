@@ -196,21 +196,97 @@ BlockParser readConfigFile(const std::string &filePath)
     }
     return root;
 }
-
+/**
+ * @brief Parses and validates nginx-style configuration file - Main entry point
+ *
+ * Complete configuration processing pipeline that validates, parses, and returns
+ * a ready-to-use BlockParser tree. This is the recommended entry point for loading
+ * configuration files (replaces deprecated initConfigParser).
+ *
+ * === THREE-PHASE VALIDATION PIPELINE ===
+ *
+ * PHASE 1: Structural Validation (StructuralValidator)
+ *   Validates file structure before parsing:
+ *   - Balanced braces { }
+ *   - Proper semicolon placement
+ *   - No unclosed blocks
+ *   - No orphan closing braces
+ *   Purpose: Fail fast if syntax is broken
+ *   Result: Throws exception with all structural errors
+ *
+ * PHASE 2: Syntactic Parsing (readConfigFile)
+ *   Parses valid structure into tree:
+ *   - Tokenizes lines respecting quoted strings
+ *   - Builds hierarchical block tree
+ *   - Parses directives with arguments
+ *   - Handles multi-line directives
+ *   Purpose: Convert text to structured data
+ *   Result: BlockParser tree or parsing exception
+ *
+ * PHASE 3: Semantic Validation (SemanticValidator)
+ *   Validates configuration logic:
+ *   - Directive names valid in context
+ *   - Argument counts correct
+ *   - Required directives present
+ *   - Value types appropriate
+ *   Purpose: Ensure configuration makes sense
+ *   Result: Throws exception with semantic report
+ *
+ * Success path:
+ *   file.conf → [Phase 1 ✓] → [Phase 2 ✓] → [Phase 3 ✓] → BlockParser (ready)
+ *
+ * Error paths:
+ *   file.conf → [Phase 1 ✗] → Exception (structural errors listed)
+ *   file.conf → [Phase 2 ✗] → Exception (line number + parsing error)
+ *   file.conf → [Phase 3 ✗] → Exception (semantic report printed)
+ *
+ * Exception handling:
+ * - All errors throw std::runtime_error
+ * - Error messages include context (line numbers, error types)
+ * - Caller must catch and handle exceptions
+ *
+ * Usage example:
+ *   try {
+ *       BlockParser root = parseAndValidateConfig("webserv.conf");
+ *       ConfigBuilder builder;
+ *       std::vector<ServerConfig> servers = builder.buildFromBlockParser(root);
+ *       // Configuration ready for use
+ *   } catch (std::exception &e) {
+ *       std::cerr << "Config error: " << e.what() << std::endl;
+ *       return 1;
+ *   }
+ *
+ * Advantages over initConfigParser():
+ * - Returns BlockParser (can be used for conversions)
+ * - Exception-based error handling (cleaner than return codes)
+ * - Single point of truth for complete validation
+ *
+ * @param configPath Path to nginx-style configuration file
+ * @return Validated BlockParser tree ready for ConfigBuilder
+ * @throws std::runtime_error if any validation phase fails
+ *
+ * @note Replaces deprecated initConfigParser() which only returned int
+ * @note Performs complete validation (structural + semantic)
+ * @note Safe to use - all errors reported via exceptions
+ * @see validateStructure() for Phase 1 (structural validation)
+ * @see readConfigFile() for Phase 2 (parsing)
+ * @see SemanticValidator::validate() for Phase 3 (semantic validation)
+ * @see ConfigBuilder::buildFromBlockParser() for typical next step
+ */
 BlockParser parseAndValidateConfig(const std::string &configPath)
 {
-    // Validación estructural
+    // structural validation
     std::vector<std::string> structuralErrors;
     if (!validateStructure(configPath, structuralErrors))
     {
-        // Mostrar errores y lanzar excepción
+        // show errors
         throw std::runtime_error("Structural validation failed");
     }
 
     // Parsing
     BlockParser root = readConfigFile(configPath);
 
-    // Validación semántica
+    // Semantic validation
     SemanticValidator validator;
     if (!validator.validate(root))
     {
@@ -218,5 +294,5 @@ BlockParser parseAndValidateConfig(const std::string &configPath)
         throw std::runtime_error("Semantic validation failed");
     }
 
-    return root; // ← Retorna el BlockParser validado
+    return root;
 }
