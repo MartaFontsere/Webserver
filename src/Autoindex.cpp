@@ -77,15 +77,15 @@ namespace Autoindex
         {
             unsigned char c = input[i];
 
-            // Caracteres seguros (no codificar)
+            // Caracteres seguros (solo estos carácteres pueden ir sin codificar, siguiendo el estándar RFC)
             if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
             {
                 encoded << c;
             }
-            // Espacio → +
+            // Espacios deben ser %20 en rutas
             else if (c == ' ')
             {
-                encoded << '+';
+                encoded << "%20";
             }
             // Otros → %XX
             else
@@ -98,12 +98,63 @@ namespace Autoindex
     }
 
     /*
+    Esta función hace lo contrario a urlDecode:
+        recibe un string real
+        genera una versión segura para URL
+
+    Necesario para tus autoindex, para poner links correctos.
+
     Convierte nombres de archivo a formato URL seguro:
         letras → iguales
         espacio → +
         caracteres raros → %XX
 
     Ej: My File#.txt → My+File%23.txt
+    Así se mostraran enlaces que funcionen
+
+    Como esta función solo se usa para autoindex / paths, el espacio siempre es %20, no hay que distinguir con query ni usar el +
+
+CÓDIGO:
+    else
+    {
+        encoded << '%' << std::hex << std::uppercase
+                << (int)(c >> 4) << (int)(c & 0x0F);
+    }
+
+    Vamos bit a bit.
+
+    🧠 Recordatorio: ¿qué es un byte?
+    Un unsigned char tiene 8 bits:
+        [hhhh][llll]
+            hhhh → 4 bits altos (high nibble)
+            llll → 4 bits bajos (low nibble)
+
+    Ejemplo:
+        char c = ' '; // espacio
+        ASCII = 32 decimal = 0x20 hex
+        Binario = 0010 0000
+
+    (c >> 4)
+        Desplaza 4 bits a la derecha:
+            0010 0000 >> 4 = 0000 0010
+
+        → 2 en decimal
+        → '2' en hex
+
+    (c & 0x0F)
+        Máscara para quedarte con los 4 bits bajos:
+            0010 0000
+            0000 1111
+            ---------
+            0000 0000
+
+        → 0
+
+    Resultado final
+        encoded << '%' << '2' << '0';
+    ✔ %20
+
+    TODO: REVISAR SI HAY QUE HACER UN urlEncodeQuery o algo asi
     */
 
     void handleDirectory(Client *client, const std::string &dirPath, const std::string &urlPath, bool autoindexEnabled, const std::string &defaultFile)

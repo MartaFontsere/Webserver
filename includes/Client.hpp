@@ -106,9 +106,12 @@ private:
     void applyConnectionHeader();
     bool validateMethod();
     bool handleGet();
-    // bool handleHead();
+    bool handleHead();
     bool handlePost();
     bool handleDelete();
+    std::string urlDecode(const std::string &encoded, bool plusAsSpace) const;
+    std::string getDecodedPath() const;
+    std::string getDecodedQuery() const;
     std::string sanitizePath(const std::string &path);
     std::string buildFullPath(const std::string &cleanPath);
     bool readFileToString(const std::string &fullPath, std::string &out, size_t size); // Helpper para serveStaticFile
