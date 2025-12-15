@@ -21,7 +21,7 @@ TESTS:
 
 Test multiclient:
  * Terminal 1:                                  
-       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
  * Terminal 2:                                    
        - python3 script.py
@@ -29,7 +29,7 @@ Test multiclient:
                                   
 Test timeout:
 * Terminal 1:                                  
-       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
  * Terminal 2:
        - nc localhost 8080
@@ -39,14 +39,36 @@ Test Post/Delete:
 
 (opcion 1)
 * Terminal 1:                                  
-       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
 * Terminal 2:                
        - ./test-post-delete.sh
 
 (opcion 2)
 * Terminal:                                  
-       - c++ -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
 * Navegador:                         
-       - localhost:8080/test.html
+       - localhost:8080/post-delete/test.html
+
+Test Autoindex:
+
+(opcion 1)
+* Terminal 1:                                  
+       - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - ./server
+* Terminal 2:                
+       - ./test-autoindex.sh
+
+
+(opcion 2)
+* Terminal:                                  
+       - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
+       - ./server
+* Navegador:                         
+       - http://localhost:8080/tests/files/
+       - http://localhost:8080/tests/files/	Listado de directorio (autoindex)
+       - http://localhost:8080/tests/public/	Página "index.html" (NO autoindex)
+       - http://localhost:8080/tests/private/	Error 403 Forbidden
+       - http://localhost:8080/tests/files/document1.txt	Contenido del archivo
+       - http://localhost:8080/tests/files/subdir/	Listado de subdirectorio
