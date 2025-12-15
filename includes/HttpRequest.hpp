@@ -12,12 +12,13 @@ public:
     // Getters útiles
     const std::string &getMethod() const;
     const std::string &getPath() const;
+    const std::string &getQuery() const;
     const std::string &getVersion() const;
     const std::string &getBody() const;
     const std::map<std::string, std::string> &getHeaders() const;
     /*const std::string &getSpecificHeader(const std::string &key) const;*/
     int getParsedBytes() const;
-    // 🆕 Nuevo getter
+
     bool isBodyTooLarge() const;
 
     bool headersComplete() const;
@@ -38,7 +39,8 @@ private:
 
     // elementos del request
     std::string _method;
-    std::string _path;
+    std::string _path;  // SOLO path
+    std::string _query; // Lo que va tras '?'
     std::string _version;
     std::map<std::string, std::string> _headers;
     std::string _body; // buffer con los datos recibidos del body

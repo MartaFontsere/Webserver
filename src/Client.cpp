@@ -444,33 +444,299 @@ bool Client::validateMethod()
     return true;
 }
 
-// Devuelve "__FORBIDDEN__" si detecta path traversal o ruta inválida
-// Devuelve "/" si path es "/".
-std::string Client::sanitizePath(const std::string &path)
+static int hexVal(char c)
 {
-    if (path.empty())
-        return std::string("/"); // si nos piden una ruta vacía, servimos raíz
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'A' && c <= 'F')
+        return 10 + (c - 'A');
+    if (c >= 'a' && c <= 'f')
+        return 10 + (c - 'a');
+    return -1;
+}
 
-    // Debe empezar por '/'
-    if (path[0] != '/')
-        return "__FORBIDDEN__";
+std::string Client::urlDecode(const std::string &encoded, bool plusAsSpace) const
+{
+    std::string decoded;
+    decoded.reserve(encoded.size()); // Reservar memoria para evitar realocaciones
 
-    std::vector<std::string> allParts;
-    bool endsWithSlash = (path.size() > 1 && path[path.size() - 1] == '/');
-
-    size_t i = 1; // saltamos la primera '/' para evitar vacío al dividir
-    while (i <= path.size())
+    for (size_t i = 0; i < encoded.size(); ++i) // Recorrer cáda caracter de la cadena
     {
-        size_t j = path.find('/', i);
-        std::string part;
-        if (j == std::string::npos)
+        char c = encoded[i];
+        if (c == '%' && i + 2 < encoded.size())
         {
-            part = path.substr(i);
-            i = path.size() + 1;
+            int highNibble = hexVal(encoded[i + 1]); // guardamos el valor después de %
+            int lowNibble = hexVal(encoded[i + 2]);  // guardamos el valor dos veces después de %
+            if (highNibble >= 0 && lowNibble >= 0)
+            {
+                decoded.push_back(static_cast<char>((highNibble << 4) | lowNibble)); // pusheamos los dos valores convertidos a hexadecimal haciendo movimiento de bits, para reconstruir el byte y decodificarlo (pasar de %2B, a high Nibble 2 y lowNibble 11, en hexadecimal, y al juntarlo en bits sea 2 → 0010 y 11 → 1011, y por lo tanto 0010 1011 = 0x2B = '+', decodificado)
+                i += 2;                                                              // saltamos los dos hex procesados
+            }
+            else
+            {
+                // secuencia mal formada: conservador → dejamos '%' literal
+                decoded.push_back('%');
+                // no saltamos, así G y Z se procesarán en siguientes iteraciones
+            }
+        }
+        else if (c == '+' && plusAsSpace) // TODO: se tiene que detectar en el parser de la request, si
+        {
+            // Solo convertir '+' → ' ' si explícitamente pedimos plusAsSpace=true.
+            decoded.push_back(' ');
         }
         else
         {
-            part = path.substr(i, j - i);
+            decoded += encoded[i];
+        }
+    }
+    return decoded;
+}
+
+/*
+¿Por qué existen urlEncode y urlDecode?
+    Cuando un navegador envía una URL, no puede enviar caracteres especiales tal cual, siempre envía el path codificado.
+
+    Esto NO es válido en una URL:
+        /file with spaces.txt
+
+    El navegador lo convierte automáticamente en:
+        /file%20with%20spaces.txt
+
+    Esto pasa siempre, independientemente de que escribas la URL a mano, hagas clic, vengas de autoindex... al servidor siempre le llega codificado. Por eso hay que decodificar
+
+    Ejemplos de caracteres problemáticos:
+        espacio
+        á é í ó ü
+        # (marca fragmentos)
+        ? (abre query string)
+        / (separador)
+        % (inicio de codificación)
+        : (protocolo)
+        ;
+        "
+
+    Si los enviara tal cual, rompería la sintaxis del protocolo.
+
+
+Solución del estándar: URL encoding (RFC 3986)
+    La URL debe codificar esos caracteres raros como:
+        %XX   ← valor hexadecimal del byte
+
+    Ejemplos:
+        "hola mundo" → hola%20mundo
+        ñ           → %C3%B1  (UTF-8)
+        ?           → %3F
+        #           → %23
+
+
+    Esto significa que cuando el servidor recibe una URL, NO es la URL real:
+    es una versión escapada → tu servidor debe decodificarla para trabajar con rutas reales del sistema de archivos.
+
+¿POR QUÉ ES IMPORTANTE PARA WEBSERV?
+    Porque sin esto:
+
+        /hola%20marta.txt → buscarías un archivo literal con %20 en el nombre
+        (y fallaría con 404)
+
+        consulta GET con parámetros ?name=Marta+Fontseré
+        → recibirías Marta+Fontseré en vez de Marta Fontseré
+
+        autoindex mostrando rutas tendría enlaces rotos
+
+        seguridad: ataques de path traversal pueden venir codificados:
+            ..%2F..%2Fetc/passwd
+
+
+    Por eso es OBLIGATORIO para cualquier servidor web serio.
+
+¿Y si el archivo se llama literalmente file%20.txt?
+    Archivo real:
+        file%20.txt
+
+    Para pedirlo correctamente:
+        El % debe codificarse como %25
+
+            /file%2520.txt
+
+        Decodificación:
+             %25 → %
+
+        Resultado final:
+            file%20.txt
+
+Qué es una query string?
+    Una query string es la parte opcional de la URL que va después del ?
+
+    Ejemplo:
+        /search?q=hello+world&page=2
+               ↑
+               query string
+
+    La URL se divide así:
+        /search          → PATH
+        ?q=hello+world   → QUERY STRING
+
+    👉 NO son lo mismo
+    👉 Se procesan distinto
+    👉 Se codifican distinto
+
+PATH vs QUERY
+
+| Parte     | Qué es                | Para qué se usa           |
+| --------- | --------------------- | ------------------------- |
+|   PATH    | Identifica el recurso | Archivo / directorio      |
+|   QUERY   | Parámetros            | Búsquedas, filtros, flags |
+
+Ejemplo:
+    /images/my photo.jpg?size=large
+
+    PATH → /images/my photo.jpg
+    QUERY → size=large
+
+    El archivo es el mismo, cambie lo que cambie la query
+
+¿Puede llegar una query string al webserver?
+    Sí, totalmente.
+    Cualquier request HTTP puede traerla:
+        GET /file.txt?download=true HTTP/1.1
+
+    Tu parser HTTP debería separar:
+        path → /file.txt
+        query → download=true
+
+    Importante:
+        La query NO forma parte del path del archivo.
+        El filesystem no debe verla.
+
+
+¿Y el carácter +? (esta es la trampa)
+    + NO significa espacio en el PATH
+
+    En URLs:
+        PATH → espacios = %20
+        QUERY → espacios = + (solo en form encoding)
+
+
+Reglas definitivas para tu webserver (guárdalas)
+    ✔ PATH
+        Siempre viene URL-encoded
+        Espacios → %20
+        + es literal
+        Decodifica %XX
+        NO conviertas + → space
+        Decodifica antes de sanitizePath
+
+    ✔ QUERY STRING
+        Espacios pueden venir como +
+        Decodifica %XX
+        Convierte + → space
+
+    ✔ Autoinde
+        Genera URLs codificadas (urlEncode)
+        Usa %20 para espacios
+
+
+CÓDIGO:
+    Objetivo:
+        Tomar una cadena así:
+            /hola%20marta/archivo%2Etxt
+
+        y convertirla en:
+            /hola marta/archivo.txt
+
+std::string decoded;
+    Se crea la cadena que devolveremos, donde iremos añadiendo los caracteres ya decodificados.
+
+decoded.reserve(encoded.size());
+    Reservamos capacidad para decoded igual al tamaño de la cadena de entrada.
+    Por qué: evita realocaciones internas al push_back/operator+= y mejora rendimiento.
+    Nota: el tamaño final nunca será mayor que encoded.size() (de hecho suele ser ≤), así que es una reserva razonable.
+
+for (size_t i = 0; i < encoded.size(); ++i)
+    Recorre cada carácter de la cadena
+
+    🔸 Caso 1 — detecta %XX (el inicio de una secuencia percent-encoded)
+        if (encoded[i] == '%' && i + 2 < encoded.size())
+
+        Esto significa:
+            encoded[i] == '%' → el carácter % indica codificación, por lo que indica que viene una secuencia %XX
+            i + 2 < encoded.size() → faseguramos que hay al menos dos caracteres hex detrás (% + 2 hex) para no salirnos del buffer
+        Importante: si hay un % al final sin dos hex, este if será falso y se tratará más abajo como carácter normal
+
+        int value = 0;
+            Variable donde almacenaremos el valor numérico resultante de los dos dígitos hex.
+
+        Lee esos dos caracteres:
+        std::istringstream hexStream(encoded.substr(i + 1, 2));
+            Creamos un istringstream con los dos caracteres hex (por ejemplo "20"). substr(i+1,2) toma los dos caracteres después del %.
+
+        if (hexStream >> std::hex >> value)
+            Intentamos leer desde el stream interpretando los caracteres como hexadecimal (std::hex) y asignarlo a value.
+
+        decoded += static_cast<char>(value);
+            Si la lectura hex fue correcta, convertimos value a char y lo añadimos a decoded.
+
+        i += 2; // saltamos los dos hexadecimales que acabamos de procesar. El for incrementará i otra vez, por lo que el siguiente índice será el caracter posterior a la codificación
+
+    🔸 Caso 2 — detecta + - ESTO AL FINAL NO LO HACEMOS, EN DECODIFICACION DE PATH NO TIENE SENTIDO, ES PARA QUERY STRINGS
+        else if (encoded[i] == '+')
+
+            En solicitudes HTML form (application/x-www-form-urlencoded) los espacios en la query string se codifican como +.
+
+            En paths propiamente dichos los espacios deben codificarse como %20. Pero por compatibilidad con clientes o formularios, convertir + a espacio es sensato.
+
+        Aunque no se usa en rutas, es habitual, así que lo interpretamos como ' '.
+
+        ! Precaución: Algunos prefieren NO convertir + cuando se decodifica el path y sólo aplicarlo a query — depende del diseño. Tu implementación opta por compatibilidad universal.
+
+    🔸 Caso 3 — cualquier otro carácter
+        decoded += encoded[i];
+            Si no requiere decode, lo dejamos igual.
+
+
+Devolvemos la cadena decodificada.
+
+*/
+
+std::string Client::getDecodedPath() const
+{
+    // PATH → filesystem → + NO es espacio
+    return urlDecode(_httpRequest.getPath(), false);
+}
+
+std::string Client::getDecodedQuery() const
+{
+    // QUERY → parámetros → + SÍ es espacio
+    return urlDecode(_httpRequest.getQuery(), true);
+}
+
+// Devuelve "__FORBIDDEN__" si detecta path traversal o ruta inválida
+// Devuelve "/" si path es "/".
+std::string Client::sanitizePath(const std::string &decodedPath)
+{
+    if (decodedPath.empty())
+        return std::string("/"); // si nos piden una ruta vacía, servimos raíz
+
+    // Debe empezar por '/'
+    if (decodedPath[0] != '/')
+        return "__FORBIDDEN__";
+
+    std::vector<std::string> allParts;
+    bool endsWithSlash = (decodedPath.size() > 1 && decodedPath[decodedPath.size() - 1] == '/');
+
+    size_t i = 1; // saltamos la primera '/' para evitar vacío al dividir
+    while (i <= decodedPath.size())
+    {
+        size_t j = decodedPath.find('/', i);
+        std::string part;
+        if (j == std::string::npos)
+        {
+            part = decodedPath.substr(i);
+            i = decodedPath.size() + 1;
+        }
+        else
+        {
+            part = decodedPath.substr(i, j - i);
             i = j + 1;
         }
         if (part.empty() || part == ".")
@@ -1402,8 +1668,8 @@ bool Client::processRequest()
 
     if (method == "GET")
         return handleGet();
-    // else if (method == "HEAD")
-    //  return handleHead();
+    else if (method == "HEAD")
+        return handleHead();
     else if (method == "POST")
         return handlePost();
     else if (method == "DELETE")
@@ -1516,11 +1782,18 @@ Notas importantes sobre diseño y flujo
 bool Client::handleGet()
 {
     // Obtener ruta en bruto y comprobar peligros
-    std::string rawPath = sanitizePath(_httpRequest.getPath());
+    std::string rawPath = _httpRequest.getPath();
+
+    // 1. Decodificar
+    std::string decoded = getDecodedPath();
+
+    // 2. Sanitizar
+    std::string sanitized = sanitizePath(decoded);
+
     std::cout << "******************************* Raw Path pedido:" << rawPath << std::endl;
 
     // Construir ruta real dentro de WWW_ROOT
-    std::string fullPath = buildFullPath(rawPath);
+    std::string fullPath = buildFullPath(sanitized);
     std::cout << "******************************* Full Path pedido:" << fullPath << std::endl;
 
     // Comprobar existencia con stat()
@@ -1572,6 +1845,29 @@ bool Client::handleGet()
     serveStaticFile(fullPath);
     return true; // Siempre hay respuesta HTTP
 }
+
+/*
+handleGet() no “procesa la request entera”, solo decide:
+
+“¿Esta request se resuelve con un archivo/directorio
+o con otra cosa (CGI, error, etc.)?”
+
+Por eso:
+    Filesystem (si es archivo o directorio)→ solo PATH
+    CGI → PATH + QUERY
+
+
+*/
+
+bool Client::handleHead()
+{
+    bool headMethod = handleGet(); // reutiliza GET COMPLETO
+    _httpResponse.setBody("");     // elimina body
+    return headMethod;
+}
+/*
+HEAD es lo mismo que get, pero no debe mostrar el body, por eso lo eliminamos
+*/
 
 bool Client::handlePost()
 {
@@ -1725,11 +2021,20 @@ TODO: en el primer párrafo, revisar si quiero quizás usar 404 en vez de 403 o 
 
 */
 
+// Nunca se usa query en el delete de archivos. Lo ignoramos completamente
 bool Client::handleDelete()
 {
-    // 1. Sanitizar ruta (igual que en GET)
-    std::string rawPath = sanitizePath(_httpRequest.getPath());
-    std::string fullPath = buildFullPath(rawPath);
+    // 1. Obtener path crudo de la request
+    std::string rawPath = _httpRequest.getPath();
+
+    // Decodificar
+    std::string decoded = getDecodedPath();
+
+    // Sanitizar
+    std::string sanitized = sanitizePath(decoded);
+
+    // Construir ruta real
+    std::string fullPath = buildFullPath(sanitized);
 
     // 2. Verificar que no es una ruta prohibida
     //    (path traversal, etc. - ya gestionado por sanitizePath)

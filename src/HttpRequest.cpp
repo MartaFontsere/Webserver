@@ -91,12 +91,25 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest)
     std::istringstream ss(headerPart);
     std::string line;
 
-    // Primera línea → método, path, versión
+    // Primera línea → siempre tiene esta forma: método, path, versión
     if (!std::getline(ss, line))
         return false;
+
+    std::istringstream firstLine(line);
+    std::string fullTarget;
+    firstLine >> _method >> fullTarget >> _version;
+
+    // Separar PATH y QUERY
+    size_t qpos = fullTarget.find('?');
+    if (qpos != std::string::npos)
     {
-        std::istringstream firstLine(line);
-        firstLine >> _method >> _path >> _version;
+        _path = fullTarget.substr(0, qpos);
+        _query = fullTarget.substr(qpos + 1);
+    }
+    else
+    {
+        _path = fullTarget;
+        _query.clear();
     }
 
     if (_version == "HTTP/1.1")
@@ -244,47 +257,137 @@ Resumen:
 
 5.
 Primera línea → método, path y versión
+        VERSIÓN SIMPLE:
+                if (!std::getline(ss, line))
+                    return false;
+                {
+                    std::istringstream firstLine(line);
+                    firstLine >> _method >> _path >> _version;
+                }
 
-if (!std::getline(ss, line))
-    return false;
-{
-    std::istringstream firstLine(line);
-    firstLine >> _method >> _path >> _version;
-}
+                    La primera línea de toda petición HTTP tiene esta forma:
+                    GET /index.html HTTP/1.1
 
-    La primera línea de toda petición HTTP tiene esta forma:
-    GET /index.html HTTP/1.1
+                    Por tanto:
+                        _method = GET
+                        _path = /index.html
+                        _version = HTTP/1.1
 
-    Por tanto:
-        _method = GET
-        _path = /index.html
-        _version = HTTP/1.1
+        std::getline(ss, line);
+        lee la primera línea completa (por ejemplo: "GET /index.html HTTP/1.1")
 
-std::getline(ss, line);
-lee la primera línea completa (por ejemplo: "GET /index.html HTTP/1.1")
+        Si no hay primera línea, devuelve false
 
-Si no hay primera línea, devuelve false
+        Ojo: los { } después del if no pertenecen al if.
+        Son un bloque independiente que se ejecuta siempre, después del if.
+            Se crea un bloque nuevo para limitar el alcance de variables locales.
 
-Ojo: los { } después del if no pertenecen al if.
-Son un bloque independiente que se ejecuta siempre, después del if.
-    Se crea un bloque nuevo para limitar el alcance de variables locales.
+            Dentro, se crea un istringstream llamado firstLine que contiene esa línea.
 
-    Dentro, se crea un istringstream llamado firstLine que contiene esa línea.
+            Luego se extraen tres tokens separados por espacios: el método (GET), la ruta (/index.html) y la versión (HTTP/1.1).
 
-    Luego se extraen tres tokens separados por espacios: el método (GET), la ruta (/index.html) y la versión (HTTP/1.1).
+            Al acabar el bloque se borra esa variable firstLine. Las llaves {} crean un bloque local temporal para que variables como firstLine existan solo ahí dentro
 
-    Al acabar el bloque se borra esa variable firstLine. Las llaves {} crean un bloque local temporal para que variables como firstLine existan solo ahí dentro
 
-ahora quiero separar los tres elementos de esa línea:
-std::istringstream firstLine(line);
-firstLine >> _method >> _path >> _version;
+        ahora quiero separar los tres elementos de esa línea:
+        std::istringstream firstLine(line);
+        firstLine >> _method >> _path >> _version;
 
-Lo que ocurre es:
-    ss sirve para recorrer todo el bloque de texto línea a línea
-    getline(ss, line) obtiene la primera línea
-    firstLine es un nuevo istringstream que lee esa línea palabra a palabra
+        Lo que ocurre es:
+            ss sirve para recorrer todo el bloque de texto línea a línea
+            getline(ss, line) obtiene la primera línea
+            firstLine es un nuevo istringstream que lee esa línea palabra a palabra
 
-👉 Así consigues dividir
+        👉 Así consigues dividir
+
+
+
+        VERSIÓN COMPLETA:
+            {
+                std::istringstream firstLine(line);
+                std::string fullTarget;
+                firstLine >> _method >> fullTarget >> _version;
+
+                size_t qpos = fullTarget.find('?');
+                if (qpos != std::string::npos)
+                {
+                    _path  = fullTarget.substr(0, qpos);
+                    _query = fullTarget.substr(qpos + 1);
+                }
+                else
+                {
+                    _path = fullTarget;
+                    _query.clear();
+                }
+            }
+
+        Esta parte parsea la primera línea de una petición HTTP, que siempre tiene esta forma:
+            <METHOD> <TARGET> <VERSION>
+
+        Ejemplos reales:
+            GET /index.html HTTP/1.1
+            GET /tests/files/?sort=name HTTP/1.1
+            POST /upload?user=marta HTTP/1.0
+
+        Tu objetivo es extraer:
+            _method → "GET"
+            _path → "/tests/files/"
+            _query → "sort=name"
+            _version → "HTTP/1.1"
+
+        👉 Esa línea llega como un string completo, por ejemplo:
+        line = "GET /tests/files/?sort=name HTTP/1.1";
+
+        std::istringstream es un stream de entrada, pero en vez de leer de teclado o de archivo, lee de un string.
+        Es como decir:
+            “Voy a tratar este string como si fuera un flujo de texto del que puedo extraer palabras”.
+        El stream queda así internamente:
+            GET | /index.html | HTTP/1.1
+
+
+        Aquí declaras una variable temporal -> std::string fullTarget;
+
+        ¿Por qué no escribir directamente _path aquí?
+        Porque el target HTTP puede contener query string, no solo path. Así que primero lo guardas completo y luego lo separas.
+
+        firstLine >> _method >> fullTarget >> _version;
+            Esta línea es CLAVE.
+                El operador >> en streams:
+                Lee hasta el próximo espacio
+                Ignora espacios múltiples
+                Funciona como “sacar palabras”
+
+            Entonces esto hace:
+            | Variable     | Valor                       |
+            | ------------ | --------------------------- |
+            | `_method`    | `"GET"`                     |
+            | `fullTarget` | `"/tests/files/?sort=name"` |
+            | `_version`   | `"HTTP/1.1"`                |
+
+            TODO: Si la línea fuera inválida (faltan cosas), el stream fallaría (algo que luego puedes validar)
+
+        Luego separamos path y query string.
+            Ahora tenemos:
+                fullTarget = "/tests/files/?sort=name";
+
+            Pero queremos:
+                _path = "/tests/files/"
+                _query = "sort=name"
+
+        size_t qpos = fullTarget.find('?');
+            Esto busca el carácter ? dentro del string.
+
+            find():
+                Devuelve la posición del carácter
+                Si no existe, devuelve std::string::npos
+
+        if (qpos != std::string::npos)
+            Si existe query string, hay ?, entramos y dividimos de inicio hasta interrogante y de interrogante en adelante. El interrogante no lo incluimos, solo los parámetros
+
+        else
+            Si no hay query, el path es todo
+            La query se vacía (muy importante para no arrastrar datos de peticiones anteriores)
+
 
 6.
 while (std::getline(ss, line))
@@ -463,6 +566,11 @@ const std::string &HttpRequest::getMethod() const
 const std::string &HttpRequest::getPath() const
 {
     return _path;
+}
+
+const std::string &HttpRequest::getQuery() const
+{
+    return _query;
 }
 
 const std::string &HttpRequest::getVersion() const
