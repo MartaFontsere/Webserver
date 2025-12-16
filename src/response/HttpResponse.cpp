@@ -34,6 +34,40 @@ HttpResponse::~HttpResponse()
 {
 }
 
+std::string HttpResponse::getMimeType(const std::string &path) const
+{
+    size_t lastDot = path.find_last_of(".");
+    if (lastDot != std::string::npos)
+    {
+        std::map<std::string, std::string> mimeTypes;
+        mimeTypes[".html"] = "text/html";
+        mimeTypes[".htm"] = "text/html";
+        mimeTypes[".css"] = "text/css";
+        mimeTypes[".txt"] = "text/plain";
+        mimeTypes[".jpg"] = "image/jpeg";
+        mimeTypes[".jpeg"] = "image/jpeg";
+        mimeTypes[".png"] = "image/png";
+        mimeTypes[".gif"] = "image/gif";
+        mimeTypes[".svg"] = "image/svg+xml";
+        mimeTypes[".php"] = "text/x-php";
+        mimeTypes[".py"] = "text/x-python";
+        mimeTypes[".sh"] = "application/x-sh";
+        mimeTypes[".json"] = "application/json";
+        mimeTypes[".js"] = "application/javascript";
+        std::map<std::string, std::string>::const_iterator it = mimeTypes.find(path.substr(lastDot));
+        if (it != mimeTypes.end())
+            return it->second;
+        else
+            return "application/octet-stream";
+    }
+    return "application/octet-stream";
+}
+
+void HttpResponse::setContentTypeFromPath(const std::string &path)
+{
+    setHeader("Content-Type", getMimeType(path));
+}
+
 void HttpResponse::setStatus(int code, const std::string &message)
 {
     _statusCode = code;

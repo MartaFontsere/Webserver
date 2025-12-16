@@ -36,7 +36,7 @@ int main()
     // Crear response
     HttpResponse response;
     response.setStatus(200, "OK");
-    response.setHeader("Content-Type", "text/html");
+    response.setContentTypeFromPath(htmlPath);
     response.setBody(htmlContent);
 
     // Generar HTTP response completa

@@ -14,6 +14,8 @@ private:
     std::map<std::string, std::string> _headers;
     std::string _body;
 
+    std::string getMimeType(const std::string &path) const;
+
 public:
     HttpResponse();
     ~HttpResponse();
@@ -24,6 +26,7 @@ public:
     void setStatus(int code, const std::string &message);
     void setHeader(const std::string &key, const std::string &value);
     void setBody(const std::string &body);
+    void setContentTypeFromPath(const std::string &path);
 
     std::string buildResponse();
 
