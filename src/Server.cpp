@@ -1,1455 +1,1455 @@
-// #include "Server.hpp"
-// #include <iostream> // para imprimir mensajes
-// #include <cstring>  // para memset, strerror, strlen...
-// #include <unistd.h> // para close(), read, write
-// #include <fcntl.h>  // para fcntl() → modo no bloqueante
-// // CUAL DE LAS DOS? #include <netinet/in.h> // sockaddr_in, htons, etc.
-// #include <arpa/inet.h>  // para sockaddr_in, htons, INADDR_ANY
-// #include <sys/socket.h> // para socket(), bind(), listen()
-// #include <poll.h>
-
-// // Constructor: guarda el puerto que usaremos
-// Server::Server(const std::string &port) : _port(port), _serverFd(-1)
-// {
-// }
-
-// // Destructor: si el socket está abierto, lo cerramos
-// Server::~Server()
-// {
-//     // Cerrar todos los clientes
-//     for (std::map<int, Client *>::iterator it = _clientsByFd.begin(); it != _clientsByFd.end(); ++it)
-//     {
-//         if (it->second) // Recorre _clientsByFd, cierra cada FD y borra los objetos Client*.
-//         {
-//             // close(it->first);   cierra el descriptor del cliente (el socket) en el kernel. ESTO LO QUITAMOS, PORQUE ES RESPONSABILIDAD DEL DESTRUCTOR DEL CLIENTE
-//             delete it->second; // libera la memoria del objeto Client y ademas llama al destructor de client para cerrar el fd.
-//         }
-//     }
-//     _clientsByFd.clear(); // vacía el map (ahora no quedan punteros).
-
-//     // Cerrar socket servidor si está abierto
-//     if (_serverFd != -1)
-//         close(_serverFd);
-// }
-
-// /*
-// Un socket es un descriptor de archivo especial (como un int) que representa una conexión de red.
-
-// En el constructor, solo guardamos el puerto (aún no creamos el socket).
-// _serverFd se inicializa con -1 para indicar “no hay socket abierto todavía”.
-
-// En el destructor, comprobamos si el socket se creó (_serverFd != -1), y lo cerramos para liberar recursos del sistema.
-//     Los recursos (como sockets) deben liberarse automáticamente cuando el objeto se destruye.
-// Es la limpieza final: si el servidor se destruye (programa acaba o objeto eliminado), hay que liberar los recursos del sistema: cerrar sockets y liberar memoria de new Client(...).
-
-// El dueño del file descriptor (FD) debe ser el objeto Client.
-// El Server crea y destruye clientes, pero no cierra sockets directamente, solo borra los objetos Client.
-
-// Entonces:
-//     Client se encarga de cerrar su propio _clientFd.
-//     Server solo llama delete it->second;.
-//     No debe llamar a close() sobre los FDs.
-
-// Cuando haces:
-//     delete client;
-// ocurre exactamente esto, en orden:
-//     Se llama al destructor del objeto Client.
-//     Es decir, se ejecuta Client::~Client().
-//     El objeto sigue existiendo completamente durante la ejecución del destructor — puedes leer _clientFd, _closed, etc.
-
-//     Dentro del destructor, tú puedes:
-//         Cerrar el socket (close(_clientFd)),
-//         Imprimir mensajes,
-//         Cambiar flags (_closed = true),
-//         O liberar recursos adicionales (memoria, ficheros, etc).
-
-//     Cuando termina el destructor,
-//     el compilador libera la memoria ocupada por el objeto.
-//     Solo en ese momento el puntero client ya no apunta a memoria válida.
-
-// Qué pasa con el FD después de close()
-
-//     Cuando haces close(_clientFd):
-//         El descriptor de archivo (número entero en el kernel) se libera.
-//         El sistema operativo puede reutilizarlo más tarde para otro socket.
-//         Pero tu variable _clientFd sigue existiendo en el objeto Client (con el mismo número) hasta que el destructor termina.
-
-//     Por eso es buena práctica hacer:
-//         close(_clientFd);
-//         _clientFd = -1;
-
-// Así evitas “doble cierre” accidental.
-
-// DUDA:
-// Si el flujo es:
-//     Detectas que un Client está cerrado.
-//     Haces delete client.
-//     El destructor cierra el fd (si no se cerró antes).
-//     El objeto desaparece.
-
-// Entonces sí: nadie más debería acceder a ese objeto ni a ese fd.
-// En ese flujo limpio y lineal, no haría falta ni poner closed = true ni clientFd = -1.
-
-// ⚠️ Pero en la práctica...
-// El problema es que, en servidores no bloqueantes y con múltiples pasos, no siempre el flujo es tan lineal o “perfecto”.
-
-// Ejemplos reales:
-
-// 1. El Client puede seguir referenciado
-//     Aunque hagas delete client, puede que en otro punto del loop o en otra estructura aún haya punteros colgantes (por ejemplo, si tenías un std::vector<Client*> y no limpiaste bien los iteradores).
-//     👉 Si el fd se marca a -1, evitas intentar usar un descriptor ya cerrado.
-
-// 2. close(fd) no borra el número
-//     El sistema operativo reutiliza números de file descriptor.
-//     Eso significa que si cierras el fd = 4, luego el accept() siguiente podría devolverte otro socket distinto pero también fd = 4.
-//     Si por error alguien aún tiene un puntero a ese antiguo Client, podría acabar escribiendo en un socket que ya es de otra conexión 😬.
-
-//     Por eso muchos desarrolladores hacen:
-//         close(_clientFd);
-//         _clientFd = -1;
-//         _closed = true;
-
-// Así, si algo intenta usarlo luego, falla de manera predecible en lugar de provocar un bug difícil de detectar.
-
-// 3. Defensa contra dobles cierres o dobles deletes
-//     En sistemas complejos (timeouts, desconexiones abruptas, señales de error, etc.), pueden producirse varios caminos que intenten cerrar el mismo cliente.
-//     Si ya marcaste _closed = true, el destructor sabe que no tiene que volver a hacerlo.
-
-// Cuestiones críticas
-//     Si algun Client* ya fue borrado antes en run(), no debería estar en el map. El destructor no comprueba doble-liberación porque supone coherencia.
-
-//     Es correcto cerrar FDs antes de delete del objeto cliente porque el objeto cliente podría ya intentar cerrar el FD en su destructor; aquí cerramos por seguridad (si tu Client ya cierra el fd en su destructor, esto podría redundar — pero cerrar dos veces un fd numérico que ya se cerró reapunta a otro descriptor si no manejas bien; por eso la responsabilidad de cerrar debería ser única preferentemente). En nuestro código cerramos el fd en el servidor para evitar fugas si Client no lo cerró.
-
-// Remember iteradores:
-//     it->first → es la clave (por ejemplo, 1, 2, …)
-//     it->second → es el valor asociado a esa clave (por ejemplo, "Marta", "Guillem", …)
-// */
-
-// bool Server::init()
-// {
-//     // Creamos y asociamos el socket al puerto
-//     _serverFd = createAndBind(_port.c_str()); //_port.c_str() significa que le estás pasando el puerto como cadena de caracteres erminado en \0, es decir, un const char* al estilo C.
-//     if (_serverFd == -1)
-//     {
-//         std::cerr << "❌ Error: no se pudo crear el socket." << std::endl;
-//         return false;
-//     }
+#include "Server.hpp"
+#include <iostream> // para imprimir mensajes
+#include <cstring>  // para memset, strerror, strlen...
+#include <unistd.h> // para close(), read, write
+#include <fcntl.h>  // para fcntl() → modo no bloqueante
+// CUAL DE LAS DOS? #include <netinet/in.h> // sockaddr_in, htons, etc.
+#include <arpa/inet.h>  // para sockaddr_in, htons, INADDR_ANY
+#include <sys/socket.h> // para socket(), bind(), listen()
+#include <poll.h>
+
+// Constructor: guarda el puerto que usaremos
+Server::Server(const std::string &port) : _port(port), _serverFd(-1)
+{
+}
+
+// Destructor: si el socket está abierto, lo cerramos
+Server::~Server()
+{
+    // Cerrar todos los clientes
+    for (std::map<int, Client *>::iterator it = _clientsByFd.begin(); it != _clientsByFd.end(); ++it)
+    {
+        if (it->second) // Recorre _clientsByFd, cierra cada FD y borra los objetos Client*.
+        {
+            // close(it->first);   cierra el descriptor del cliente (el socket) en el kernel. ESTO LO QUITAMOS, PORQUE ES RESPONSABILIDAD DEL DESTRUCTOR DEL CLIENTE
+            delete it->second; // libera la memoria del objeto Client y ademas llama al destructor de client para cerrar el fd.
+        }
+    }
+    _clientsByFd.clear(); // vacía el map (ahora no quedan punteros).
+
+    // Cerrar socket servidor si está abierto
+    if (_serverFd != -1)
+        close(_serverFd);
+}
+
+/*
+Un socket es un descriptor de archivo especial (como un int) que representa una conexión de red.
+
+En el constructor, solo guardamos el puerto (aún no creamos el socket).
+_serverFd se inicializa con -1 para indicar “no hay socket abierto todavía”.
+
+En el destructor, comprobamos si el socket se creó (_serverFd != -1), y lo cerramos para liberar recursos del sistema.
+    Los recursos (como sockets) deben liberarse automáticamente cuando el objeto se destruye.
+Es la limpieza final: si el servidor se destruye (programa acaba o objeto eliminado), hay que liberar los recursos del sistema: cerrar sockets y liberar memoria de new Client(...).
+
+El dueño del file descriptor (FD) debe ser el objeto Client.
+El Server crea y destruye clientes, pero no cierra sockets directamente, solo borra los objetos Client.
+
+Entonces:
+    Client se encarga de cerrar su propio _clientFd.
+    Server solo llama delete it->second;.
+    No debe llamar a close() sobre los FDs.
+
+Cuando haces:
+    delete client;
+ocurre exactamente esto, en orden:
+    Se llama al destructor del objeto Client.
+    Es decir, se ejecuta Client::~Client().
+    El objeto sigue existiendo completamente durante la ejecución del destructor — puedes leer _clientFd, _closed, etc.
+
+    Dentro del destructor, tú puedes:
+        Cerrar el socket (close(_clientFd)),
+        Imprimir mensajes,
+        Cambiar flags (_closed = true),
+        O liberar recursos adicionales (memoria, ficheros, etc).
+
+    Cuando termina el destructor,
+    el compilador libera la memoria ocupada por el objeto.
+    Solo en ese momento el puntero client ya no apunta a memoria válida.
+
+Qué pasa con el FD después de close()
+
+    Cuando haces close(_clientFd):
+        El descriptor de archivo (número entero en el kernel) se libera.
+        El sistema operativo puede reutilizarlo más tarde para otro socket.
+        Pero tu variable _clientFd sigue existiendo en el objeto Client (con el mismo número) hasta que el destructor termina.
+
+    Por eso es buena práctica hacer:
+        close(_clientFd);
+        _clientFd = -1;
+
+Así evitas “doble cierre” accidental.
+
+DUDA:
+Si el flujo es:
+    Detectas que un Client está cerrado.
+    Haces delete client.
+    El destructor cierra el fd (si no se cerró antes).
+    El objeto desaparece.
+
+Entonces sí: nadie más debería acceder a ese objeto ni a ese fd.
+En ese flujo limpio y lineal, no haría falta ni poner closed = true ni clientFd = -1.
+
+⚠️ Pero en la práctica...
+El problema es que, en servidores no bloqueantes y con múltiples pasos, no siempre el flujo es tan lineal o “perfecto”.
+
+Ejemplos reales:
+
+1. El Client puede seguir referenciado
+    Aunque hagas delete client, puede que en otro punto del loop o en otra estructura aún haya punteros colgantes (por ejemplo, si tenías un std::vector<Client*> y no limpiaste bien los iteradores).
+    👉 Si el fd se marca a -1, evitas intentar usar un descriptor ya cerrado.
+
+2. close(fd) no borra el número
+    El sistema operativo reutiliza números de file descriptor.
+    Eso significa que si cierras el fd = 4, luego el accept() siguiente podría devolverte otro socket distinto pero también fd = 4.
+    Si por error alguien aún tiene un puntero a ese antiguo Client, podría acabar escribiendo en un socket que ya es de otra conexión 😬.
+
+    Por eso muchos desarrolladores hacen:
+        close(_clientFd);
+        _clientFd = -1;
+        _closed = true;
+
+Así, si algo intenta usarlo luego, falla de manera predecible en lugar de provocar un bug difícil de detectar.
+
+3. Defensa contra dobles cierres o dobles deletes
+    En sistemas complejos (timeouts, desconexiones abruptas, señales de error, etc.), pueden producirse varios caminos que intenten cerrar el mismo cliente.
+    Si ya marcaste _closed = true, el destructor sabe que no tiene que volver a hacerlo.
+
+Cuestiones críticas
+    Si algun Client* ya fue borrado antes en run(), no debería estar en el map. El destructor no comprueba doble-liberación porque supone coherencia.
+
+    Es correcto cerrar FDs antes de delete del objeto cliente porque el objeto cliente podría ya intentar cerrar el FD en su destructor; aquí cerramos por seguridad (si tu Client ya cierra el fd en su destructor, esto podría redundar — pero cerrar dos veces un fd numérico que ya se cerró reapunta a otro descriptor si no manejas bien; por eso la responsabilidad de cerrar debería ser única preferentemente). En nuestro código cerramos el fd en el servidor para evitar fugas si Client no lo cerró.
+
+Remember iteradores:
+    it->first → es la clave (por ejemplo, 1, 2, …)
+    it->second → es el valor asociado a esa clave (por ejemplo, "Marta", "Guillem", …)
+*/
+
+bool Server::init()
+{
+    // Creamos y asociamos el socket al puerto
+    _serverFd = createAndBind(_port.c_str()); //_port.c_str() significa que le estás pasando el puerto como cadena de caracteres erminado en \0, es decir, un const char* al estilo C.
+    if (_serverFd == -1)
+    {
+        std::cerr << "❌ Error: no se pudo crear el socket." << std::endl;
+        return false;
+    }
 
-//     // Lo ponemos en modo no bloqueante
-//     if (setNonBlocking(_serverFd) == -1)
-//     {
-//         std::cerr << "❌ Error: no se pudo poner el socket en modo no bloqueante." << std::endl;
-//         return false;
-//     }
+    // Lo ponemos en modo no bloqueante
+    if (setNonBlocking(_serverFd) == -1)
+    {
+        std::cerr << "❌ Error: no se pudo poner el socket en modo no bloqueante." << std::endl;
+        return false;
+    }
 
-//     // Empezamos a escuchar
-//     if (listen(_serverFd, SOMAXCONN) == -1)
-//     {
-//         std::cerr << "❌ Error en listen()." << std::endl;
-//         return false;
-//     }
+    // Empezamos a escuchar
+    if (listen(_serverFd, SOMAXCONN) == -1)
+    {
+        std::cerr << "❌ Error en listen()." << std::endl;
+        return false;
+    }
 
-//     // Añadimos el socket del servidor (el que hace listen) a la lista de Fds a vigilar
-//     pollfd serverPollFd;
-//     serverPollFd.fd = _serverFd;
-//     serverPollFd.events = POLLIN; // queremos saber cuándo hay una nueva conexión entrante
-//     serverPollFd.revents = 0;
-//     _pollFds.push_back(serverPollFd); // añadimos
+    // Añadimos el socket del servidor (el que hace listen) a la lista de Fds a vigilar
+    pollfd serverPollFd;
+    serverPollFd.fd = _serverFd;
+    serverPollFd.events = POLLIN; // queremos saber cuándo hay una nueva conexión entrante
+    serverPollFd.revents = 0;
+    _pollFds.push_back(serverPollFd); // añadimos
 
-//     std::cout << "🌐 Servidor escuchando en el puerto " << _port << std::endl;
-//     return true;
-// }
+    std::cout << "🌐 Servidor escuchando en el puerto " << _port << std::endl;
+    return true;
+}
 
-// /*
-// Esta es la función principal de inicialización del servidor.
+/*
+Esta es la función principal de inicialización del servidor.
 
-// Llama a createAndBind() → que crea el socket y lo asocia a una dirección IP y puerto. Si falla, no seguimos.
+Llama a createAndBind() → que crea el socket y lo asocia a una dirección IP y puerto. Si falla, no seguimos.
 
-// Llama a setNonBlocking() → para que las llamadas accept(), recv(), send() no bloqueen. Si falla, cerramos socket y retornamos false. Si no fuera non-blocking, accept()/recv()/send() podrían bloquear y romper la intención de usar poll().
+Llama a setNonBlocking() → para que las llamadas accept(), recv(), send() no bloqueen. Si falla, cerramos socket y retornamos false. Si no fuera non-blocking, accept()/recv()/send() podrían bloquear y romper la intención de usar poll().
 
-// Luego hace listen() → el servidor empieza a “escuchar” nuevas conexiones entrantes. Este paso convierte el socket en servidor pasivo. El listen le dice al Kernel que ese socket ya no va a iniciar conexiones (deja de ser cliente), ahora va a escucharlas y aceptarlas (socket de escucha).
-//     listen(server_fd, backlog); -> El segundo argumento (backlog) define el número máximo de conexiones pendientes que el kernel puede mantener en cola antes de que tú las aceptes.
-//         SOMAXCONN es una constante del sistema (normalmente 128 o más) que indica el backlog máximo recomendado por el sistema..
+Luego hace listen() → el servidor empieza a “escuchar” nuevas conexiones entrantes. Este paso convierte el socket en servidor pasivo. El listen le dice al Kernel que ese socket ya no va a iniciar conexiones (deja de ser cliente), ahora va a escucharlas y aceptarlas (socket de escucha).
+    listen(server_fd, backlog); -> El segundo argumento (backlog) define el número máximo de conexiones pendientes que el kernel puede mantener en cola antes de que tú las aceptes.
+        SOMAXCONN es una constante del sistema (normalmente 128 o más) que indica el backlog máximo recomendado por el sistema..
 
-//         Si 150 clientes intentan conectarse al mismo tiempo y tú solo has aceptado 100, los 50 restantes esperan en esa cola.
+        Si 150 clientes intentan conectarse al mismo tiempo y tú solo has aceptado 100, los 50 restantes esperan en esa cola.
 
-//         Si se llena, el resto recibirán un error tipo connection refused.
+        Si se llena, el resto recibirán un error tipo connection refused.
 
-//     listen() no acepta conexiones.
-//     Solo prepara al kernel para recibirlas y meterlas en cola.
-//     accept() es la que realmente crea un nuevo socket para hablar con cada cliente.
+    listen() no acepta conexiones.
+    Solo prepara al kernel para recibirlas y meterlas en cola.
+    accept() es la que realmente crea un nuevo socket para hablar con cada cliente.
 
-// Si cualquiera de estas partes falla, devuelve false.
+Si cualquiera de estas partes falla, devuelve false.
 
-// 🧠 Concepto importante:
-// En red, “bloquear” significa que el programa se detiene esperando algo (por ejemplo, un cliente que nunca responde).
-// Si todo fuera bloqueante, solo podrías atender a un cliente a la vez — por eso usamos modo no bloqueante.
-// */
+🧠 Concepto importante:
+En red, “bloquear” significa que el programa se detiene esperando algo (por ejemplo, un cliente que nunca responde).
+Si todo fuera bloqueante, solo podrías atender a un cliente a la vez — por eso usamos modo no bloqueante.
+*/
 
-// int Server::createAndBind(const char *port)
-// {
-//     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-//     if (sockfd == -1)
-//     {
-//         std::cerr << "Error creando socket: " << strerror(errno) << std::endl;
-//         return -1;
-//     }
+int Server::createAndBind(const char *port)
+{
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1)
+    {
+        std::cerr << "Error creando socket: " << strerror(errno) << std::endl;
+        return -1;
+    }
 
-//     // Reusar la dirección inmediatamente si el servidor se reinicia
-//     int opt = 1;
-//     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    // Reusar la dirección inmediatamente si el servidor se reinicia
+    int opt = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-//     struct sockaddr_in addr;
-//     std::memset(&addr, 0, sizeof(addr));
-//     addr.sin_family = AF_INET;              // IPv4
-//     addr.sin_addr.s_addr = INADDR_ANY;      // Escucha en todas las interfaces
-//     addr.sin_port = htons(std::atoi(port)); // Puerto → formato de red
+    struct sockaddr_in addr;
+    std::memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;              // IPv4
+    addr.sin_addr.s_addr = INADDR_ANY;      // Escucha en todas las interfaces
+    addr.sin_port = htons(std::atoi(port)); // Puerto → formato de red
 
-//     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
-//     {
-//         std::cerr << "Error en bind(): " << strerror(errno) << std::endl;
-//         close(sockfd);
-//         return -1;
-//     }
+    if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+    {
+        std::cerr << "Error en bind(): " << strerror(errno) << std::endl;
+        close(sockfd);
+        return -1;
+    }
 
-//     return sockfd;
-// }
+    return sockfd;
+}
 
-// /*
-// En nuestro servidor, necesitamos un socket que:
+/*
+En nuestro servidor, necesitamos un socket que:
 
-//     Escuche conexiones en un puerto concreto (por ejemplo, 8080).
+    Escuche conexiones en un puerto concreto (por ejemplo, 8080).
 
-//     Esté asociado a una dirección IP (normalmente 0.0.0.0, o sea “todas las interfaces locales”).
+    Esté asociado a una dirección IP (normalmente 0.0.0.0, o sea “todas las interfaces locales”).
 
-//     Pueda aceptar clientes que intenten conectarse a él.
+    Pueda aceptar clientes que intenten conectarse a él.
 
-//     👉 La función createAndBind() se encarga de crear ese socket y vincularlo (bind) al puerto donde escuchará.
+    👉 La función createAndBind() se encarga de crear ese socket y vincularlo (bind) al puerto donde escuchará.
 
-// Por qué recibe un const char *port en lugar de std::string
-//     Esto es simplemente por compatibilidad con funciones de C antiguas.
-//     socket(), bind(), htons() y atoi() son funciones de la librería C, no de C++.
+Por qué recibe un const char *port en lugar de std::string
+    Esto es simplemente por compatibilidad con funciones de C antiguas.
+    socket(), bind(), htons() y atoi() son funciones de la librería C, no de C++.
 
-//     atoi() (convertir cadena a número) espera un const char *.
+    atoi() (convertir cadena a número) espera un const char *.
 
-//     Así que cuando en el constructor del servidor hacemos _serverFd = createAndBind(_port.c_str());
-//     ... lo que estamos haciendo es convertir el std::string a const char* para que lo pueda usar atoi().
+    Así que cuando en el constructor del servidor hacemos _serverFd = createAndBind(_port.c_str());
+    ... lo que estamos haciendo es convertir el std::string a const char* para que lo pueda usar atoi().
 
-// La función crea y configura el socket para escuchar conexiones:
-//     Crear socket(), configurar SO_REUSEADDR, preparar sockaddr_in y bind() al puerto solicitado. Devuelve el descriptor o -1 en error.
+La función crea y configura el socket para escuchar conexiones:
+    Crear socket(), configurar SO_REUSEADDR, preparar sockaddr_in y bind() al puerto solicitado. Devuelve el descriptor o -1 en error.
 
-// Explicacion línea por línea:
+Explicacion línea por línea:
 
-// socket(AF_INET, SOCK_STREAM, 0)
-// → Crea un socket TCP IPv4 (orientado a conexión).
-//     AF_INET = familia de direcciones IPv4.
-//     SOCK_STREAM = tipo de socket orientado a conexión (TCP).
-//     0: protocolo por defecto (TCP).
-// Si devuelve -1, algo falló (no se pudo reservar el socket).
+socket(AF_INET, SOCK_STREAM, 0)
+→ Crea un socket TCP IPv4 (orientado a conexión).
+    AF_INET = familia de direcciones IPv4.
+    SOCK_STREAM = tipo de socket orientado a conexión (TCP).
+    0: protocolo por defecto (TCP).
+Si devuelve -1, algo falló (no se pudo reservar el socket).
 
-// setsockopt(... SO_REUSEADDR ...)
-// → Permite reiniciar el servidor sin esperar a que el puerto se libere (evita “Address already in use”).
-//     Esta parte permite reutilizar el puerto inmediatamente si reinicias el servidor.
-//     Sin esto, si paras y arrancas rápido, el SO podría decir:
+setsockopt(... SO_REUSEADDR ...)
+→ Permite reiniciar el servidor sin esperar a que el puerto se libere (evita “Address already in use”).
+    Esta parte permite reutilizar el puerto inmediatamente si reinicias el servidor.
+    Sin esto, si paras y arrancas rápido, el SO podría decir:
 
-//     “Address already in use” 😩
+    “Address already in use” 😩
 
-//     Porque el puerto sigue en estado TIME_WAIT unos segundos tras cerrar el socket.
+    Porque el puerto sigue en estado TIME_WAIT unos segundos tras cerrar el socket.
 
-//     💡 SO_REUSEADDR le dice al kernel:
+    💡 SO_REUSEADDR le dice al kernel:
 
-//     “Tranquilo, sé lo que hago, déjame reutilizar el puerto enseguida”.
+    “Tranquilo, sé lo que hago, déjame reutilizar el puerto enseguida”.
 
-//     ***Pero porque deberia reiniciarse el servidor?
-//         Este punto (el de setsockopt(... SO_REUSEADDR ...)) suele parecer mágico o innecesario al principio… pero en realidad tiene que ver con cómo funciona el sistema operativo, no solo con tu código.
+    ***Pero porque deberia reiniciarse el servidor?
+        Este punto (el de setsockopt(... SO_REUSEADDR ...)) suele parecer mágico o innecesario al principio… pero en realidad tiene que ver con cómo funciona el sistema operativo, no solo con tu código.
 
-//         🧩 1️⃣ Qué pasa cuando tu servidor arranca
+        🧩 1️⃣ Qué pasa cuando tu servidor arranca
 
-//         Cuando haces esto:
+        Cuando haces esto:
 
-//         int sockfd = socket(...);
-//         bind(sockfd, ...);
-//         listen(sockfd, ...);
+        int sockfd = socket(...);
+        bind(sockfd, ...);
+        listen(sockfd, ...);
 
-//         El sistema operativo (Linux, macOS, etc.) reserva el puerto que le has indicado.
-//         Por ejemplo, si pides el puerto 8080, el sistema dice:
+        El sistema operativo (Linux, macOS, etc.) reserva el puerto que le has indicado.
+        Por ejemplo, si pides el puerto 8080, el sistema dice:
 
-//         “Vale, el proceso X está usando el puerto 8080, nadie más puede usarlo mientras siga abierto.”
+        “Vale, el proceso X está usando el puerto 8080, nadie más puede usarlo mientras siga abierto.”
 
-//         Así evita conflictos (dos programas intentando escuchar en el mismo puerto).
+        Así evita conflictos (dos programas intentando escuchar en el mismo puerto).
 
-//         🧩 2️⃣ Qué pasa cuando cierras el servidor
+        🧩 2️⃣ Qué pasa cuando cierras el servidor
 
-//         Cuando terminas tu programa (o lo paras con Ctrl+C), en teoría ese socket debería cerrarse y liberar el puerto.
-//         Pero el sistema operativo no lo libera de inmediato ⚠️
+        Cuando terminas tu programa (o lo paras con Ctrl+C), en teoría ese socket debería cerrarse y liberar el puerto.
+        Pero el sistema operativo no lo libera de inmediato ⚠️
 
-//         ¿Por qué?
-//         Porque en una conexión TCP, hay un mecanismo de seguridad para asegurarse de que no se pierdan mensajes pendientes.
-//         Cuando cierras el socket, las conexiones que tenía abiertas entran en un estado llamado TIME_WAIT.
+        ¿Por qué?
+        Porque en una conexión TCP, hay un mecanismo de seguridad para asegurarse de que no se pierdan mensajes pendientes.
+        Cuando cierras el socket, las conexiones que tenía abiertas entran en un estado llamado TIME_WAIT.
 
-//         🔎 En ese estado:
+        🔎 En ese estado:
 
-//         El puerto sigue “reservado” durante unos segundos (a veces 30–60).
+        El puerto sigue “reservado” durante unos segundos (a veces 30–60).
 
-//         Aunque tu proceso ya terminó, el kernel mantiene esa reserva temporal.
+        Aunque tu proceso ya terminó, el kernel mantiene esa reserva temporal.
 
-//         El resultado es que si intentas reiniciar el servidor inmediatamente (por ejemplo, compilas y lo vuelves a ejecutar enseguida), te salta este error:
+        El resultado es que si intentas reiniciar el servidor inmediatamente (por ejemplo, compilas y lo vuelves a ejecutar enseguida), te salta este error:
 
-//         Error: bind() failed
-//         Address already in use
+        Error: bind() failed
+        Address already in use
 
-//         🧩 3️⃣ Qué significa “reiniciar el servidor”
+        🧩 3️⃣ Qué significa “reiniciar el servidor”
 
-//         No es que tu código se “reinicie solo”.
-//         Reiniciar significa algo como:
+        No es que tu código se “reinicie solo”.
+        Reiniciar significa algo como:
 
-//         Tú paras el programa (Ctrl+C, o matas el proceso).
+        Tú paras el programa (Ctrl+C, o matas el proceso).
 
-//         Lo vuelves a ejecutar enseguida (por ejemplo, porque has recompilado para probar algo nuevo).
+        Lo vuelves a ejecutar enseguida (por ejemplo, porque has recompilado para probar algo nuevo).
 
-//         Ejemplo práctico:
+        Ejemplo práctico:
 
-//         $ ./webserv
-//         # Servidor escuchando en el puerto 8080...
+        $ ./webserv
+        # Servidor escuchando en el puerto 8080...
 
-//         # Lo detienes:
-//         ^C   # (Ctrl+C)
+        # Lo detienes:
+        ^C   # (Ctrl+C)
 
-//         # Lo vuelves a ejecutar:
-//         $ ./webserv
-//         Error: bind() failed: Address already in use
+        # Lo vuelves a ejecutar:
+        $ ./webserv
+        Error: bind() failed: Address already in use
 
-//         💥 Este error se da porque el sistema operativo aún tiene el puerto 8080 bloqueado en TIME_WAIT.
+        💥 Este error se da porque el sistema operativo aún tiene el puerto 8080 bloqueado en TIME_WAIT.
 
-//         🧩 4️⃣ Qué hace setsockopt(SO_REUSEADDR)
+        🧩 4️⃣ Qué hace setsockopt(SO_REUSEADDR)
 
-//         Esa llamada es una configuración opcional del socket, y su función es decirle al sistema:
+        Esa llamada es una configuración opcional del socket, y su función es decirle al sistema:
 
-//         “Tranquilo, quiero reutilizar el puerto incluso si está en TIME_WAIT.”
+        “Tranquilo, quiero reutilizar el puerto incluso si está en TIME_WAIT.”
 
-//         Es decir:
-//         ✅ Permite volver a hacer bind() sobre el mismo puerto aunque el SO crea que “aún está en uso” por una conexión previa del mismo programa.
+        Es decir:
+        ✅ Permite volver a hacer bind() sobre el mismo puerto aunque el SO crea que “aún está en uso” por una conexión previa del mismo programa.
 
-//         No afecta a la seguridad ni al funcionamiento normal.
-//         Solo acelera el ciclo de desarrollo y evita que tengas que esperar medio minuto cada vez que haces un cambio en el código.
+        No afecta a la seguridad ni al funcionamiento normal.
+        Solo acelera el ciclo de desarrollo y evita que tengas que esperar medio minuto cada vez que haces un cambio en el código.
 
-//         Si no estoy en TIME_WAIT, ¿para qué quiero SO_REUSEADDR? ¿No hace nada, o incluso puede fastidiar algo?”
+        Si no estoy en TIME_WAIT, ¿para qué quiero SO_REUSEADDR? ¿No hace nada, o incluso puede fastidiar algo?”
 
-//             👉 No, no molesta, y sí conviene dejarla siempre.
-//             En la mayoría de casos no cambia nada cuando el puerto está libre, y solo actúa cuando lo necesitas (cuando está ocupado en TIME_WAIT).
+            👉 No, no molesta, y sí conviene dejarla siempre.
+            En la mayoría de casos no cambia nada cuando el puerto está libre, y solo actúa cuando lo necesitas (cuando está ocupado en TIME_WAIT).
 
-//             El sistema operativo simplemente ignora la opción porque no tiene nada que “reutilizar”.
-//             El bind() funciona igual que siempre, sin efectos secundarios.
+            El sistema operativo simplemente ignora la opción porque no tiene nada que “reutilizar”.
+            El bind() funciona igual que siempre, sin efectos secundarios.
 
-//             ✅ Así que no pasa absolutamente nada diferente respecto a no haber puesto la línea.
+            ✅ Así que no pasa absolutamente nada diferente respecto a no haber puesto la línea.
 
-// Se llena la estructura sockaddr_in con:
+Se llena la estructura sockaddr_in con:
 
-//     sin_family: AF_INET → familia IPv4
+    sin_family: AF_INET → familia IPv4
 
-//     sin_addr.s_addr: INADDR_ANY → escucha en cualquier IP local, es decir, escuchará en 127.0.0.1, 192.168.x.x, etc.
+    sin_addr.s_addr: INADDR_ANY → escucha en cualquier IP local, es decir, escuchará en 127.0.0.1, 192.168.x.x, etc.
 
-//     sin_port: htons() → convierte el número de puerto al formato de red (big endian).
+    sin_port: htons() → convierte el número de puerto al formato de red (big endian).
 
-// bind() → asocia el socket al puerto del sistema operativo.
+bind() → asocia el socket al puerto del sistema operativo.
 
-// 💡 Si bind() falla, puede ser porque ya hay otro programa usando ese puerto.
+💡 Si bind() falla, puede ser porque ya hay otro programa usando ese puerto.
 
-// *** Explicación más en profundidad:
+*** Explicación más en profundidad:
 
-// sockaddr_in es una estructura de C (no de C++) que describe una dirección de red IPv4.
-// Está definida en el archivo: #include <netinet/in.h>
-// Su definición simplificada es más o menos así:
-//     struct sockaddr_in {
-//         sa_family_t    sin_family; // Familia de direcciones (AF_INET)
-//         in_port_t      sin_port;   // Puerto (en formato network byte order)
-//         struct in_addr sin_addr;   // Dirección IP (también en formato network byte order)
-//         unsigned char  sin_zero[8]; // Relleno (no se usa, pero mantiene el tamaño)
-//     };
+sockaddr_in es una estructura de C (no de C++) que describe una dirección de red IPv4.
+Está definida en el archivo: #include <netinet/in.h>
+Su definición simplificada es más o menos así:
+    struct sockaddr_in {
+        sa_family_t    sin_family; // Familia de direcciones (AF_INET)
+        in_port_t      sin_port;   // Puerto (en formato network byte order)
+        struct in_addr sin_addr;   // Dirección IP (también en formato network byte order)
+        unsigned char  sin_zero[8]; // Relleno (no se usa, pero mantiene el tamaño)
+    };
 
-// 🔹 Qué representa
-//     Piensa que un socket es como un enchufe universal, pero para que el sistema operativo sepa a qué puerto y a qué IP quieres enchufarte, tienes que darle una dirección completa.
+🔹 Qué representa
+    Piensa que un socket es como un enchufe universal, pero para que el sistema operativo sepa a qué puerto y a qué IP quieres enchufarte, tienes que darle una dirección completa.
 
-//     🧠 Así que sockaddr_in ≈ “tarjeta con la dirección postal del servidor”:
-//         sin_family = tipo de dirección (por ejemplo, IPv4 o IPv6).
-//         sin_port = puerto donde escuchas (ej. 8080).
-//         sin_addr = IP donde quieres escuchar (ej. 127.0.0.1 o 0.0.0.0).
+    🧠 Así que sockaddr_in ≈ “tarjeta con la dirección postal del servidor”:
+        sin_family = tipo de dirección (por ejemplo, IPv4 o IPv6).
+        sin_port = puerto donde escuchas (ej. 8080).
+        sin_addr = IP donde quieres escuchar (ej. 127.0.0.1 o 0.0.0.0).
 
-// 🔹 Por qué la necesitamos
-//     Las funciones del sistema (como bind(), connect(), sendto(), etc.) son muy antiguas, vienen del mundo C, y todas esperan recibir un puntero genérico a una dirección:
-//         struct sockaddr*
+🔹 Por qué la necesitamos
+    Las funciones del sistema (como bind(), connect(), sendto(), etc.) son muy antiguas, vienen del mundo C, y todas esperan recibir un puntero genérico a una dirección:
+        struct sockaddr*
 
-//     Pero nosotros usamos la versión más específica:
-//         struct sockaddr_in
+    Pero nosotros usamos la versión más específica:
+        struct sockaddr_in
 
-//     Así que cuando la pasamos a una función, tenemos que hacer un cast:
-//         (struct sockaddr*)&addr
-//                 ***Explicación: struct sockaddr_in addr; crea una estructura sockaddr_in, que sirve para guardar la dirección IP y el puerto cuando trabajas con IPv4.
-//                 Tu variable addr es un sockaddr_in, pero la función espera un sockaddr*. Entonces necesitamos hacer un casteo
-//                 Esto significa:
-//                     &addr → dirección de memoria de la variable addr (un puntero a sockaddr_in)
-//                     (struct sockaddr*) → le decimos al compilador:
-//                         “Tranquilo, trata este puntero como si apuntara a una sockaddr genérica.”
-//                 No cambia los datos en memoria, solo la forma en que los interpretamos.
+    Así que cuando la pasamos a una función, tenemos que hacer un cast:
+        (struct sockaddr*)&addr
+                ***Explicación: struct sockaddr_in addr; crea una estructura sockaddr_in, que sirve para guardar la dirección IP y el puerto cuando trabajas con IPv4.
+                Tu variable addr es un sockaddr_in, pero la función espera un sockaddr*. Entonces necesitamos hacer un casteo
+                Esto significa:
+                    &addr → dirección de memoria de la variable addr (un puntero a sockaddr_in)
+                    (struct sockaddr*) → le decimos al compilador:
+                        “Tranquilo, trata este puntero como si apuntara a una sockaddr genérica.”
+                No cambia los datos en memoria, solo la forma en que los interpretamos.
 
-//     Esto es porque la función no sabe si le estás pasando una dirección IPv4 (sockaddr_in), IPv6 (sockaddr_in6), o Unix domain socket (sockaddr_un).
-//     El cast solo le dice: “tranquilo, es del tipo genérico sockaddr*, pero realmente contiene una dirección IPv4”.
+    Esto es porque la función no sabe si le estás pasando una dirección IPv4 (sockaddr_in), IPv6 (sockaddr_in6), o Unix domain socket (sockaddr_un).
+    El cast solo le dice: “tranquilo, es del tipo genérico sockaddr*, pero realmente contiene una dirección IPv4”.
 
-//     🧠 Ejemplo: el bloque real de código
-//         struct sockaddr_in addr;
-//         addr.sin_family = AF_INET; // IPv4
-//         addr.sin_addr.s_addr = INADDR_ANY; // Escucha en todas las interfaces
-//         addr.sin_port = htons(port); // Puerto (convertido a formato de red)
+    🧠 Ejemplo: el bloque real de código
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET; // IPv4
+        addr.sin_addr.s_addr = INADDR_ANY; // Escucha en todas las interfaces
+        addr.sin_port = htons(port); // Puerto (convertido a formato de red)
 
-//     🧩 Explicación línea a línea
-//         1️⃣ addr.sin_family = AF_INET;
+    🧩 Explicación línea a línea
+        1️⃣ addr.sin_family = AF_INET;
 
-//         Le decimos que es una dirección IPv4 (no IPv6).
-//         Este valor (AF_INET) está definido en <sys/socket.h>.
+        Le decimos que es una dirección IPv4 (no IPv6).
+        Este valor (AF_INET) está definido en <sys/socket.h>.
 
-//         💡 Si usaras IPv6, pondrías AF_INET6.
+        💡 Si usaras IPv6, pondrías AF_INET6.
 
-//         2️⃣ addr.sin_addr.s_addr = INADDR_ANY;
+        2️⃣ addr.sin_addr.s_addr = INADDR_ANY;
 
-//         Esto significa:
-//             “Escucha en todas las interfaces disponibles.”
+        Esto significa:
+            “Escucha en todas las interfaces disponibles.”
 
-//         Si tu máquina tiene varias IPs (por ejemplo, una interna y otra externa), con INADDR_ANY el servidor aceptará conexiones desde cualquiera.
+        Si tu máquina tiene varias IPs (por ejemplo, una interna y otra externa), con INADDR_ANY el servidor aceptará conexiones desde cualquiera.
 
-//         💬 Alternativas:
-//             Si quisieras escuchar solo en localhost, pondrías:
-//                 addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        💬 Alternativas:
+            Si quisieras escuchar solo en localhost, pondrías:
+                addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-//         Si quisieras una IP concreta, también podrías convertirla con inet_addr("192.168.1.42").
+        Si quisieras una IP concreta, también podrías convertirla con inet_addr("192.168.1.42").
 
-//         3️⃣ addr.sin_port = htons(port);
+        3️⃣ addr.sin_port = htons(port);
 
-//         port aquí es el número de puerto que tú decides (por ejemplo, 8080).
+        port aquí es el número de puerto que tú decides (por ejemplo, 8080).
 
-//         Pero —muy importante— el sistema operativo no guarda los números igual que tu CPU.
-//         Las CPUs pueden ser little endian o big endian, y eso afecta al orden de los bytes.
+        Pero —muy importante— el sistema operativo no guarda los números igual que tu CPU.
+        Las CPUs pueden ser little endian o big endian, y eso afecta al orden de los bytes.
 
-//         💡 Ejemplo:
-//             Puerto 8080 = 0x1F90
+        💡 Ejemplo:
+            Puerto 8080 = 0x1F90
 
-//         En memoria en un Intel (little endian) se guarda como 90 1F.
-//         En red (network order, big endian) debe ser 1F 90.
-//         Por eso usamos:
-//             htons()  // host to network short
+        En memoria en un Intel (little endian) se guarda como 90 1F.
+        En red (network order, big endian) debe ser 1F 90.
+        Por eso usamos:
+            htons()  // host to network short
 
-//         Para convertir automáticamente al formato correcto antes de pasar el valor al sistema.
+        Para convertir automáticamente al formato correcto antes de pasar el valor al sistema.
 
-//     4️⃣ ¿Y el bind()?
+    4️⃣ ¿Y el bind()?
 
-//         Una vez has rellenado addr, haces:
-//             bind(sockfd, (struct sockaddr*)&addr, sizeof(addr))
+        Una vez has rellenado addr, haces:
+            bind(sockfd, (struct sockaddr*)&addr, sizeof(addr))
 
-//         Esto le dice al sistema operativo:
-//             “Asocia mi socket (identificado por sockfd) con esta dirección IP y este puerto.”
+        Esto le dice al sistema operativo:
+            “Asocia mi socket (identificado por sockfd) con esta dirección IP y este puerto.”
 
-//         Sin esto, el socket no está “anclado” a ninguna dirección, y el sistema no sabría qué conexiones deben llegarle.
+        Sin esto, el socket no está “anclado” a ninguna dirección, y el sistema no sabría qué conexiones deben llegarle.
 
-// */
+*/
 
-// int Server::setNonBlocking(int fd)
-// {
-//     int flags = fcntl(fd, F_GETFL, 0);
-//     if (flags == -1)
-//         return -1;
-//     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-// }
+int Server::setNonBlocking(int fd)
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1)
+        return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
 
-// /*
-// Por defecto, un socket en Linux es bloqueante.
-// 🚫 Qué significa “bloqueante”
-//     Un socket bloqueante detiene la ejecución del programa hasta que la operación termina.
+/*
+Por defecto, un socket en Linux es bloqueante.
+🚫 Qué significa “bloqueante”
+    Un socket bloqueante detiene la ejecución del programa hasta que la operación termina.
 
-//     Por ejemplo:
-//         int client_fd = accept(server_fd, ...);
+    Por ejemplo:
+        int client_fd = accept(server_fd, ...);
 
-//     👉 Si no hay ningún cliente intentando conectarse, esta línea se queda esperando indefinidamente.
+    👉 Si no hay ningún cliente intentando conectarse, esta línea se queda esperando indefinidamente.
 
-//     Lo mismo ocurre con:
-//         recv() → espera hasta que haya datos.
+    Lo mismo ocurre con:
+        recv() → espera hasta que haya datos.
 
-//         send() → espera si el buffer está lleno.
+        send() → espera si el buffer está lleno.
 
-//     Esto está bien si tu programa solo maneja una conexión a la vez.
-//     Pero si estás escribiendo un servidor multipropósito, como tu webserv, eso sería un desastre: mientras una conexión está “esperando”, las demás se quedan congeladas.
+    Esto está bien si tu programa solo maneja una conexión a la vez.
+    Pero si estás escribiendo un servidor multipropósito, como tu webserv, eso sería un desastre: mientras una conexión está “esperando”, las demás se quedan congeladas.
 
-// ⚙️ Qué hace “modo no bloqueante”
+⚙️ Qué hace “modo no bloqueante”
 
-//     Cuando el socket está en modo no bloqueante, esas funciones (accept, recv, send, etc.) no bloquean el flujo del programa.
+    Cuando el socket está en modo no bloqueante, esas funciones (accept, recv, send, etc.) no bloquean el flujo del programa.
 
-//         Si no hay nada que aceptar, accept() devuelve -1 e errno se pone en EAGAIN o EWOULDBLOCK.
+        Si no hay nada que aceptar, accept() devuelve -1 e errno se pone en EAGAIN o EWOULDBLOCK.
 
-//         Si no hay datos disponibles en recv(), pasa lo mismo.
+        Si no hay datos disponibles en recv(), pasa lo mismo.
 
-//         Tú puedes seguir ejecutando el resto de tu código (por ejemplo, atender otros sockets).
+        Tú puedes seguir ejecutando el resto de tu código (por ejemplo, atender otros sockets).
 
-//     Esto es esencial para usar poll, select, o epoll — mecanismos que te dicen cuándo un socket está listo para leer o escribir, sin quedarte bloqueado.
+    Esto es esencial para usar poll, select, o epoll — mecanismos que te dicen cuándo un socket está listo para leer o escribir, sin quedarte bloqueado.
 
-// Esta funcion hace que el socket no bloquee.
+Esta funcion hace que el socket no bloquee.
 
-// fcntl(fd, F_GETFL, 0) obtiene las flags actuales del descriptor fd.
+fcntl(fd, F_GETFL, 0) obtiene las flags actuales del descriptor fd.
 
-// fcntl(fd, F_SETFL, flags | O_NONBLOCK) activa la flag O_NONBLOCK.
-//     No borra los anteriores. F_SETFL escribe los flags combinados con O_NONBLOCK
-//     Solo indica que el socket ya no bloqueará el flujo.
-//     Retorna el valor de fcntl (0 en éxito, -1 en fallo).
+fcntl(fd, F_SETFL, flags | O_NONBLOCK) activa la flag O_NONBLOCK.
+    No borra los anteriores. F_SETFL escribe los flags combinados con O_NONBLOCK
+    Solo indica que el socket ya no bloqueará el flujo.
+    Retorna el valor de fcntl (0 en éxito, -1 en fallo).
 
-// Así, si haces accept() y no hay clientes esperando, la llamada no se queda congelada, sino que devuelve inmediatamente con un error controlable (EAGAIN o EWOULDBLOCK).
-//     Osea, en modo non-blocking, accept(), recv() y send() no bloquearán. En su lugar devolverán -1 y errno en EAGAIN/EWOULDBLOCK si no hay datos/disponibilidad. poll() se usa para evitar llamadas en momentos con posibilidad de bloqueo.
+Así, si haces accept() y no hay clientes esperando, la llamada no se queda congelada, sino que devuelve inmediatamente con un error controlable (EAGAIN o EWOULDBLOCK).
+    Osea, en modo non-blocking, accept(), recv() y send() no bloquearán. En su lugar devolverán -1 y errno en EAGAIN/EWOULDBLOCK si no hay datos/disponibilidad. poll() se usa para evitar llamadas en momentos con posibilidad de bloqueo.
 
-// Esto será esencial más adelante cuando usemos poll().
+Esto será esencial más adelante cuando usemos poll().
 
-// ******Profundización:
-//     Qué es fcntl
-//         fcntl significa file control → control de archivos.
+******Profundización:
+    Qué es fcntl
+        fcntl significa file control → control de archivos.
 
-//         Es una función del sistema POSIX (Unix/Linux/macOS) que sirve para modificar el comportamiento de un descriptor de archivo (file descriptor, o fd).
+        Es una función del sistema POSIX (Unix/Linux/macOS) que sirve para modificar el comportamiento de un descriptor de archivo (file descriptor, o fd).
 
-//         Y recuerda que en Unix todo es un archivo:
-//             un archivo normal (de disco),
+        Y recuerda que en Unix todo es un archivo:
+            un archivo normal (de disco),
 
-//             un socket de red,
+            un socket de red,
 
-//             una tubería (pipe),
+            una tubería (pipe),
 
-//             incluso el teclado o la pantalla…
+            incluso el teclado o la pantalla…
 
-//     Todos se manejan con descriptores de archivo (int).
+    Todos se manejan con descriptores de archivo (int).
 
-// */
+*/
 
-// /*
-// Qué tienes hasta ahora
+/*
+Qué tienes hasta ahora
 
-//     Has creado un objeto Server capaz de:
+    Has creado un objeto Server capaz de:
 
-//     Crear un socket TCP.
+    Crear un socket TCP.
 
-//     Asociarlo a un puerto.
+    Asociarlo a un puerto.
 
-//     Escuchar conexiones sin bloquear.
+    Escuchar conexiones sin bloquear.
 
-//     Cerrar todo ordenadamente al destruir el objeto.
+    Cerrar todo ordenadamente al destruir el objeto.
 
-// ➡️ Todavía no acepta clientes ni responde datos, pero ya es un servidor inicializado que escucha.
-// Lo siguiente será crear un main.cpp que lo use y añadir el bucle principal (aceptar conexiones y enviar un “Hello world”).*/
+➡️ Todavía no acepta clientes ni responde datos, pero ya es un servidor inicializado que escucha.
+Lo siguiente será crear un main.cpp que lo use y añadir el bucle principal (aceptar conexiones y enviar un “Hello world”).*/
 
-// int Server::getServerFd() const
-// {
-//     return _serverFd;
-// }
+int Server::getServerFd() const
+{
+    return _serverFd;
+}
 
-// // VERSION 2 DEL BUCLE RUN
-// void Server::run()
-// {
-//     std::cout << "Servidor corriendo con poll()...\n"
-//               << std::endl;
+// VERSION 2 DEL BUCLE RUN
+void Server::run()
+{
+    std::cout << "Servidor corriendo con poll()...\n"
+              << std::endl;
 
-//     while (true)
-//     {
-//         int ready = poll(_pollFds.data(), _pollFds.size(), 5000); // antes tenia -1, significa que espera indefinidamente hasta que algo ocurra. Pongo 5 segundos de timeout, evita que el servidor se quede bloqueado indefinidamente y permite revisar timeouts periódicamente
-//         if (ready < 0)
-//         {
-//             if (errno == EINTR)
-//                 continue;
-//             perror("poll");
-//             break;
-//         }
-//         time_t now = time(NULL);
+    while (true)
+    {
+        int ready = poll(_pollFds.data(), _pollFds.size(), 5000); // antes tenia -1, significa que espera indefinidamente hasta que algo ocurra. Pongo 5 segundos de timeout, evita que el servidor se quede bloqueado indefinidamente y permite revisar timeouts periódicamente
+        if (ready < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            perror("poll");
+            break;
+        }
+        time_t now = time(NULL);
 
-//         // Aceptar nuevas conexiones entrantes - Revisamos el servidor
-//         if (!_pollFds.empty() && (_pollFds[0].revents & POLLIN))
-//             acceptNewClient();
+        // Aceptar nuevas conexiones entrantes - Revisamos el servidor
+        if (!_pollFds.empty() && (_pollFds[0].revents & POLLIN))
+            acceptNewClient();
 
-//         // Procesar clientes existentes - Recorremos el resto revisando todos los clientes
-//         for (size_t i = 1; i < _pollFds.size();)
-//         {
-//             int fd = _pollFds[i].fd;
-//             Client *client = _clientsByFd[fd];
+        // Procesar clientes existentes - Recorremos el resto revisando todos los clientes
+        for (size_t i = 1; i < _pollFds.size();)
+        {
+            int fd = _pollFds[i].fd;
+            Client *client = _clientsByFd[fd];
 
-//             // 🧹 Si no hay cliente asociado, limpiamos el fd del poll
-//             if (!client)
-//             {
-//                 _pollFds.erase(_pollFds.begin() + i);
-//                 continue;
-//             }
+            // 🧹 Si no hay cliente asociado, limpiamos el fd del poll
+            if (!client)
+            {
+                _pollFds.erase(_pollFds.begin() + i);
+                continue;
+            }
 
-//             // ✅ VERIFICACIÓN DE TIMEOUT PRIMERO (MÁS EFICIENTE)
-//             checkClientTimeout(client, fd, now);
+            // ✅ VERIFICACIÓN DE TIMEOUT PRIMERO (MÁS EFICIENTE)
+            checkClientTimeout(client, fd, now);
 
-//             // Si el cliente sigue activo, procesar eventos
-//             if (!client->isClosed())
-//             {
-//                 // Errores de conexión
-//                 if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
-//                 {
-//                     client->markClosed();
-//                     i++; // No te saltas clientes porque cleanupClosedClients() se ejecuta después del bucle completo
-//                     continue;
-//                 }
-//                 // Lectura de datos
-//                 if (_pollFds[i].revents & POLLIN)
-//                 {
-//                     handleClientData(client, i);
-//                 }
-//                 // Escritura de datos
-//                 if (_pollFds[i].revents & POLLOUT)
-//                 {
-//                     handleClientWrite(client, i);
-//                     // Si se cerró durante la escritura (flushWrite marcó closed si era error/EOF), pasar al siguiente
-//                     if (client->isClosed())
-//                     {
-//                         ++i;
-//                         continue;
-//                     }
-//                 }
-//             }
+            // Si el cliente sigue activo, procesar eventos
+            if (!client->isClosed())
+            {
+                // Errores de conexión
+                if (_pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+                {
+                    client->markClosed();
+                    i++; // No te saltas clientes porque cleanupClosedClients() se ejecuta después del bucle completo
+                    continue;
+                }
+                // Lectura de datos
+                if (_pollFds[i].revents & POLLIN)
+                {
+                    handleClientData(client, i);
+                }
+                // Escritura de datos
+                if (_pollFds[i].revents & POLLOUT)
+                {
+                    handleClientWrite(client, i);
+                    // Si se cerró durante la escritura (flushWrite marcó closed si era error/EOF), pasar al siguiente
+                    if (client->isClosed())
+                    {
+                        ++i;
+                        continue;
+                    }
+                }
+            }
 
-//             // Solo incrementar si no borramos el elemento
-//             if (i < _pollFds.size() && _pollFds[i].fd == fd)
-//             {
-//                 ++i;
-//             }
-//         }
+            // Solo incrementar si no borramos el elemento
+            if (i < _pollFds.size() && _pollFds[i].fd == fd)
+            {
+                ++i;
+            }
+        }
 
-//         // Limpiar clientes cerrados
-//         cleanupClosedClients();
-//     }
-// }
+        // Limpiar clientes cerrados
+        cleanupClosedClients();
+    }
+}
 
-// /*
-// 17.11.25
-// Ahora, cuando entramos en handle client, dentro se gestiona que si hay algun error salga de handle y siga con el bucle. El problema, es que si por ejemplo hay un cliente con datos disponibles para leer y también tenia datos pendientes para escribir (o el socket es write ready, que casi siempre lo es aunque no tengas pendientes) tendrá ambos revents, POLLIN y POLLOUT, por lo que después de handle client podría entrar en el for de POLLOUT y llamar a flusWrite sobre un cliente ya cerrado dentro de handle client. No es super grave, porque el propio fluswrite marcaría closed y saldria al encontrar problemas en el send, pero es innecesario llegar hasta ahí
+/*
+17.11.25
+Ahora, cuando entramos en handle client, dentro se gestiona que si hay algun error salga de handle y siga con el bucle. El problema, es que si por ejemplo hay un cliente con datos disponibles para leer y también tenia datos pendientes para escribir (o el socket es write ready, que casi siempre lo es aunque no tengas pendientes) tendrá ambos revents, POLLIN y POLLOUT, por lo que después de handle client podría entrar en el for de POLLOUT y llamar a flusWrite sobre un cliente ya cerrado dentro de handle client. No es super grave, porque el propio fluswrite marcaría closed y saldria al encontrar problemas en el send, pero es innecesario llegar hasta ahí
 
-// Recordatorio rápido: poll() puede devolver varios flags a la vez
-//     poll() no te da “un único evento”. Un mismo revents puede contener POLLIN, POLLOUT, POLLHUP, POLLERR, etc. al mismo tiempo.
-//     Eso significa que en la misma iteración puedes tener que:
-//         leer datos (POLLIN),
-//         escribir datos pendientes (POLLOUT),
-//         y además haber recibido un HUP/ERR asíncrono.
+Recordatorio rápido: poll() puede devolver varios flags a la vez
+    poll() no te da “un único evento”. Un mismo revents puede contener POLLIN, POLLOUT, POLLHUP, POLLERR, etc. al mismo tiempo.
+    Eso significa que en la misma iteración puedes tener que:
+        leer datos (POLLIN),
+        escribir datos pendientes (POLLOUT),
+        y además haber recibido un HUP/ERR asíncrono.
 
-//     Esa simultaneidad es el origen de la necesidad de orden y cuidado.
+    Esa simultaneidad es el origen de la necesidad de orden y cuidado.
 
-// 2) Qué pasaba antes (tu código original)
-//     Orden en cada fd:
-//         if (POLLIN) -> handleClientEvent(fd)
-//         if (POLLOUT) -> flushWrite()
-//         if (POLLERR|POLLHUP|POLLNVAL) -> markClosed()
+2) Qué pasaba antes (tu código original)
+    Orden en cada fd:
+        if (POLLIN) -> handleClientEvent(fd)
+        if (POLLOUT) -> flushWrite()
+        if (POLLERR|POLLHUP|POLLNVAL) -> markClosed()
 
-//     Problema real posible:
-//         poll() devuelve POLLIN | POLLOUT (y quizá también HUP/ERR).
+    Problema real posible:
+        poll() devuelve POLLIN | POLLOUT (y quizá también HUP/ERR).
 
-//         En handleClientEvent() detectas un error (por ejemplo recv() devolvió 0) y ejecutas client->markClosed() — marcando ya _closed = true.
+        En handleClientEvent() detectas un error (por ejemplo recv() devolvió 0) y ejecutas client->markClosed() — marcando ya _closed = true.
 
-//         Sin comprobar isClosed(), sigues y llegas a la sección if (POLLOUT) y llamas a flushWrite() sobre un cliente ya marcado como cerrado.
+        Sin comprobar isClosed(), sigues y llegas a la sección if (POLLOUT) y llamas a flushWrite() sobre un cliente ya marcado como cerrado.
 
-//         flushWrite() intentará send() y probablemente falle (EPIPE, ECONNRESET), volverá false, marcará _closed (otra vez) y al final cleanupClosedClients() borrará el cliente.
+        flushWrite() intentará send() y probablemente falle (EPIPE, ECONNRESET), volverá false, marcará _closed (otra vez) y al final cleanupClosedClients() borrará el cliente.
 
-//     Consecuencias:
-//         Llamadas innecesarias a send() sobre sockets que ya deberías considerar muertos.
+    Consecuencias:
+        Llamadas innecesarias a send() sobre sockets que ya deberías considerar muertos.
 
-//         Logs duplicados y flujos inconsistentes.
+        Logs duplicados y flujos inconsistentes.
 
-//         En casos más complejos (keep-alive, borrado inmediato) podría provocar manejar índices/pollfds inválidos si borras dentro del loop sin cuidado.
+        En casos más complejos (keep-alive, borrado inmediato) podría provocar manejar índices/pollfds inválidos si borras dentro del loop sin cuidado.
 
-// 3) ¿Por qué comprobar errores antes de lectura/escritura?
-//     Porque hay errores que ocurren entre tus syscalls: el peer puede cerrar o resetear la conexión justo después del último send() que hiciste, y antes de la siguiente llamada. poll() refleja ese estado asíncrono con POLLERR/POLLHUP.
-//     Si procesas I/O sin mirar primero esos flags, puedes:
-//         intentar recv() o send() sobre un fd en mal estado,
-//         generar errores evitables,
-//         hacer trabajo inútil.
+3) ¿Por qué comprobar errores antes de lectura/escritura?
+    Porque hay errores que ocurren entre tus syscalls: el peer puede cerrar o resetear la conexión justo después del último send() que hiciste, y antes de la siguiente llamada. poll() refleja ese estado asíncrono con POLLERR/POLLHUP.
+    Si procesas I/O sin mirar primero esos flags, puedes:
+        intentar recv() o send() sobre un fd en mal estado,
+        generar errores evitables,
+        hacer trabajo inútil.
 
-//     Mirar los flags de error primero evita todo eso: detectas “esto está roto” y lo marcas para limpieza sin tocarlo.
+    Mirar los flags de error primero evita todo eso: detectas “esto está roto” y lo marcas para limpieza sin tocarlo.
 
-//     Es decir, errores asíncronos (HUP/ERR) se gestionan antes de tocar el socket, así no intentas I/O en un fd con problemas.
+    Es decir, errores asíncronos (HUP/ERR) se gestionan antes de tocar el socket, así no intentas I/O en un fd con problemas.
 
-// 4) ¿Por qué mover ++i al final (o controlarlo manualmente)?
-//     En la versión nueva gestionas i manualmente (incrementas en cada rama con ++i cuando proceda) para poder continue y no incrementar en ramas donde ya hiciste erase. Es una forma segura de iterar cuando en algunas ramas haces erase() del vector _pollFds.
-//     Antes tenías un for (i=1; i<_pollFds.size(); ++i) y en las ramas llamabas erase() seguido de continue. Eso también funcionaba porque en el continue evitabas el ++i, y la iteración volvía a comprobar el nuevo _pollFds[i].
-//     La versión nueva simplemente hace explícito el control del i para evitar confusiones cuando añades condiciones continue en varios puntos — es más fácil razonar y menos propenso a errores sutiles.
+4) ¿Por qué mover ++i al final (o controlarlo manualmente)?
+    En la versión nueva gestionas i manualmente (incrementas en cada rama con ++i cuando proceda) para poder continue y no incrementar en ramas donde ya hiciste erase. Es una forma segura de iterar cuando en algunas ramas haces erase() del vector _pollFds.
+    Antes tenías un for (i=1; i<_pollFds.size(); ++i) y en las ramas llamabas erase() seguido de continue. Eso también funcionaba porque en el continue evitabas el ++i, y la iteración volvía a comprobar el nuevo _pollFds[i].
+    La versión nueva simplemente hace explícito el control del i para evitar confusiones cuando añades condiciones continue en varios puntos — es más fácil razonar y menos propenso a errores sutiles.
 
-//  */
+ */
 
-// /*
-// ACTUALIZACIÓN 2 información:
+/*
+ACTUALIZACIÓN 2 información:
 
-//     for (size_t i = 1; i < _pollFds.size(); ++i)
-//     {
-//         int fd = _pollFds[i].fd;
-//         Client *client = _clientsByFd[fd];
-//         if (!client)
-//             continue;
+    for (size_t i = 1; i < _pollFds.size(); ++i)
+    {
+        int fd = _pollFds[i].fd;
+        Client *client = _clientsByFd[fd];
+        if (!client)
+            continue;
 
-// Aunque ya está bien protegido en cleanupClosedClients, no debería haber fds sin un cliente activo asociado, lo ponemos por doble seguridad.
-// En sistemas de red, puede haber pequeñas desincronizaciones:
+Aunque ya está bien protegido en cleanupClosedClients, no debería haber fds sin un cliente activo asociado, lo ponemos por doble seguridad.
+En sistemas de red, puede haber pequeñas desincronizaciones:
 
-//     si un cliente se borra justo después de un poll() pero antes de procesar sus eventos;
+    si un cliente se borra justo después de un poll() pero antes de procesar sus eventos;
 
-//     si ocurre un error no controlado entre readRequest() y cleanupClosedClients();
+    si ocurre un error no controlado entre readRequest() y cleanupClosedClients();
 
-//     o si en el futuro agregas threads o funciones que manipulan _clientsByFd fuera del bucle principal.
+    o si en el futuro agregas threads o funciones que manipulan _clientsByFd fuera del bucle principal.
 
-// Si entras en ese caso, es porque tienes una incoherencia:
-// hay un fd en _pollFds que ya no tiene su Client en _clientsByFd.
-// Y si simplemente haces continue, ese fd se quedará en _pollFds para siempre,
-// ocupando espacio y haciendo que poll() lo siga vigilando inútilmente.
+Si entras en ese caso, es porque tienes una incoherencia:
+hay un fd en _pollFds que ya no tiene su Client en _clientsByFd.
+Y si simplemente haces continue, ese fd se quedará en _pollFds para siempre,
+ocupando espacio y haciendo que poll() lo siga vigilando inútilmente.
 
-// Así que sí ✅ — lo correcto es eliminarlo en ese punto.
-// */
+Así que sí ✅ — lo correcto es eliminarlo en ese punto.
+*/
 
-// /*
-// ACTUALIZACIÓN información:
+/*
+ACTUALIZACIÓN información:
 
-// Tienes un poll() configurado solo con POLLIN, algo como esto:
-//     pfds[i].events = POLLIN;
+Tienes un poll() configurado solo con POLLIN, algo como esto:
+    pfds[i].events = POLLIN;
 
-// Entonces:
-//     poll() te avisa solo cuando hay algo que leer (datos entrantes).
+Entonces:
+    poll() te avisa solo cuando hay algo que leer (datos entrantes).
 
-//     Si haces un send() parcial (no todo el buffer se envía) dentro de handleClientEvent(),
-//     y te queda algo pendiente en _writeBuffer, no volverás a saber cuándo continuar.
+    Si haces un send() parcial (no todo el buffer se envía) dentro de handleClientEvent(),
+    y te queda algo pendiente en _writeBuffer, no volverás a saber cuándo continuar.
 
-// 👉 Porque poll() solo te despierta con POLLIN, y no con POLLOUT
+👉 Porque poll() solo te despierta con POLLIN, y no con POLLOUT
 
-// Qué pasa si un cliente tiene escritura pendiente
+Qué pasa si un cliente tiene escritura pendiente
 
-// Imagina esto:
-//     El cliente envía una petición → poll() te despierta con POLLIN.
+Imagina esto:
+    El cliente envía una petición → poll() te despierta con POLLIN.
 
-//     En handleClientEvent() lees todo, generas respuesta, llamas a sendResponse().
+    En handleClientEvent() lees todo, generas respuesta, llamas a sendResponse().
 
-//     flushWrite() intenta enviar los bytes.
-//         Si todo sale, genial, fin.
+    flushWrite() intenta enviar los bytes.
+        Si todo sale, genial, fin.
 
-//         Pero si send() devuelve EAGAIN → guardas el resto en _writeBuffer.
+        Pero si send() devuelve EAGAIN → guardas el resto en _writeBuffer.
 
-// Ahora tienes datos pendientes…
-// Pero el socket no se marca solo como POLLOUT.
-// Así que no volverás a entrar para terminar de enviar hasta que el cliente vuelva a escribir algo.
-// Y probablemente no lo hará → se queda colgado esperando tu respuesta completa.
+Ahora tienes datos pendientes…
+Pero el socket no se marca solo como POLLOUT.
+Así que no volverás a entrar para terminar de enviar hasta que el cliente vuelva a escribir algo.
+Y probablemente no lo hará → se queda colgado esperando tu respuesta completa.
 
-// Qué debería pasar (con POLLOUT activado)
-//     Cuando detectas que una respuesta ha quedado pendiente (hasPendingWrite() == true),
-//     le dices al poll():
+Qué debería pasar (con POLLOUT activado)
+    Cuando detectas que una respuesta ha quedado pendiente (hasPendingWrite() == true),
+    le dices al poll():
 
-//     “Oye, también avísame cuando este socket esté listo para escribir.”
+    “Oye, también avísame cuando este socket esté listo para escribir.”
 
-//     En código:
-//         pfds[i].events |= POLLOUT;
+    En código:
+        pfds[i].events |= POLLOUT;
 
-//     Así, en la siguiente iteración de poll(), el kernel te despertará cuando el socket tenga espacio libre en su buffer y puedas continuar enviando.
+    Así, en la siguiente iteración de poll(), el kernel te despertará cuando el socket tenga espacio libre en su buffer y puedas continuar enviando.
 
-//         if (pfds[i].revents & POLLIN)
-//         handleClientEvent(clients[i]);   // leer y preparar respuesta
+        if (pfds[i].revents & POLLIN)
+        handleClientEvent(clients[i]);   // leer y preparar respuesta
 
-//         if (pfds[i].revents & POLLOUT)
-//         handleWriteEvent(clients[i]);    // terminar de enviar lo pendiente
+        if (pfds[i].revents & POLLOUT)
+        handleWriteEvent(clients[i]);    // terminar de enviar lo pendiente
 
-// Duda común:
-//     “¿No entrará dos veces (una por POLLIN y otra por POLLOUT) en la misma vuelta?”
+Duda común:
+    “¿No entrará dos veces (una por POLLIN y otra por POLLOUT) en la misma vuelta?”
 
-//         Sí, puede ocurrir — y de hecho es lo correcto ✅
+        Sí, puede ocurrir — y de hecho es lo correcto ✅
 
-//         Porque un socket puede estar listo para leer y escribir al mismo tiempo.
+        Porque un socket puede estar listo para leer y escribir al mismo tiempo.
 
-//         Por ejemplo:
-//             POLLIN: el cliente envió otra petición.
+        Por ejemplo:
+            POLLIN: el cliente envió otra petición.
 
-//             POLLOUT: todavía tienes datos pendientes de la respuesta anterior.
+            POLLOUT: todavía tienes datos pendientes de la respuesta anterior.
 
-//         👉 Pero eso no es un problema.
-//         En esa iteración simplemente procesas ambos eventos:
-//             lees lo que haya (handleClientEvent) y luego intentas escribir (flushWrite).
+        👉 Pero eso no es un problema.
+        En esa iteración simplemente procesas ambos eventos:
+            lees lo que haya (handleClientEvent) y luego intentas escribir (flushWrite).
 
-//         Lo que debes cuidar es el orden lógico:
-//             Siempre lee primero (POLLIN) — así vacías el buffer de entrada.
+        Lo que debes cuidar es el orden lógico:
+            Siempre lee primero (POLLIN) — así vacías el buffer de entrada.
 
-//             Luego escribe (POLLOUT) — así respondes cuando haya espacio libre.
+            Luego escribe (POLLOUT) — así respondes cuando haya espacio libre.
 
-// Qué pasa cuando terminas de escribir todo
-//     En cuanto flushWrite() termina y ya no hay nada pendiente:
+Qué pasa cuando terminas de escribir todo
+    En cuanto flushWrite() termina y ya no hay nada pendiente:
 
-//     if (!client.hasPendingWrite())
-//         pfds[i].events &= ~POLLOUT; // desactiva interés en escritura
+    if (!client.hasPendingWrite())
+        pfds[i].events &= ~POLLOUT; // desactiva interés en escritura
 
-//     Así, el poll() ya no seguirá avisándote por POLLOUT,
-//     hasta que haya una nueva respuesta por enviar.
+    Así, el poll() ya no seguirá avisándote por POLLOUT,
+    hasta que haya una nueva respuesta por enviar.
 
-//     Esto mantiene el bucle eficiente y evita que poll() te despierte sin necesidad.
+    Esto mantiene el bucle eficiente y evita que poll() te despierte sin necesidad.
 
-// ****DUDA: En el caso de una sola peticion, eso activa pollin, luego envio respuesta y se queda a medias, para la siguiente vuelta sigue activo pollin de esa misma petición o se desactiva si no hay mas peticiones y entonces como hay cosas pendientes se activa solo el pollout y tengo que detectarlo?
+****DUDA: En el caso de una sola peticion, eso activa pollin, luego envio respuesta y se queda a medias, para la siguiente vuelta sigue activo pollin de esa misma petición o se desactiva si no hay mas peticiones y entonces como hay cosas pendientes se activa solo el pollout y tengo que detectarlo?
 
-// Caso: llega una única petición
-//     Supón este flujo paso a paso:
-//         Cliente conecta y envía su petición HTTP.
-//         → El kernel marca el socket con POLLIN porque hay datos listos para leer.
+Caso: llega una única petición
+    Supón este flujo paso a paso:
+        Cliente conecta y envía su petición HTTP.
+        → El kernel marca el socket con POLLIN porque hay datos listos para leer.
 
-//         Tu poll() despierta (por ese POLLIN).
-//         → En tu bucle lo detectas y llamas a handleClientEvent().
-//         → Lees todo con recv(), generas la respuesta y llamas a sendResponse().
+        Tu poll() despierta (por ese POLLIN).
+        → En tu bucle lo detectas y llamas a handleClientEvent().
+        → Lees todo con recv(), generas la respuesta y llamas a sendResponse().
 
-//         sendResponse() intenta enviar con send().
-//             Si se envía todo, no pasa nada raro: limpias buffer, fin.
+        sendResponse() intenta enviar con send().
+            Si se envía todo, no pasa nada raro: limpias buffer, fin.
 
-//             Si se queda a medias (EAGAIN / EWOULDBLOCK) → guardas el resto en _writeBuffer.
+            Si se queda a medias (EAGAIN / EWOULDBLOCK) → guardas el resto en _writeBuffer.
 
-//     Hasta aquí bien, pero ahora pasa lo que tú preguntas 👇
+    Hasta aquí bien, pero ahora pasa lo que tú preguntas 👇
 
-// ¿Qué pasa con los eventos pollin y pollout después de eso?
+¿Qué pasa con los eventos pollin y pollout después de eso?
 
-// 🟩 POLLIN
+🟩 POLLIN
 
-//     Una vez que tú lees todo lo que había del socket (con recv() hasta que devuelve EAGAIN o 0),
-//     entonces ya no queda nada en el buffer de lectura.
+    Una vez que tú lees todo lo que había del socket (con recv() hasta que devuelve EAGAIN o 0),
+    entonces ya no queda nada en el buffer de lectura.
 
-//     Por tanto:
-//         El kernel deja de marcar POLLIN automáticamente.
+    Por tanto:
+        El kernel deja de marcar POLLIN automáticamente.
 
-//         Tu poll() ya no te avisará más por ese socket hasta que el cliente envíe más datos.
+        Tu poll() ya no te avisará más por ese socket hasta que el cliente envíe más datos.
 
-//     👉 Es decir: si no hay más peticiones, no volverás a entrar por POLLIN.
+    👉 Es decir: si no hay más peticiones, no volverás a entrar por POLLIN.
 
-// 🟥 POLLOUT
+🟥 POLLOUT
 
-//     Por otro lado, si en el paso anterior tu send() devolvió EAGAIN,
-//     el kernel te está diciendo básicamente:
+    Por otro lado, si en el paso anterior tu send() devolvió EAGAIN,
+    el kernel te está diciendo básicamente:
 
-//         “No puedo escribir ahora, el buffer de salida del socket está lleno.
-//         Avísame cuando haya espacio libre.”
+        “No puedo escribir ahora, el buffer de salida del socket está lleno.
+        Avísame cuando haya espacio libre.”
 
-//     Pero ojo: el kernel no activa automáticamente POLLOUT.
-//     Tienes que decírselo tú, añadiéndolo al events de ese socket:
-//         pfds[i].events |= POLLOUT;
+    Pero ojo: el kernel no activa automáticamente POLLOUT.
+    Tienes que decírselo tú, añadiéndolo al events de ese socket:
+        pfds[i].events |= POLLOUT;
 
-//     Entonces, en la próxima llamada a poll(),
-//     el kernel te despertará cuando el socket vuelva a estar listo para escribir.
+    Entonces, en la próxima llamada a poll(),
+    el kernel te despertará cuando el socket vuelva a estar listo para escribir.
 
-// Qué ocurre en la siguiente vuelta del bucle
-//     Como ya no hay nada que leer (no más POLLIN),
-//     el único motivo por el que poll() te despertará será:
+Qué ocurre en la siguiente vuelta del bucle
+    Como ya no hay nada que leer (no más POLLIN),
+    el único motivo por el que poll() te despertará será:
 
-//     ➡️ porque el socket ahora tiene espacio libre para escribir (POLLOUT).
+    ➡️ porque el socket ahora tiene espacio libre para escribir (POLLOUT).
 
-//     Entonces tú detectas:
-//         if (pfds[i].revents & POLLOUT)
-//             client->flushWrite();
+    Entonces tú detectas:
+        if (pfds[i].revents & POLLOUT)
+            client->flushWrite();
 
-//     Y ahí envías lo que te quedaba pendiente en _writeBuffer.
-//     Cuando terminas (ya se envió todo), haces:
+    Y ahí envías lo que te quedaba pendiente en _writeBuffer.
+    Cuando terminas (ya se envió todo), haces:
 
-//         pfds[i].events &= ~POLLOUT;
+        pfds[i].events &= ~POLLOUT;
 
-//     Y el socket vuelve a estar solo con POLLIN activado,
-//     esperando nuevas peticiones.
+    Y el socket vuelve a estar solo con POLLIN activado,
+    esperando nuevas peticiones.
 
-// Entonces, si se queda a medias, ¿el pollin se desactiva y se activa pollout?
-//     ✅ Exactamente.
-//     El kernel deja de marcar POLLIN porque ya leíste todo,
-//     y tú, manualmente, activas POLLOUT para que te avise cuando puedas seguir enviando.
+Entonces, si se queda a medias, ¿el pollin se desactiva y se activa pollout?
+    ✅ Exactamente.
+    El kernel deja de marcar POLLIN porque ya leíste todo,
+    y tú, manualmente, activas POLLOUT para que te avise cuando puedas seguir enviando.
 
-// Resumen rápido
+Resumen rápido
 
-// No, no todo lo hace el kernel automáticamente.
-// 👉 El kernel activa o desactiva dinámicamente los “revents”,
-// pero no cambia tu configuración “events”.
-// Tú tienes que decidir qué tipo de eventos quieres monitorizar en cada momento.
+No, no todo lo hace el kernel automáticamente.
+👉 El kernel activa o desactiva dinámicamente los “revents”,
+pero no cambia tu configuración “events”.
+Tú tienes que decidir qué tipo de eventos quieres monitorizar en cada momento.
 
-// 🧠 Diferencia entre events y revents
+🧠 Diferencia entre events y revents
 
-// | Campo     | Quién lo maneja | Qué significa                                                                        |
-// | --------- | --------------- | ------------------------------------------------------------------------------------ |
-// | `events`  | Tú (tu código)  | Qué condiciones quieres que `poll()` vigile (por ejemplo: `POLLIN`, `POLLOUT`, etc.) |
-// | `revents` | El kernel       | Qué condiciones **se cumplieron realmente** cuando `poll()` despertó.                |
+| Campo     | Quién lo maneja | Qué significa                                                                        |
+| --------- | --------------- | ------------------------------------------------------------------------------------ |
+| `events`  | Tú (tu código)  | Qué condiciones quieres que `poll()` vigile (por ejemplo: `POLLIN`, `POLLOUT`, etc.) |
+| `revents` | El kernel       | Qué condiciones **se cumplieron realmente** cuando `poll()` despertó.                |
 
-// Cuando el socket se queda sin datos (ya leíste todo)
-//     Después de hacer recv() y vaciar el buffer,
-//     el kernel simplemente ya no marcará POLLIN en el próximo revents.
+Cuando el socket se queda sin datos (ya leíste todo)
+    Después de hacer recv() y vaciar el buffer,
+    el kernel simplemente ya no marcará POLLIN en el próximo revents.
 
-//     Pero no tienes que quitar POLLIN de events.
-//     ¿Por qué?
-//     Porque si luego el cliente te manda otra petición,
-//     el kernel lo detectará automáticamente y pondrá revents |= POLLIN otra vez.
+    Pero no tienes que quitar POLLIN de events.
+    ¿Por qué?
+    Porque si luego el cliente te manda otra petición,
+    el kernel lo detectará automáticamente y pondrá revents |= POLLIN otra vez.
 
-//     👉 Así que mantener POLLIN siempre activo es normal.
+    👉 Así que mantener POLLIN siempre activo es normal.
 
-// Cuando el socket se llena al enviar (EAGAIN)
-//     Si haces send() y devuelve EAGAIN, significa:
-//         “No hay espacio ahora en el buffer de salida.”
+Cuando el socket se llena al enviar (EAGAIN)
+    Si haces send() y devuelve EAGAIN, significa:
+        “No hay espacio ahora en el buffer de salida.”
 
-//     Aquí sí tienes que actuar tú:
-//     añadir POLLOUT a events para que el kernel te avise cuando el socket vuelva a estar listo.
-//         pfds[i].events |= POLLOUT;
+    Aquí sí tienes que actuar tú:
+    añadir POLLOUT a events para que el kernel te avise cuando el socket vuelva a estar listo.
+        pfds[i].events |= POLLOUT;
 
-//     Entonces, cuando el socket tenga espacio libre, en la siguiente vuelta de poll() el kernel pondrá:
-//         pfds[i].revents |= POLLOUT;
+    Entonces, cuando el socket tenga espacio libre, en la siguiente vuelta de poll() el kernel pondrá:
+        pfds[i].revents |= POLLOUT;
 
-// Cuando terminas de enviar todo
-//     En flushWrite(), cuando confirmas que ya no queda nada pendiente (!hasPendingWrite()):
+Cuando terminas de enviar todo
+    En flushWrite(), cuando confirmas que ya no queda nada pendiente (!hasPendingWrite()):
 
-//     Tú misma debes quitar el flag POLLOUT de events:
-//         pfds[i].events &= ~POLLOUT;
+    Tú misma debes quitar el flag POLLOUT de events:
+        pfds[i].events &= ~POLLOUT;
 
-//     ¿Por qué?
-//         Porque si lo dejas activo, el kernel te seguirá “despertando” por POLLOUT todo el rato,
-//         ya que los sockets TCP casi siempre están listos para escribir.
-//         Te haría gastar CPU innecesariamente.
+    ¿Por qué?
+        Porque si lo dejas activo, el kernel te seguirá “despertando” por POLLOUT todo el rato,
+        ya que los sockets TCP casi siempre están listos para escribir.
+        Te haría gastar CPU innecesariamente.
 
-// Entonces…
-//     👉 POLLIN: lo activas una vez y lo dejas siempre.
-//     El kernel decide si hay algo que leer o no, y pone/quita en revents según toque.
-//     No tienes que cambiarlo tú.
+Entonces…
+    👉 POLLIN: lo activas una vez y lo dejas siempre.
+    El kernel decide si hay algo que leer o no, y pone/quita en revents según toque.
+    No tienes que cambiarlo tú.
 
-//     👉 POLLOUT: lo activas y desactivas manualmente según el estado de tu _writeBuffer.
+    👉 POLLOUT: lo activas y desactivas manualmente según el estado de tu _writeBuffer.
 
-// */
+*/
 
-// /* EXPLICACION
+/* EXPLICACION
 
-// Actualizar la clase Server
-// Hasta ahora, tu Server:
-//     Crea el socket.
-//     Lo asocia a un puerto (bind).
-//     Empieza a escuchar (listen).
-//     Acepta conexiones (accept).
+Actualizar la clase Server
+Hasta ahora, tu Server:
+    Crea el socket.
+    Lo asocia a un puerto (bind).
+    Empieza a escuchar (listen).
+    Acepta conexiones (accept).
 
-// Pero solo acepta una conexión y no gestiona múltiples clientes simultáneamente. Si aceptas un cliente, hasta que no terminas con él no puedes aceptar otro.
-// Si dos clientes se conectan casi a la vez, el segundo tendrá que esperar hasta que termines con el primero.
-// Mientras tanto, tu servidor no hace nada más: no puede recibir otros mensajes ni atender más sockets, porque estás bloqueada en el flujo “uno a uno”.
-//     Aunque tenga el socket como no bloqueante y el accept() no se queda colgado esperando, porque tienes el continue, aun así tu código no atenderá a más de un cliente a la vez porque:
-//         No guardas los clientFd para seguir leyendo de ellos.
-//         No tienes ninguna lógica que diga: “ahora voy a leer del cliente 1”, “ahora del cliente 2”.
-//     Solo haces accept → send → close.
-//     Aunque no te bloquees esperando conexiones, tampoco gestionas múltiples clientes simultáneamente.
-// Así que ahora toca hacerlo capaz de manejar varios clientes a la vez, sin que uno bloquee a los demás.
+Pero solo acepta una conexión y no gestiona múltiples clientes simultáneamente. Si aceptas un cliente, hasta que no terminas con él no puedes aceptar otro.
+Si dos clientes se conectan casi a la vez, el segundo tendrá que esperar hasta que termines con el primero.
+Mientras tanto, tu servidor no hace nada más: no puede recibir otros mensajes ni atender más sockets, porque estás bloqueada en el flujo “uno a uno”.
+    Aunque tenga el socket como no bloqueante y el accept() no se queda colgado esperando, porque tienes el continue, aun así tu código no atenderá a más de un cliente a la vez porque:
+        No guardas los clientFd para seguir leyendo de ellos.
+        No tienes ninguna lógica que diga: “ahora voy a leer del cliente 1”, “ahora del cliente 2”.
+    Solo haces accept → send → close.
+    Aunque no te bloquees esperando conexiones, tampoco gestionas múltiples clientes simultáneamente.
+Así que ahora toca hacerlo capaz de manejar varios clientes a la vez, sin que uno bloquee a los demás.
 
-// Para eso lo que haremos ahora es pasar el servidor a usar poll().
+Para eso lo que haremos ahora es pasar el servidor a usar poll().
 
-// pollfd es una estructura definida en <poll.h> que contiene:
+pollfd es una estructura definida en <poll.h> que contiene:
 
-// struct pollfd
-// {
-//     int fd;        // el descriptor de socket
-//     short events;  // qué eventos queremos vigilar (lectura, escritura...)
-//     short revents; // qué eventos ocurrieron realmente
-// };
+struct pollfd
+{
+    int fd;        // el descriptor de socket
+    short events;  // qué eventos queremos vigilar (lectura, escritura...)
+    short revents; // qué eventos ocurrieron realmente
+};
 
-// Qué significa “usar poll()”
+Qué significa “usar poll()”
 
-//     poll() permite vigilar varios file descriptors (FDs) a la vez:
+    poll() permite vigilar varios file descriptors (FDs) a la vez:
 
-//     uno para el socket del servidor (esperando nuevas conexiones),
+    uno para el socket del servidor (esperando nuevas conexiones),
 
-//     y varios para los clientes (esperando datos que leer o que enviar).
+    y varios para los clientes (esperando datos que leer o que enviar).
 
-// Piensa en poll() como un vigilante que está atento a varios sockets a la vez y te avisa cuando ocurre algo interesante:
+Piensa en poll() como un vigilante que está atento a varios sockets a la vez y te avisa cuando ocurre algo interesante:
 
-//     alguien quiere conectarse,
+    alguien quiere conectarse,
 
-//     un cliente ha mandado datos,
+    un cliente ha mandado datos,
 
-//     un cliente se ha desconectado…
+    un cliente se ha desconectado…
 
-// Entonces tú puedes actuar sin quedarte bloqueada esperando.
+Entonces tú puedes actuar sin quedarte bloqueada esperando.
 
-// Así, en cada ciclo:
+Así, en cada ciclo:
 
-//     Si el socket del servidor tiene actividad → significa que hay un nuevo cliente que quiere conectarse→ haces accept() y lo añades a tu lista de pollfd.
+    Si el socket del servidor tiene actividad → significa que hay un nuevo cliente que quiere conectarse→ haces accept() y lo añades a tu lista de pollfd.
 
-//     Si un cliente tiene actividad → lees su petición con readRequest().
+    Si un cliente tiene actividad → lees su petición con readRequest().
 
-//     Si la petición está completa → generas una respuesta y se la envías con sendResponse().
+    Si la petición está completa → generas una respuesta y se la envías con sendResponse().
 
-// 👉 el socket (la puerta real de comunicación)
-// 👉 y poll() (el vigilante que observa esas puertas).
+👉 el socket (la puerta real de comunicación)
+👉 y poll() (el vigilante que observa esas puertas).
 
-// Vamos a crear:
+Vamos a crear:
 
-//     Un std::vector<pollfd> pollFds; → lista de sockets que estamos vigilando.
-//         En el índice 0 pondremos el socket del servidor (el que hace listen()).
-//         En los siguientes, los clientes aceptados.
+    Un std::vector<pollfd> pollFds; → lista de sockets que estamos vigilando.
+        En el índice 0 pondremos el socket del servidor (el que hace listen()).
+        En los siguientes, los clientes aceptados.
 
-// Cada iteración del bucle:
+Cada iteración del bucle:
 
-//     Llamamos a poll(pollFds.data(), pollFds.size(), -1)
-//     (espera indefinidamente hasta que haya algo que hacer).
-//     Recorremos pollFds:
-//         Si el fd es el del servidor → hay una nueva conexión (accept()).
-//         Si es otro → ese cliente ha mandado algo o está listo para recibir respuesta.
+    Llamamos a poll(pollFds.data(), pollFds.size(), -1)
+    (espera indefinidamente hasta que haya algo que hacer).
+    Recorremos pollFds:
+        Si el fd es el del servidor → hay una nueva conexión (accept()).
+        Si es otro → ese cliente ha mandado algo o está listo para recibir respuesta.
 
-// **** CÓDIGO: Explicación línea a línea (lo esencial)
+**** CÓDIGO: Explicación línea a línea (lo esencial)
 
-// 1.
-// Creamos un pollfd para el socket del servidor y registramos POLLIN (nos interesa cuando haya nuevas conexiones).
+1.
+Creamos un pollfd para el socket del servidor y registramos POLLIN (nos interesa cuando haya nuevas conexiones).
 
-// Guardamos ese pollfd en _pollFds en la posición 0: convenimos que índice 0 será siempre socket servidor.
+Guardamos ese pollfd en _pollFds en la posición 0: convenimos que índice 0 será siempre socket servidor.
 
-// 2.
-// poll(_pollFds.data(), _pollFds.size(), -1)
-// → le pasamos todos los fds a vigilar y -1 indica “esperar indefinidamente”.
-// bloquea hasta que haya eventos en alguno de los fds o hasta que una señal interrumpa (EINTR).
+2.
+poll(_pollFds.data(), _pollFds.size(), -1)
+→ le pasamos todos los fds a vigilar y -1 indica “esperar indefinidamente”.
+bloquea hasta que haya eventos en alguno de los fds o hasta que una señal interrumpa (EINTR).
 
-// Si errno == EINTR → reacción adecuada: volver a llamar a poll() (esto evita terminar por un SIGALRM u otra señal).
-//     EINTR significa “Interrupted system call” → una llamada al sistema fue interrumpida por una señal antes de completarse (por ejemplo, accept(), read(), poll(), etc.).
-//     Normalmente solo implica volver a intentarla.
+Si errno == EINTR → reacción adecuada: volver a llamar a poll() (esto evita terminar por un SIGALRM u otra señal).
+    EINTR significa “Interrupted system call” → una llamada al sistema fue interrumpida por una señal antes de completarse (por ejemplo, accept(), read(), poll(), etc.).
+    Normalmente solo implica volver a intentarla.
 
-// Si hay otro error → imprimimos y salimos del bucle.
+Si hay otro error → imprimimos y salimos del bucle.
 
-// ready indica cuántos fds tienen revents no nulos, pero no lo usamos directamente para optimizar el escaneo.
+ready indica cuántos fds tienen revents no nulos, pero no lo usamos directamente para optimizar el escaneo.
 
-// 3. if (_pollFds.size() > 0 && (_pollFds[0].revents & POLLIN))
-//             acceptNewClient();
+3. if (_pollFds.size() > 0 && (_pollFds[0].revents & POLLIN))
+            acceptNewClient();
 
-// Asegura que el vector _pollFds no esté vacío (que haya al menos un socket registrado).
+Asegura que el vector _pollFds no esté vacío (que haya al menos un socket registrado).
 
-// _pollFds[0] → el primer elemento del vector (tu socket del servidor).
+_pollFds[0] → el primer elemento del vector (tu socket del servidor).
 
-// .revents → campo que poll() rellena con los eventos que han ocurrido.
-//         Cuando haces poll(_pollFds.data(), _pollFds.size(), -1); el kernel rellena el campo revents de cada pollfd con los eventos que han sucedido (por ejemplo, si hay datos para leer, una desconexión, un error, etc).
-//         Events lo pone el programador, es lo que quiere vigilar ej. POLLIN para lectura, POLLOUT para escritura). Revents lo rellena el propio poll(), significa qué ha pasado de verdad (ej. si llega POLLIN, hay datos listos).
+.revents → campo que poll() rellena con los eventos que han ocurrido.
+        Cuando haces poll(_pollFds.data(), _pollFds.size(), -1); el kernel rellena el campo revents de cada pollfd con los eventos que han sucedido (por ejemplo, si hay datos para leer, una desconexión, un error, etc).
+        Events lo pone el programador, es lo que quiere vigilar ej. POLLIN para lectura, POLLOUT para escritura). Revents lo rellena el propio poll(), significa qué ha pasado de verdad (ej. si llega POLLIN, hay datos listos).
 
-//         En el caso del servidor, estás preguntando: “¿Hay algo que pueda leer ahora en el socket del servidor?”
-//         Para un socket de servidor eso no significa “hay datos de texto o HTML”, sino si hay una nueva conexión pendiente que puedo aceptar con accept()
+        En el caso del servidor, estás preguntando: “¿Hay algo que pueda leer ahora en el socket del servidor?”
+        Para un socket de servidor eso no significa “hay datos de texto o HTML”, sino si hay una nueva conexión pendiente que puedo aceptar con accept()
 
-// POLLIN → bandera que indica “hay datos para leer” (en este caso, una nueva conexión entrante).
+POLLIN → bandera que indica “hay datos para leer” (en este caso, una nueva conexión entrante).
 
-// El operador & (AND bit a bit) sirve para comprobar si el bit de POLLIN está activado.
+El operador & (AND bit a bit) sirve para comprobar si el bit de POLLIN está activado.
 
-// significa:
-// 👉 “Si hay al menos un socket registrado y el socket del servidor tiene un evento POLLIN (una nueva conexión entrante), entonces acepto esa conexión.”
+significa:
+👉 “Si hay al menos un socket registrado y el socket del servidor tiene un evento POLLIN (una nueva conexión entrante), entonces acepto esa conexión.”
 
-// ***Duda:  pero como se llega a saber que alguien se quiere conectar? como llega esa información al fd del servidor?
-//     Cuando creas un socket de servidor, _serverFd no es solo un número cualquiera, es un descriptor de archivo que el kernel asocia con tu aplicación.
-//     listen() le dice al kernel:
-//         “Todas las nuevas conexiones que lleguen al puerto X, guárdalas aquí en una cola, y cuando el programa pregunte, se la damos”.
-//     Cuando un cliente hace:
-//         connect(server_ip, port);
+***Duda:  pero como se llega a saber que alguien se quiere conectar? como llega esa información al fd del servidor?
+    Cuando creas un socket de servidor, _serverFd no es solo un número cualquiera, es un descriptor de archivo que el kernel asocia con tu aplicación.
+    listen() le dice al kernel:
+        “Todas las nuevas conexiones que lleguen al puerto X, guárdalas aquí en una cola, y cuando el programa pregunte, se la damos”.
+    Cuando un cliente hace:
+        connect(server_ip, port);
 
-//     Se inicia el handshake TCP (SYN → SYN-ACK → ACK).
-//     Una vez completado, el kernel del servidor crea una entrada en la cola de conexiones pendientes.
-//     _serverFd sigue siendo el mismo descriptor, pero ahora el kernel sabe que hay algo “listo para leer” en ese descriptor: una conexión que se puede aceptar.
+    Se inicia el handshake TCP (SYN → SYN-ACK → ACK).
+    Una vez completado, el kernel del servidor crea una entrada en la cola de conexiones pendientes.
+    _serverFd sigue siendo el mismo descriptor, pero ahora el kernel sabe que hay algo “listo para leer” en ese descriptor: una conexión que se puede aceptar.
 
-// 💡 Por eso, en poll(), _pollFds[0].revents & POLLIN se activa:
-//     “el socket tiene algo que ‘leer’ → hay una conexión esperando que aceptes”
+💡 Por eso, en poll(), _pollFds[0].revents & POLLIN se activa:
+    “el socket tiene algo que ‘leer’ → hay una conexión esperando que aceptes”
 
-// Al llamar accept():
-//     Saca la primera conexión de la cola.
-//     Crea un nuevo socket (clientFd) dedicado a ese cliente.
-//     _serverFd sigue existiendo y puede aceptar más conexiones nuevas.
+Al llamar accept():
+    Saca la primera conexión de la cola.
+    Crea un nuevo socket (clientFd) dedicado a ese cliente.
+    _serverFd sigue existiendo y puede aceptar más conexiones nuevas.
 
-// Es decir:
-//     _serverFd → puerta de entrada general (escucha nuevas conexiones)
-//     clientFd → puerta de entrada personalizada para ese cliente concreto
+Es decir:
+    _serverFd → puerta de entrada general (escucha nuevas conexiones)
+    clientFd → puerta de entrada personalizada para ese cliente concreto
 
-// ***Fin duda****
+***Fin duda****
 
-// Si hay un nuevo cliente esperando a ser aceptado, entramos en acceptNewClient()
+Si hay un nuevo cliente esperando a ser aceptado, entramos en acceptNewClient()
 
-// 4.
-// for (size_t i = 1; i < _pollFds.size(); ++i)
-// {
-//     if (_pollFds[i].revents & POLLIN)
-//         handleClientEvent(_pollFds[i].fd);
+4.
+for (size_t i = 1; i < _pollFds.size(); ++i)
+{
+    if (_pollFds[i].revents & POLLIN)
+        handleClientEvent(_pollFds[i].fd);
 
-// Despues se recorren el resto de índices de la lista _pollFds, que son los clientes ya conectados, para evaluar si hay algun revent tipo Pollin (peticiones que haya pendientes de leer). En tal caso, se llama a handleClientEvent
+Despues se recorren el resto de índices de la lista _pollFds, que son los clientes ya conectados, para evaluar si hay algun revent tipo Pollin (peticiones que haya pendientes de leer). En tal caso, se llama a handleClientEvent
 
-// 5. Revisar si en el proceso ha habido clientes que se han cerrado y hay que limpiar
-// }
+5. Revisar si en el proceso ha habido clientes que se han cerrado y hay que limpiar
+}
 
-// */
+*/
 
-// void Server::checkClientTimeout(Client *client, int fd, time_t now)
-// {
-//     const int CLIENT_TIMEOUT = 30;
-//     if (client->isTimedOut(now, CLIENT_TIMEOUT))
-//     {
-//         std::cout << "[Timeout] Cliente fd " << fd
-//                   << " inactivo más de " << CLIENT_TIMEOUT << " segundos, cerrando.\n";
-//         client->markClosed();
-//     }
-// }
+void Server::checkClientTimeout(Client *client, int fd, time_t now)
+{
+    const int CLIENT_TIMEOUT = 30;
+    if (client->isTimedOut(now, CLIENT_TIMEOUT))
+    {
+        std::cout << "[Timeout] Cliente fd " << fd
+                  << " inactivo más de " << CLIENT_TIMEOUT << " segundos, cerrando.\n";
+        client->markClosed();
+    }
+}
 
-// void Server::acceptNewClient()
-// {
-//     while (true)
-//     {
-//         sockaddr_in clientAddr;                   // almacena IP y puerto del cliente que se conecta.
-//         socklen_t clientLen = sizeof(clientAddr); // tamaño de esa estructura, necesario para accept()
-//         int clientFd = accept(_serverFd, (struct sockaddr *)&clientAddr, &clientLen);
-//         if (clientFd == -1)
-//         {
-//             if (errno == EAGAIN || errno == EWOULDBLOCK)
-//                 break; // ya no hay más conexiones pendientes
-//             perror("accept");
-//             break;
-//         }
+void Server::acceptNewClient()
+{
+    while (true)
+    {
+        sockaddr_in clientAddr;                   // almacena IP y puerto del cliente que se conecta.
+        socklen_t clientLen = sizeof(clientAddr); // tamaño de esa estructura, necesario para accept()
+        int clientFd = accept(_serverFd, (struct sockaddr *)&clientAddr, &clientLen);
+        if (clientFd == -1)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break; // ya no hay más conexiones pendientes
+            perror("accept");
+            break;
+        }
 
-//         if (setNonBlocking(clientFd) == -1)
-//         {
-//             close(clientFd);
-//             continue;
-//         }
+        if (setNonBlocking(clientFd) == -1)
+        {
+            close(clientFd);
+            continue;
+        }
 
-//         Client *client = new Client(clientFd, clientAddr);
-//         _clientsByFd[clientFd] = client;
+        Client *client = new Client(clientFd, clientAddr);
+        _clientsByFd[clientFd] = client;
 
-//         struct pollfd clientPollFd;
-//         clientPollFd.fd = clientFd;
-//         clientPollFd.events = POLLIN;
-//         clientPollFd.revents = 0;
-//         _pollFds.push_back(clientPollFd);
+        struct pollfd clientPollFd;
+        clientPollFd.fd = clientFd;
+        clientPollFd.events = POLLIN;
+        clientPollFd.revents = 0;
+        _pollFds.push_back(clientPollFd);
 
-//         std::cout << "Nueva conexión (fd: " << clientFd
-//                   << ", IP: " << client->getIp() << ")" << std::endl;
-//     }
-// }
+        std::cout << "Nueva conexión (fd: " << clientFd
+                  << ", IP: " << client->getIp() << ")" << std::endl;
+    }
+}
 
-// /*
-// ¿Por qué un bucle accept()?
-//     poll() te dice "hay conexiones pendientes", pero puede haber más de una esperando, por eso es un bucle infinito. En non-blocking debes accept() en bucle hasta que accept() devuelva -1 con EAGAIN (ya no hay más conexiones pendientes). Si no haces el bucle, te quedarías con conexiones sin aceptar hasta la próxima llamada a poll().
+/*
+¿Por qué un bucle accept()?
+    poll() te dice "hay conexiones pendientes", pero puede haber más de una esperando, por eso es un bucle infinito. En non-blocking debes accept() en bucle hasta que accept() devuelva -1 con EAGAIN (ya no hay más conexiones pendientes). Si no haces el bucle, te quedarías con conexiones sin aceptar hasta la próxima llamada a poll().
 
-// Pasos por nuevo cliente:
-//     accept() → crea un nuevo socket (fd nuevo) para hablar con ese cliente. Lo que hace accept() internamente es tomar la conexión pendiente de la cola del kernel y rellenar clientAddr con la dirección del cliente que se conectó (dirección IPv4, la IP del cliente y el puerto del cliente) y ajustar el clientLen al tamaño real de los datos escritos en clientAddr
-//         _serverFd → descriptor del socket del servidor, escuchando en algún puerto (ej. 8080).
-//         (struct sockaddr*)&clientAddr → cast porque accept espera un puntero a sockaddr genérico.
-//         clientLen → indica el tamaño de la estructura de dirección.
+Pasos por nuevo cliente:
+    accept() → crea un nuevo socket (fd nuevo) para hablar con ese cliente. Lo que hace accept() internamente es tomar la conexión pendiente de la cola del kernel y rellenar clientAddr con la dirección del cliente que se conectó (dirección IPv4, la IP del cliente y el puerto del cliente) y ajustar el clientLen al tamaño real de los datos escritos en clientAddr
+        _serverFd → descriptor del socket del servidor, escuchando en algún puerto (ej. 8080).
+        (struct sockaddr*)&clientAddr → cast porque accept espera un puntero a sockaddr genérico.
+        clientLen → indica el tamaño de la estructura de dirección.
 
-//         Resultado:
-//             Si hay una conexión pendiente → devuelve un nuevo fd (clientFd) para hablar con ese cliente.
-//             Si no hay → devuelve -1 y se setea errno.
-//                 Si clientFd == -1 y errno es EAGAIN/EWOULDBLOCK → significa "no hay más conexiones ahora" → rompemos el accept-loop. Puede dar esto gracias a que está en modo no bloqueante.
-//                 Por el contrario, perror("accept") → cualquier otro error real lo imprime en consola.
+        Resultado:
+            Si hay una conexión pendiente → devuelve un nuevo fd (clientFd) para hablar con ese cliente.
+            Si no hay → devuelve -1 y se setea errno.
+                Si clientFd == -1 y errno es EAGAIN/EWOULDBLOCK → significa "no hay más conexiones ahora" → rompemos el accept-loop. Puede dar esto gracias a que está en modo no bloqueante.
+                Por el contrario, perror("accept") → cualquier otro error real lo imprime en consola.
 
-//     Convertimos clientFd a non-blocking.
-//         Esto permite que no se bloquee cuando intentemos leer o escribir datos en ese socket más adelante.
-//         Fundamental para poder atender muchos clientes a la vez con un solo hilo.
+    Convertimos clientFd a non-blocking.
+        Esto permite que no se bloquee cuando intentemos leer o escribir datos en ese socket más adelante.
+        Fundamental para poder atender muchos clientes a la vez con un solo hilo.
 
-//     Creamos Client* c = new Client(clientFd); y lo guardamos en _clientsByFd[clientFd].
-//         Client → clase que encapsula información del cliente (fd, IP, buffer de lectura, etc.).
-//         Se guarda en _clientsByFd con clave clientFd.
-//         Así puedes acceder rápidamente al cliente según su descriptor de socket.
-//         💡 Nota: se usa puntero (Client*) para no copiar la clase y poder manejarla dinámicamente.
+    Creamos Client* c = new Client(clientFd); y lo guardamos en _clientsByFd[clientFd].
+        Client → clase que encapsula información del cliente (fd, IP, buffer de lectura, etc.).
+        Se guarda en _clientsByFd con clave clientFd.
+        Así puedes acceder rápidamente al cliente según su descriptor de socket.
+        💡 Nota: se usa puntero (Client*) para no copiar la clase y poder manejarla dinámicamente.
 
-//     struct pollfd pfd = {clientFd, POLLIN, 0};
-//     _pollFds.push_back(pfd);
-//         pollfd → estructura que poll() necesita.
-//         fd → el descriptor del cliente.
-//         events → eventos que queremos vigilar, aquí POLLIN (datos listos para leer).
-//         revents → inicializado a 0, lo rellena poll() luego.
-//         Añadimos el nuevo socket (fd) a la lista _pollFds para que poll() empiece a vigilar este cliente también.
+    struct pollfd pfd = {clientFd, POLLIN, 0};
+    _pollFds.push_back(pfd);
+        pollfd → estructura que poll() necesita.
+        fd → el descriptor del cliente.
+        events → eventos que queremos vigilar, aquí POLLIN (datos listos para leer).
+        revents → inicializado a 0, lo rellena poll() luego.
+        Añadimos el nuevo socket (fd) a la lista _pollFds para que poll() empiece a vigilar este cliente también.
 
-// ***DUDA: _clientsByFd y _pollFds sirven para cosas distintas y complementarias.
-//     Cuando aceptas un cliente
-//         accept() te da un clientFd
-//         Lo guardas en _pollFds para que poll() lo vigile
-//         Lo guardas también en _clientsByFd para poder acceder a su objeto después
+***DUDA: _clientsByFd y _pollFds sirven para cosas distintas y complementarias.
+    Cuando aceptas un cliente
+        accept() te da un clientFd
+        Lo guardas en _pollFds para que poll() lo vigile
+        Lo guardas también en _clientsByFd para poder acceder a su objeto después
 
-// Cuando poll() te dice “hay algo en fd = 7”, solo sabes que ahí hay datos, pero ú necesitas el objeto cliente que representa ese fd, para llamar a sus funciones. Por eso en handleClientEvent(fd) haces Client* client = _clientsByFd[fd];
-// Y ahora puedes:
-//     leer del socket (client->readRequest())
-//     enviar respuesta (client->sendResponse())
-//     actualizar _lastActivity
-//     etc.
+Cuando poll() te dice “hay algo en fd = 7”, solo sabes que ahí hay datos, pero ú necesitas el objeto cliente que representa ese fd, para llamar a sus funciones. Por eso en handleClientEvent(fd) haces Client* client = _clientsByFd[fd];
+Y ahora puedes:
+    leer del socket (client->readRequest())
+    enviar respuesta (client->sendResponse())
+    actualizar _lastActivity
+    etc.
 
-// Cuando detectas que un cliente cerró su conexión o que hay error, tienes que eliminarlo de ambos sitios
+Cuando detectas que un cliente cerró su conexión o que hay error, tienes que eliminarlo de ambos sitios
 
-// Así liberas memoria y evitas que poll() siga vigilando un socket muerto.
+Así liberas memoria y evitas que poll() siga vigilando un socket muerto.
 
-// */
+*/
 
-// void Server::handleClientData(Client *client, size_t pollIndex)
-// {
-//     if (!client->readRequest())
-//         return; // error o desconexión del cliente → el cleanup lo eliminará-> ya marcó closed
+void Server::handleClientData(Client *client, size_t pollIndex)
+{
+    if (!client->readRequest())
+        return; // error o desconexión del cliente → el cleanup lo eliminará-> ya marcó closed
 
-//     // Procesar la request y generar la respuesta + Enviar respuesta
-//     if (client->isRequestComplete())
-//     {
-//         if (!client->processRequest() || !client->sendResponse())
-//             return; // Error -> ya marcó closed, cleanup lo limpiará después
-//     }
-//     // Activar POLLOUT solo si hay datos pendientes
-//     if (client->hasPendingWrite())
-//     {
-//         _pollFds[pollIndex].events |= POLLOUT;
-//     }
-// }
+    // Procesar la request y generar la respuesta + Enviar respuesta
+    if (client->isRequestComplete())
+    {
+        if (!client->processRequest() || !client->sendResponse())
+            return; // Error -> ya marcó closed, cleanup lo limpiará después
+    }
+    // Activar POLLOUT solo si hay datos pendientes
+    if (client->hasPendingWrite())
+    {
+        _pollFds[pollIndex].events |= POLLOUT;
+    }
+}
 
-// void Server::handleClientWrite(Client *client, size_t pollIndex)
-// {
-//     if (!client->flushWrite())
-//         return; // Error -> ya marcó closed
+void Server::handleClientWrite(Client *client, size_t pollIndex)
+{
+    if (!client->flushWrite())
+        return; // Error -> ya marcó closed
 
-//     // Actualizar eventos POLLOUT -> Si ya no queda nada por enviar, desactivamos POLLOUT
-//     if (!client->hasPendingWrite())
-//         _pollFds[pollIndex].events &= ~POLLOUT;
-// }
+    // Actualizar eventos POLLOUT -> Si ya no queda nada por enviar, desactivamos POLLOUT
+    if (!client->hasPendingWrite())
+        _pollFds[pollIndex].events &= ~POLLOUT;
+}
 
-// /*
-// Solo podemos detectar si el cliente se ha cerrado por su lado en el momento de intentar leer (recv()) o de intentar escribir (send()), y eso solo pasa en readrequest y en fluswrite, por lo tanto lo checkeamos despues de ambas funciones, pero entremedias no tiene sentido hacerlo, solo si lo hemos cerrado nosotros expresamente por un error. El error no lo podre saber hasta que envie o reciba algo, es normal, todos los servidores funcionan así. Nunca se arrastra sin detectarlo antes de usar el socket
-// */
+/*
+Solo podemos detectar si el cliente se ha cerrado por su lado en el momento de intentar leer (recv()) o de intentar escribir (send()), y eso solo pasa en readrequest y en fluswrite, por lo tanto lo checkeamos despues de ambas funciones, pero entremedias no tiene sentido hacerlo, solo si lo hemos cerrado nosotros expresamente por un error. El error no lo podre saber hasta que envie o reciba algo, es normal, todos los servidores funcionan así. Nunca se arrastra sin detectarlo antes de usar el socket
+*/
 
-// /*
-// 14.11.25
-// Actualización de responsabilidades que tendrá que hacer client:
-//     1. readRequest()
-//         Recibe bytes y los pasa al parser (HttpRequest).
+/*
+14.11.25
+Actualización de responsabilidades que tendrá que hacer client:
+    1. readRequest()
+        Recibe bytes y los pasa al parser (HttpRequest).
 
-//     2. processRequest()
-//         Cuando HttpRequest dice que está completa → decides qué respuesta toca.
-//         Aquí se crea/llena HttpResponse.
+    2. processRequest()
+        Cuando HttpRequest dice que está completa → decides qué respuesta toca.
+        Aquí se crea/llena HttpResponse.
 
-//     3. sendResponse()
-//         Convierte el HttpResponse en string, lo envía y resetea para siguiente petición.
-// */
+    3. sendResponse()
+        Convierte el HttpResponse en string, lo envía y resetea para siguiente petición.
+*/
 
-// /*
-// Para que sea mas sencillo, asignamos un puntero client que señala al objeto Client correspondiente al fd que llega como argumento. Si el cliente con ese fd existe, se guarda su puntero en client*
+/*
+Para que sea mas sencillo, asignamos un puntero client que señala al objeto Client correspondiente al fd que llega como argumento. Si el cliente con ese fd existe, se guarda su puntero en client*
 
-// if (!client->readRequest()) return;
-// Esta línea es clave, se llama a readRequest para:
-//     Se lee del socket del cliente (recv) todo lo que ha llegado hasta ahora.
-//     Se acumula en un buffer interno (_requestBuffer).
-//     Si todavía no ha llegado todo el mensaje (por ejemplo, si el cliente no ha enviado aún todo el encabezado HTTP), devolvemos false y esperamos a la próxima vez que poll() diga que hay más datos.
-//     Cuando la petición está completa (por ejemplo, ya se recibió el doble salto de línea \r\n\r\n que marca el final de los headers HTTP), devuelve true.
+if (!client->readRequest()) return;
+Esta línea es clave, se llama a readRequest para:
+    Se lee del socket del cliente (recv) todo lo que ha llegado hasta ahora.
+    Se acumula en un buffer interno (_requestBuffer).
+    Si todavía no ha llegado todo el mensaje (por ejemplo, si el cliente no ha enviado aún todo el encabezado HTTP), devolvemos false y esperamos a la próxima vez que poll() diga que hay más datos.
+    Cuando la petición está completa (por ejemplo, ya se recibió el doble salto de línea \r\n\r\n que marca el final de los headers HTTP), devuelve true.
 
-//     👉 Si devuelve false, el servidor no responde todavía, sale y solo espera más datos la próxima vez.
+    👉 Si devuelve false, el servidor no responde todavía, sale y solo espera más datos la próxima vez.
 
-// ***DUDA: PERO SI AUN FALTA POR LLEGAR, NO TENEMOS QUE ENTRAR MAS A READREQUEST, POR SI VENIA POR PARTES O NO HA PODIDO LEERLO TODO PORQUE EL BUFFER ERA MAS PEQUEÑO QUE EL TAMAÑO DE LA PETICION?
-//     Tu intuición es totalmente correcta: el servidor no se queda bloqueado esperando a que llegue el resto, sino que vuelve al bucle principal. Pero eso no significa que la petición se “olvide”: el cliente sigue registrado y poll() lo volverá a despertar cuando haya más datos disponibles.
+***DUDA: PERO SI AUN FALTA POR LLEGAR, NO TENEMOS QUE ENTRAR MAS A READREQUEST, POR SI VENIA POR PARTES O NO HA PODIDO LEERLO TODO PORQUE EL BUFFER ERA MAS PEQUEÑO QUE EL TAMAÑO DE LA PETICION?
+    Tu intuición es totalmente correcta: el servidor no se queda bloqueado esperando a que llegue el resto, sino que vuelve al bucle principal. Pero eso no significa que la petición se “olvide”: el cliente sigue registrado y poll() lo volverá a despertar cuando haya más datos disponibles.
 
-//     if (!client->readRequest())
-//         return; // aún no ha llegado todo
-//     … significa:
-//         “Aún no tengo toda la petición, así que no hago nada más por ahora”.
+    if (!client->readRequest())
+        return; // aún no ha llegado todo
+    … significa:
+        “Aún no tengo toda la petición, así que no hago nada más por ahora”.
 
-//     Luego el flujo continúa:
-//         Sales de handleClientEvent().
-//         El bucle principal (poll()) sigue iterando y escuchando todos los descriptores (server y clientes).
-//         En la siguiente vuelta, cuando el cliente mande más datos, poll() marcará su socket con POLLIN.
-//         Entonces handleClientEvent(fd) se volverá a llamar automáticamente para ese cliente, y esta vez readRequest() añadirá el nuevo trozo a _request.
+    Luego el flujo continúa:
+        Sales de handleClientEvent().
+        El bucle principal (poll()) sigue iterando y escuchando todos los descriptores (server y clientes).
+        En la siguiente vuelta, cuando el cliente mande más datos, poll() marcará su socket con POLLIN.
+        Entonces handleClientEvent(fd) se volverá a llamar automáticamente para ese cliente, y esta vez readRequest() añadirá el nuevo trozo a _request.
 
-//     Así, poco a poco se va completando la petición.
+    Así, poco a poco se va completando la petición.
 
-//     👉 Esto es no bloqueante y reactivo: nunca te quedas “esperando dentro” de una función.
-// ***FIN DUDA
+    👉 Esto es no bloqueante y reactivo: nunca te quedas “esperando dentro” de una función.
+***FIN DUDA
 
-// */
+*/
 
-// void Server::cleanupClosedClients()
-// {
-//     for (size_t i = 1; i < _pollFds.size();)
-//     {
-//         int fd = _pollFds[i].fd;
-//         Client *client = _clientsByFd[fd];
-//         if (client && client->isClosed())
-//         {
-//             delete client;          // esto llama al destructor de Client, por lo que dentro tambien se cerrara el fd
-//             _clientsByFd.erase(fd); // erase borra el par con clave fd
-//             _pollFds.erase(_pollFds.begin() + i);
-//         }
-//         else
-//         {
-//             ++i;
-//         }
-//     }
-// }
+void Server::cleanupClosedClients()
+{
+    for (size_t i = 1; i < _pollFds.size();)
+    {
+        int fd = _pollFds[i].fd;
+        Client *client = _clientsByFd[fd];
+        if (client && client->isClosed())
+        {
+            delete client;          // esto llama al destructor de Client, por lo que dentro tambien se cerrara el fd
+            _clientsByFd.erase(fd); // erase borra el par con clave fd
+            _pollFds.erase(_pollFds.begin() + i);
+        }
+        else
+        {
+            ++i;
+        }
+    }
+}
 
-// /*
-// Recorre los clientes y elimina los que marcaron _closed = true.
+/*
+Recorre los clientes y elimina los que marcaron _closed = true.
 
-// También los saca de _pollFds para que poll() no siga vigilando sockets cerrados.
+También los saca de _pollFds para que poll() no siga vigilando sockets cerrados.
 
-// _closed se pone a true solo si:
-//     send() falla
-//     El cliente cierra la conexión (recv() devuelve 0)
-//     O hay un timeout en tu servidor
+_closed se pone a true solo si:
+    send() falla
+    El cliente cierra la conexión (recv() devuelve 0)
+    O hay un timeout en tu servidor
 
-// Osea: Eso significa:
-//     si el cliente se cierra → lo quitas del mapa
-//     y además → lo quitas del vector _pollFds
-// ✅ En este escenario, no habría ningún fd en _pollFds sin Client, en el siguiente run no hará falta protegerlo. Pero muchos servidores dejan la protección al recorrer la lista de fds del poll por segridad extra
+Osea: Eso significa:
+    si el cliente se cierra → lo quitas del mapa
+    y además → lo quitas del vector _pollFds
+✅ En este escenario, no habría ningún fd en _pollFds sin Client, en el siguiente run no hará falta protegerlo. Pero muchos servidores dejan la protección al recorrer la lista de fds del poll por segridad extra
 
-// En el resto de situaciones se deja el cliente abierto para más requests
+En el resto de situaciones se deja el cliente abierto para más requests
 
-// */
+*/
 
-// // VERSION 1 DEL BUCLE RUN
-// /*
-// void Server::run()
-// {
-//     while (true)
-//     {
-//         sockaddr_in clientAddr;
-//         socklen_t clientLen = sizeof(clientAddr);
+// VERSION 1 DEL BUCLE RUN
+/*
+void Server::run()
+{
+    while (true)
+    {
+        sockaddr_in clientAddr;
+        socklen_t clientLen = sizeof(clientAddr);
 
-//         int clientFd = accept(_serverFd, (struct sockaddr *)&clientAddr, &clientLen);
-//         if (clientFd < 0)
-//         {
-//             // No hay conexión nueva (puede pasar si el socket es non-blocking)
-//             continue;
-//         }
+        int clientFd = accept(_serverFd, (struct sockaddr *)&clientAddr, &clientLen);
+        if (clientFd < 0)
+        {
+            // No hay conexión nueva (puede pasar si el socket es non-blocking)
+            continue;
+        }
 
-//         std::cout << "Nueva conexión aceptada!" << std::endl;
+        std::cout << "Nueva conexión aceptada!" << std::endl;
 
-//         // Mensaje HTTP de respuesta
-//         const char *response =
-//             "HTTP/1.1 200 OK\r\n"
-//             "Content-Type: text/plain\r\n"
-//             "Content-Length: 12\r\n"
-//             "\r\n"
-//             "Hello world!";
+        // Mensaje HTTP de respuesta
+        const char *response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: 12\r\n"
+            "\r\n"
+            "Hello world!";
 
-//         // Enviamos la respuesta al cliente
-//         send(clientFd, response, strlen(response), 0);
+        // Enviamos la respuesta al cliente
+        send(clientFd, response, strlen(response), 0);
 
-//         // Cerrar la conexión con el cliente -> Osea cerramos el socket del cliente (ya terminamos con él)
-//         close(clientFd);
-//     }
-// }
+        // Cerrar la conexión con el cliente -> Osea cerramos el socket del cliente (ya terminamos con él)
+        close(clientFd);
+    }
+}
 
-// 1️⃣ while(true)
-//     Este es el bucle principal del servidor, el loop infinito del servidor.
+1️⃣ while(true)
+    Este es el bucle principal del servidor, el loop infinito del servidor.
 
-//     Queremos que siga escuchando y respondiendo sin parar.
+    Queremos que siga escuchando y respondiendo sin parar.
 
-//     El servidor siempre debe estar escuchando nuevas conexiones.
-//     En esta versión básica no tenemos “poll()” ni “threads”, así que el servidor trabaja con una conexión a la vez.
+    El servidor siempre debe estar escuchando nuevas conexiones.
+    En esta versión básica no tenemos “poll()” ni “threads”, así que el servidor trabaja con una conexión a la vez.
 
-//     En una versión más avanzada, usaremos poll() o select() para manejar muchos clientes a la vez,
-//     pero de momento este bucle es suficiente para entender el flujo básico.
+    En una versión más avanzada, usaremos poll() o select() para manejar muchos clientes a la vez,
+    pero de momento este bucle es suficiente para entender el flujo básico.
 
-//     clientAddr es donde accept() va a guardar los datos del cliente que se conecta (su IP y puerto).
+    clientAddr es donde accept() va a guardar los datos del cliente que se conecta (su IP y puerto).
 
-//     clientLen le dice a accept() cuánto espacio tiene para escribir esos datos.
-//     Por eso lo inicializas con sizeof(clientAddr) — no porque clientAddr tenga datos, sino para que accept() sepa cuánto puede llenar (el tamaño de la estructura).
+    clientLen le dice a accept() cuánto espacio tiene para escribir esos datos.
+    Por eso lo inicializas con sizeof(clientAddr) — no porque clientAddr tenga datos, sino para que accept() sepa cuánto puede llenar (el tamaño de la estructura).
 
-//     sockaddr_in es una estructura de C definida en los headers del sistema, concretamente en:
-//         #include <netinet/in.h>
+    sockaddr_in es una estructura de C definida en los headers del sistema, concretamente en:
+        #include <netinet/in.h>
 
-//     Su propósito es representar una dirección IPv4 (IP + puerto)
-//     para cuando queremos conectar, escuchar o aceptar conexiones.
-//         C++ importa esos nombres como tipos propios.
-//         Así que ya no hace falta escribir struct cada vez.
+    Su propósito es representar una dirección IPv4 (IP + puerto)
+    para cuando queremos conectar, escuchar o aceptar conexiones.
+        C++ importa esos nombres como tipos propios.
+        Así que ya no hace falta escribir struct cada vez.
 
-//         Por eso puedes escribir simplemente:
+        Por eso puedes escribir simplemente:
 
-//         sockaddr_in clientAddr;
+        sockaddr_in clientAddr;
 
-//         y es exactamente equivalente a:
+        y es exactamente equivalente a:
 
-//         struct sockaddr_in clientAddr;
+        struct sockaddr_in clientAddr;
 
-// 2️⃣ accept()
-//     int clientFd = accept(_serverFd, (struct sockaddr*)&clientAddr, &clientLen);
+2️⃣ accept()
+    int clientFd = accept(_serverFd, (struct sockaddr*)&clientAddr, &clientLen);
 
-//     accept() bloquea (espera) hasta que un cliente intenta conectarse a nuestro puerto (por ejemplo, con curl http://localhost:8080).
+    accept() bloquea (espera) hasta que un cliente intenta conectarse a nuestro puerto (por ejemplo, con curl http://localhost:8080).
 
-//     Cuando eso ocurre:
+    Cuando eso ocurre:
 
-//         accept() devuelve un nuevo descriptor (clientFd), distinto de _serverFd --> Crea un nuevo socket (el clientFd) exclusivo para hablar con ese cliente.
-//             Devuelve la dirección IP y el puerto del cliente en clientAddr.
-//             Así el socket _serverFd sigue escuchando nuevas conexiones,
-//             y el clientFd se usa solo para atender a esa persona concreta, es la “línea privada” con ese cliente concreto.
+        accept() devuelve un nuevo descriptor (clientFd), distinto de _serverFd --> Crea un nuevo socket (el clientFd) exclusivo para hablar con ese cliente.
+            Devuelve la dirección IP y el puerto del cliente en clientAddr.
+            Así el socket _serverFd sigue escuchando nuevas conexiones,
+            y el clientFd se usa solo para atender a esa persona concreta, es la “línea privada” con ese cliente concreto.
 
-//     🧠 Piensa: _serverFd es la “recepcionista”, clientFd es la conversación privada.
+    🧠 Piensa: _serverFd es la “recepcionista”, clientFd es la conversación privada.
 
-//     if (clientFd < 0)
-//         accept() puede devolver -1 si no hay ninguna conexión pendiente todavía.
-//         No pasa nada: simplemente seguimos el bucle y volvemos a intentarlo.
+    if (clientFd < 0)
+        accept() puede devolver -1 si no hay ninguna conexión pendiente todavía.
+        No pasa nada: simplemente seguimos el bucle y volvemos a intentarlo.
 
-//         Esto es gracias a haber puesto el socket en modo no bloqueante (setNonBlocking). Hace que las operaciones como accept(), recv() o send() no se queden esperando (bloqueadas) si no hay nada que hacer.
-//         En vez de eso, devuelven -1 inmediatamente y ponen errno = EAGAIN o EWOULDBLOCK.
-//             …ese if detecta dos posibles casos:
-//                 Un error real (por ejemplo, algo falló en el sistema).
-//                 Que no había ninguna conexión lista (lo típico en modo no bloqueante → EAGAIN).
+        Esto es gracias a haber puesto el socket en modo no bloqueante (setNonBlocking). Hace que las operaciones como accept(), recv() o send() no se queden esperando (bloqueadas) si no hay nada que hacer.
+        En vez de eso, devuelven -1 inmediatamente y ponen errno = EAGAIN o EWOULDBLOCK.
+            …ese if detecta dos posibles casos:
+                Un error real (por ejemplo, algo falló en el sistema).
+                Que no había ninguna conexión lista (lo típico en modo no bloqueante → EAGAIN).
 
-//         De lo contrario, accept() se quedará esperando hasta que alguien se conecte.
+        De lo contrario, accept() se quedará esperando hasta que alguien se conecte.
 
-// 3️⃣ response
+3️⃣ response
 
-//     Aquí estamos construyendo una respuesta HTTP completa.
+    Aquí estamos construyendo una respuesta HTTP completa.
 
-//     HTTP/1.1 200 OK
-//     Content-Type: text/plain
-//     Content-Length: 12
+    HTTP/1.1 200 OK
+    Content-Type: text/plain
+    Content-Length: 12
 
-//     Hello world!
+    Hello world!
 
-//     🔸 Primera línea:
-//     El estado de la respuesta → “200 OK” significa que todo ha ido bien.
+    🔸 Primera línea:
+    El estado de la respuesta → “200 OK” significa que todo ha ido bien.
 
-//     🔸 Cabeceras (headers):
-//     Le dicen al cliente qué tipo de contenido enviamos (text/plain)
-//     y cuánto mide (12 bytes en este caso).
+    🔸 Cabeceras (headers):
+    Le dicen al cliente qué tipo de contenido enviamos (text/plain)
+    y cuánto mide (12 bytes en este caso).
 
-//     🔸 Línea vacía (\r\n)
-//     Obligatoria: separa las cabeceras del contenido.
+    🔸 Línea vacía (\r\n)
+    Obligatoria: separa las cabeceras del contenido.
 
-//     🔸 Cuerpo:
-//     El texto real que queremos enviar → "Hello world!"
+    🔸 Cuerpo:
+    El texto real que queremos enviar → "Hello world!"
 
-//     En las respuestas y peticiones HTTP, las líneas no terminan solo con \n,
-//     sino con \r\n, que significa:
+    En las respuestas y peticiones HTTP, las líneas no terminan solo con \n,
+    sino con \r\n, que significa:
 
-//     \r → carriage return (retorno de carro, mueve el cursor al inicio de la línea)
+    \r → carriage return (retorno de carro, mueve el cursor al inicio de la línea)
 
-//     \n → line feed (salta a la línea siguiente)
+    \n → line feed (salta a la línea siguiente)
 
-//     🔹 Viene del estándar original de los protocolos de red (influenciado por Telnet y por máquinas antiguas).
-//     🔹 Es una forma obligatoria en HTTP/1.0 y HTTP/1.1 para marcar los saltos de línea en los headers.
+    🔹 Viene del estándar original de los protocolos de red (influenciado por Telnet y por máquinas antiguas).
+    🔹 Es una forma obligatoria en HTTP/1.0 y HTTP/1.1 para marcar los saltos de línea en los headers.
 
-// 3️⃣ send()
-//     send(clientFd, response, strlen(response), 0);
+3️⃣ send()
+    send(clientFd, response, strlen(response), 0);
 
-//     Envía datos al cliente usando el socket recién aceptado.
+    Envía datos al cliente usando el socket recién aceptado.
 
-//     Esto envía la cadena completa del mensaje HTTP.
+    Esto envía la cadena completa del mensaje HTTP.
 
-//     Aquí estamos mandando un mensaje HTTP completo, aunque muy simple:
+    Aquí estamos mandando un mensaje HTTP completo, aunque muy simple:
 
-//         HTTP/1.1 200 OK
-//         Content-Type: text/plain
+        HTTP/1.1 200 OK
+        Content-Type: text/plain
 
-//         Hello world!
+        Hello world!
 
-//     Eso permite que si abres el navegador en http://localhost:8080, o haces curl http://localhost:8080
-//     veas “Hello world!” directamente en pantalla 🎉
+    Eso permite que si abres el navegador en http://localhost:8080, o haces curl http://localhost:8080
+    veas “Hello world!” directamente en pantalla 🎉
 
-// 4️⃣ close()
-//     close(clientFd);
+4️⃣ close()
+    close(clientFd);
 
-//     Cierra el socket del cliente.
+    Cierra el socket del cliente.
 
-//     Si no lo cierras, se quedarían conexiones “fantasma” abiertas (lo que provoca TIME_WAIT o fugas de descriptores).
+    Si no lo cierras, se quedarían conexiones “fantasma” abiertas (lo que provoca TIME_WAIT o fugas de descriptores).
 
-//     Esto significa que:
-//         Si el cliente (por ejemplo, un navegador) quiere pedir otro recurso,
-//         tendrá que abrir una nueva conexión TCP, o sea, un nuevo file descriptor.
+    Esto significa que:
+        Si el cliente (por ejemplo, un navegador) quiere pedir otro recurso,
+        tendrá que abrir una nueva conexión TCP, o sea, un nuevo file descriptor.
 
-//     Pero ojo: HTTP tiene dos modos
-//         1. HTTP/1.0 (el que usamos aquí)
+    Pero ojo: HTTP tiene dos modos
+        1. HTTP/1.0 (el que usamos aquí)
 
-//         → Cada petición usa una conexión nueva.
-//         → Servidor responde → se cierra el socket → fin.
-//         → El cliente abre otro si necesita más.
+        → Cada petición usa una conexión nueva.
+        → Servidor responde → se cierra el socket → fin.
+        → El cliente abre otro si necesita más.
 
-//         2. HTTP/1.1 (Keep-Alive)
+        2. HTTP/1.1 (Keep-Alive)
 
-//         → Permite mantener la conexión abierta y enviar varias peticiones seguidas.
-//         → Esto se indica con el header:
-//             Connection: keep-alive
+        → Permite mantener la conexión abierta y enviar varias peticiones seguidas.
+        → Esto se indica con el header:
+            Connection: keep-alive
 
-//         Entonces el servidor no cierra el socket hasta que:
-//             el cliente lo pida,
-//             o haya pasado un tiempo de inactividad.
+        Entonces el servidor no cierra el socket hasta que:
+            el cliente lo pida,
+            o haya pasado un tiempo de inactividad.
 
-//     En tu caso (mini servidor inicial)
-//         Cerrar la conexión después de enviar la respuesta está perfecto ✅
-//         Más adelante, cuando tengas un bucle con poll() o select(),
-//         ya verás cómo mantener conexiones abiertas o detectar cuándo cerrarlas.
+    En tu caso (mini servidor inicial)
+        Cerrar la conexión después de enviar la respuesta está perfecto ✅
+        Más adelante, cuando tengas un bucle con poll() o select(),
+        ya verás cómo mantener conexiones abiertas o detectar cuándo cerrarlas.
 
-// */
+*/
