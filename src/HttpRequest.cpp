@@ -288,7 +288,6 @@ Primera línea → método, path y versión
 
             Al acabar el bloque se borra esa variable firstLine. Las llaves {} crean un bloque local temporal para que variables como firstLine existan solo ahí dentro
 
-
         ahora quiero separar los tres elementos de esa línea:
         std::istringstream firstLine(line);
         firstLine >> _method >> _path >> _version;
@@ -299,8 +298,6 @@ Primera línea → método, path y versión
             firstLine es un nuevo istringstream que lee esa línea palabra a palabra
 
         👉 Así consigues dividir
-
-
 
         VERSIÓN COMPLETA:
             {
@@ -344,7 +341,6 @@ Primera línea → método, path y versión
         El stream queda así internamente:
             GET | /index.html | HTTP/1.1
 
-
         Aquí declaras una variable temporal -> std::string fullTarget;
 
         ¿Por qué no escribir directamente _path aquí?
@@ -387,7 +383,6 @@ Primera línea → método, path y versión
         else
             Si no hay query, el path es todo
             La query se vacía (muy importante para no arrastrar datos de peticiones anteriores)
-
 
 6.
 while (std::getline(ss, line))

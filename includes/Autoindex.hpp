@@ -40,7 +40,6 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
     Si el usuario navega a:
         http://localhost:8080/uploads/
 
-
     Y dentro de www/uploads/ tienes:
         file1.txt
         file2.png
@@ -53,7 +52,6 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
         file1.txt
         file2.png
         folderA/
-
 
     Con enlaces para descargarlos.
 
@@ -86,7 +84,6 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
     | Directorio sin index.html + autoindex OFF | **403 Forbidden**        |
     | Acceso a archivo                          | **Servir archivo**       |
     | Acceso a path que no existe               | **404 Not Found**        |
-
 
 🛠 ¿Cómo implementarlo técnicamente?
 
@@ -124,7 +121,6 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
                     // entry->d_name → nombre del archivo
                 }
 
-
             Y crear una respuesta HTML simple:
                 <html>
                 <body>
@@ -147,7 +143,6 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
 
 📝 Resumen corto
     Autoindex genera automáticamente una página HTML con el listado de archivos de un directorio cuando el usuario accede a una carpeta que no tiene index.html. Si está activado por configuración, se muestra el listado; si está desactivado, se debe devolver 403 Forbidden. Forma parte obligatoria del proyecto Webserv.
-
 
 🧠 Autoindex NO crea nada. Simplemente muestra lo que ya existe.
 
@@ -207,7 +202,6 @@ Tu servidor hace:
 
     Así es como “navegas” el filesystem:
     simplemente porque autoindex genera enlaces a los archivos reales.
-
 
 🧭 Navegación real — NO genera nada nuevo
     Es importante entender:

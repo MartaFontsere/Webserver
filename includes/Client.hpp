@@ -5,7 +5,7 @@
 #include <unistd.h>     // close()
 #include <ctime>
 #include "HttpRequest.hpp"
-#include "HttpResponse.hpp"
+#include "response/HttpResponse.hpp"
 #include <vector>
 #include <string.h>
 

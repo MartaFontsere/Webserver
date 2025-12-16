@@ -1,4 +1,4 @@
-#include "Server.hpp"
+// #include "Server.hpp"
 #include "../includes/config_parser/parser/UtilsConfigParser.hpp"
 #include "../includes/config/ConfigBuilder.hpp"
 
@@ -10,7 +10,7 @@ int main(int argc, char **argv)
     else
         configPath = argv[1];
 
-    Server server("8080");
+    //  Server server("8080");
     try
     {
         BlockParser root = parseAndValidateConfig(configPath);
@@ -19,12 +19,12 @@ int main(int argc, char **argv)
 
         std::cout << "✅ Configuration loaded: " << servers.size() << " server(s)" << std::endl;
 
-        if (!server.init())
-        {
-            return 1;
-        }
+        // if (!server.init())
+        // {
+        //     return 1;
+        // }
 
-        server.run();
+        // server.run();
     }
     catch (std::exception &e)
     {
