@@ -233,24 +233,33 @@ CGIHandler::~CGIHandler()
  * @note Memory is always cleaned up (envp freed in all paths)
  * @see RFC 3875 for CGI/1.1 specification
  */
-Response CGIHandler::handle(const Request &req, const LocationConfig &location)
+HttpResponse CGIHandler::handle(const Request &req, const LocationConfig &location, const ServerConfig &server)
 {
     // PHASE 1: Detect if request should be handled as CGI
-    bool isCGI = CGIDetector::isCGIRequest(req.getURI(), location.cgiExts);
+    bool isCGI = CGIDetector::isCGIRequest(req.getURI(), location.getCgiExts());
 
     if (!isCGI)
-        return Response(404, "Not Found");
+    {
+        HttpResponse response;
+        response.setErrorResponse(404);
+        return response;
+    }
+
     // PHASE 2: Resolve complete filesystem path to script
-    std::string scriptPath = CGIDetector::resolveScriptPath(req.getURI(), location.root);
+    std::string scriptPath = CGIDetector::resolveScriptPath(req.getURI(), location.getRoot());
     // PHASE 3: Find CGI interpreter executable for this script type
-    std::string executable = CGIDetector::getCGIExecutable(scriptPath, location.cgiPaths, location.cgiExts);
+    std::string executable = CGIDetector::getCGIExecutable(scriptPath, location.getCgiPaths(), location.getCgiExts());
 
     if (executable.empty())
-        return Response(404, "Not Found");
+    {
+        HttpResponse response;
+        response.setErrorResponse(404);
+        return response;
+    }
     // PHASE 4: Prepare CGI environment variables
     std::string scriptName = CGIDetector::removeQueryString(req.getURI());
     CGIEnvironment env;
-    env.prepare(req, scriptPath, scriptName, location.serverName, location.serverPort);
+    env.prepare(req, scriptPath, scriptName, server.getServerNames()[0], server.getListen());
 
     char **envp = env.toEnvArray();
     // PHASE 5 & 6: Execute script and parse output (error-protected)
@@ -263,7 +272,23 @@ Response CGIHandler::handle(const Request &req, const LocationConfig &location)
         CGIOutputParser parser;
         parser.parse(output);
         // Build HTTP response from parsed CGI output
-        Response response(parser.getStatusCode(), parser.getBody());
+        HttpResponse response;
+
+        // 1. Status
+        response.setStatus(parser.getStatusCode(), getHttpStatusMessage(parser.getStatusCode()));
+
+        // 2. Headers del CGI
+        std::map<std::string, std::string> cgiHeaders = parser.getHeaders();
+        for (std::map<std::string, std::string>::const_iterator it = cgiHeaders.begin();
+             it != cgiHeaders.end(); ++it)
+        {
+            response.setHeader(it->first, it->second);
+        }
+
+        // 3. Body
+        response.setBody(parser.getBody());
+
+        return response;
         // Cleanup: Free environment array (success path)
         env.freeEnvArray(envp);
         return response;
@@ -272,6 +297,8 @@ Response CGIHandler::handle(const Request &req, const LocationConfig &location)
     {
         // Cleanup: Free environment array (error path)
         env.freeEnvArray(envp);
-        return Response(500, "Internal Server Error");
+        HttpResponse response;
+        response.setErrorResponse(500);
+        return response;
     }
 }

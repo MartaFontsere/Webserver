@@ -88,7 +88,6 @@ Las dos opciones son posibles, pero cada una tiene implicaciones distintas 👇
 ✅ Opción 1 — std::map<int, Client>
 std::map<int, Client> clients;
 
-
 👉 Aquí cada Client se guarda directamente dentro del mapa, como un objeto completo.
 Ventajas:
 
@@ -104,7 +103,6 @@ Copiar objetos Client puede ser costoso (si son grandes).
 
 ✅ Opción 2 — std::map<int, Client*>
 std::map<int, Client*> clients;
-
 
 👉 Aquí el mapa guarda punteros a objetos Client, no los objetos en sí.
 
@@ -126,7 +124,6 @@ Normalmente se usa:
 
 std::map<int, Client*> _clients;
 
-
 porque:
 
 cada cliente se asocia a un socket fd (el int),
@@ -135,12 +132,10 @@ y el servidor crea un nuevo Client dinámicamente cuando llega una conexión:
 
 _clients[newFd] = new Client(newFd);
 
-
 luego, cuando el cliente se desconecta:
 
 delete _clients[fd];
 _clients.erase(fd);
-
 
 De este modo, cada cliente tiene su propio objeto con su socket, buffer, estado, etc.
  */

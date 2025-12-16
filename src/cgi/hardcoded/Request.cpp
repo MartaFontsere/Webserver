@@ -1,4 +1,4 @@
-#include "../../../includes/cgi/hardcoded/Request.hpp"
+#include "../includes/cgi/hardcoded/Request.hpp"
 
 Request::Request() : _method("GET"), _uri("/"), _protocol("HTTP/1.1")
 {

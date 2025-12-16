@@ -3,8 +3,10 @@
 
 #include <string>
 #include "hardcoded/Request.hpp"
-#include "hardcoded/Response.hpp"
-#include "hardcoded/LocationConfig.hpp"
+#include "response/HttpResponse.hpp"
+#include "response/UtilsResponse.hpp"
+#include "config/LocationConfig.hpp"
+#include "config/ServerConfig.hpp"
 #include "CGIDetector.hpp"
 #include "CGIEnvironment.hpp"
 #include "CGIExecutor.hpp"
@@ -16,7 +18,7 @@ public:
     CGIHandler();
     ~CGIHandler();
 
-    Response handle(const Request &req, const LocationConfig &location);
+    HttpResponse handle(const Request &req, const LocationConfig &location, const ServerConfig &server);
 
 private:
     std::string resolveScriptPath(const Request &req, const LocationConfig &location);

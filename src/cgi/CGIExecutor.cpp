@@ -132,7 +132,7 @@ void CGIExecutor::setupPipes()
  *   close(_pipeIn[0])           dup2(_pipeIn[0], STDIN)
  *   write(_pipeIn[1]) --------> read(STDIN)
  *   close(_pipeIn[1]) ----EOF--> (child sees EOF on stdin)
- *   
+ *
  *   close(_pipeOut[1])          dup2(_pipeOut[1], STDOUT)
  *   read(_pipeOut[0]) <-------- write(STDOUT)
  *   close(_pipeOut[0])          (child exits)
@@ -161,8 +161,8 @@ void CGIExecutor::setupPipes()
  * @note Child process becomes zombie until waitpid() is called
  */
 std::string CGIExecutor::execute(const std::string &executable,
-                            const std::string &scriptPath, char **envp,
-                            const std::string &requestBody)
+                                 const std::string &scriptPath, char **envp,
+                                 const std::string &requestBody)
 {
     setupPipes();
 
@@ -174,13 +174,13 @@ std::string CGIExecutor::execute(const std::string &executable,
     if (_childPid == 0)
         executeChild(executable, scriptPath, envp); // Never returns (execve or exit)
     // Parent process continues here
-    close(_pipeIn[0]); // Parent doesn't read from stdin pipe
+    close(_pipeIn[0]);  // Parent doesn't read from stdin pipe
     close(_pipeOut[1]); // Parent doesn't write to stdout pipe
 
     writeToChild(requestBody);
     close(_pipeIn[1]); // Signal EOF to child (important for script termination)
     std::string output = readChildOutput();
-    close(_pipeOut[0]); // Done reading from child
+    close(_pipeOut[0]);          // Done reading from child
     waitpid(_childPid, NULL, 0); // Reap child process (prevent zombie)
 
     return output;
@@ -235,10 +235,11 @@ std::string CGIExecutor::execute(const std::string &executable,
  * @warning Do not add code after exit(1) - it will never execute
  */
 void CGIExecutor::executeChild(const std::string &executable,
-                        const std::string &scriptPath, char **envp)
+                               const std::string &scriptPath, char **envp)
 {
+
     // Redirect stdin/stdout to pipes
-    dup2(_pipeIn[0], STDIN_FILENO); // Read POST data from parent
+    dup2(_pipeIn[0], STDIN_FILENO);   // Read POST data from parent
     dup2(_pipeOut[1], STDOUT_FILENO); // Write output to parent
     // Close all pipe file descriptors (no longer needed after dup2)
     close(_pipeOut[1]);
@@ -246,7 +247,7 @@ void CGIExecutor::executeChild(const std::string &executable,
     close(_pipeIn[0]);
     close(_pipeOut[0]);
     // Prepare argv for execve
-    char **argv = new char*[3];
+    char **argv = new char *[3];
     argv[0] = new char[executable.size() + 1];
     stringToCString(executable, argv[0]);
     argv[1] = new char[scriptPath.size() + 1];
@@ -292,7 +293,6 @@ void CGIExecutor::writeToChild(const std::string &data)
 {
     if (!data.empty())
         write(_pipeIn[1], data.c_str(), data.size());
-
 }
 
 /**
@@ -347,15 +347,9 @@ std::string CGIExecutor::readChildOutput()
         ssize_t bytesRead = read(_pipeOut[0], buffer, 4096);
 
         if (bytesRead <= 0)
-            break; // EOF (0) or error (-1)
+            break;                        // EOF (0) or error (-1)
         result.append(buffer, bytesRead); // Append only actual bytes read
     }
 
     return result;
 }
-
-
-
-
-
-

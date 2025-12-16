@@ -226,52 +226,6 @@ std::string HttpResponse::getMimeType(const std::string &path) const
 }
 
 /**
- * @brief Maps HTTP status code to standard reason phrase
- *
- * Returns RFC-compliant status message for supported error codes.
- * Used by both error response methods to maintain consistency.
- *
- * Supported codes (5 total):
- * - 403: Forbidden (access denied)
- * - 404: Not Found (resource doesn't exist)
- * - 405: Method Not Allowed (GET on POST-only resource, etc.)
- * - 413: Request Entity Too Large (body exceeds client_max_body_size)
- * - 500: Internal Server Error (server-side error, also default)
- *
- * Default behavior:
- * - Unknown codes → "Internal Server Error"
- * - Rationale: safer to report server error than fabricate message
- *
- * Usage example:
- *   getStatusMessage(404) → "Not Found"
- *   getStatusMessage(999) → "Internal Server Error" (default)
- *
- * @param code HTTP status code (3-digit number)
- * @return Standard reason phrase for status line
- *
- * @note Default is 500 (safer than fake message for unknown codes)
- * @note Easily extensible (add case for new codes)
- */
-std::string HttpResponse::getStatusMessage(int code) const
-{
-    switch (code)
-    {
-    case 403:
-        return "Forbidden";
-    case 404:
-        return "Not Found";
-    case 405:
-        return "Method Not Allowed";
-    case 413:
-        return "Request Entity Too Large";
-    case 500:
-        return "Internal Server Error";
-    default:
-        return "Internal Server Error";
-    }
-}
-
-/**
  * @brief Reads error page HTML from filesystem
  *
  * Attempts to load custom error page HTML from file path.
@@ -445,7 +399,7 @@ void HttpResponse::setErrorResponse(int code)
 {
     _httpVersion = "HTTP/1.1";
     _statusCode = code;
-    _statusMessage = getStatusMessage(code);
+    _statusMessage = getHttpStatusMessage(code);
     switch (code)
     {
     case 403:
@@ -518,7 +472,7 @@ void HttpResponse::setErrorResponse(int code, const std::map<int, std::string> &
         {
             _httpVersion = "HTTP/1.1";
             _statusCode = code;
-            _statusMessage = getStatusMessage(code);
+            _statusMessage = getHttpStatusMessage(code);
             _body = errorContent;
             _headers["Content-Type"] = "text/html";
             _headers["Content-Length"] = sizeToString(_body.size());

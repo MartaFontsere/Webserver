@@ -143,3 +143,50 @@ std::string sizeToString(size_t value)
 
     return oss.str();
 }
+/**
+ * @brief Maps HTTP status code to standard reason phrase
+ *
+ * Returns RFC-compliant status message for supported error codes.
+ * Used by both error response methods to maintain consistency.
+ *
+ * Supported codes (5 total):
+ * - 403: Forbidden (access denied)
+ * - 404: Not Found (resource doesn't exist)
+ * - 405: Method Not Allowed (GET on POST-only resource, etc.)
+ * - 413: Request Entity Too Large (body exceeds client_max_body_size)
+ * - 500: Internal Server Error (server-side error, also default)
+ *
+ * Default behavior:
+ * - Unknown codes → "Internal Server Error"
+ * - Rationale: safer to report server error than fabricate message
+ *
+ * Usage example:
+ *   getStatusMessage(404) → "Not Found"
+ *   getStatusMessage(999) → "Internal Server Error" (default)
+ *
+ * @param code HTTP status code (3-digit number)
+ * @return Standard reason phrase for status line
+ *
+ * @note Default is 500 (safer than fake message for unknown codes)
+ * @note Easily extensible (add case for new codes)
+ */
+std::string getHttpStatusMessage(int code)
+{
+    switch (code)
+    {
+    case 200:
+        return "OK";
+    case 403:
+        return "Forbidden";
+    case 404:
+        return "Not Found";
+    case 405:
+        return "Method Not Allowed";
+    case 413:
+        return "Request Entity Too Large";
+    case 500:
+        return "Internal Server Error";
+    default:
+        return "Internal Server Error";
+    }
+}

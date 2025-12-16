@@ -24,8 +24,6 @@ public:
     HttpResponse(const HttpResponse &other);
     HttpResponse &operator=(const HttpResponse &other);
 
-    std::string getStatusMessage(int code) const;
-
     void setStatus(int code, const std::string &message);
     void setHeader(const std::string &key, const std::string &value);
     void setBody(const std::string &body);
