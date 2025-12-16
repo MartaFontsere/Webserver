@@ -1,6 +1,10 @@
 #include "../../includes/response/HttpResponse.hpp"
 #include "../../includes/response/UtilsResponse.hpp"
 
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
 HttpResponse::HttpResponse()
     : _statusCode(200),
       _statusMessage("OK"),
@@ -63,6 +67,25 @@ std::string HttpResponse::getMimeType(const std::string &path) const
     return "application/octet-stream";
 }
 
+std::string HttpResponse::getStatusMessage(int code) const
+{
+    switch (code)
+    {
+    case 403:
+        return "Forbidden";
+    case 404:
+        return "Not Found";
+    case 405:
+        return "Method Not Allowed";
+    case 413:
+        return "Request Entity Too Large";
+    case 500:
+        return "Internal Server Error";
+    default:
+        return "Internal Server Error";
+    }
+}
+
 void HttpResponse::setContentTypeFromPath(const std::string &path)
 {
     setHeader("Content-Type", getMimeType(path));
@@ -87,44 +110,69 @@ void HttpResponse::setBody(const std::string &body)
 void HttpResponse::setErrorResponse(int code)
 {
     _httpVersion = "HTTP/1.1";
-
+    _statusCode = code;
+    _statusMessage = getStatusMessage(code);
     switch (code)
     {
     case 403:
-        _statusCode = 403;
-        _statusMessage = "Forbidden";
         _body = "<html><body><h1>403 Forbidden</h1></body></html>";
         break;
-
     case 404:
-        _statusCode = 404;
-        _statusMessage = "Not Found";
         _body = "<html><body><h1>404 Not Found</h1></body></html>";
         break;
-
     case 405:
-        _statusCode = 405;
-        _statusMessage = "Method Not Allowed";
         _body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
         break;
-
     case 413:
-        _statusCode = 413;
-        _statusMessage = "Request Entity Too Large";
         _body = "<html><body><h1>413 Request Entity Too Large</h1>"
                 "<p>Maximum body size is 10MB</p></body></html>";
         break;
-
     case 500:
     default:
-        _statusCode = 500;
-        _statusMessage = "Internal Server Error";
         _body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
-        break;
     }
 
     _headers["Content-Type"] = "text/html";
     _headers["Content-Length"] = sizeToString(_body.size());
+}
+
+std::string HttpResponse::readErrorFile(const std::string &path) const
+{
+    std::ifstream file(path.c_str());
+    if (!file.is_open())
+    {
+        std::cerr << "❌ Error: No se pudo abrir " << path << std::endl;
+        return "";
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    file.close();
+
+    return buffer.str();
+}
+
+void HttpResponse::setErrorResponse(int code, const std::map<int, std::string> &errorPages)
+{
+    _httpVersion = "HTTP/1.1";
+    _statusCode = code;
+
+    std::map<int, std::string>::const_iterator it = errorPages.find(code);
+    if (it != errorPages.end())
+    {
+        std::string errorContent = readErrorFile(it->second);
+        if (!errorContent.empty())
+        {
+            _httpVersion = "HTTP/1.1";
+            _statusCode = code;
+            _statusMessage = getStatusMessage(code);
+            _body = errorContent;
+            _headers["Content-Type"] = "text/html";
+            _headers["Content-Length"] = sizeToString(_body.size());
+            return;
+        }
+    }
+    setErrorResponse(code);
 }
 
 std::string HttpResponse::buildResponse()

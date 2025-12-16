@@ -15,6 +15,7 @@ private:
     std::string _body;
 
     std::string getMimeType(const std::string &path) const;
+    std::string readErrorFile(const std::string &path) const;
 
 public:
     HttpResponse();
@@ -22,6 +23,8 @@ public:
 
     HttpResponse(const HttpResponse &other);
     HttpResponse &operator=(const HttpResponse &other);
+
+    std::string getStatusMessage(int code) const;
 
     void setStatus(int code, const std::string &message);
     void setHeader(const std::string &key, const std::string &value);
@@ -31,6 +34,7 @@ public:
     std::string buildResponse();
 
     void setErrorResponse(int code);
+    void setErrorResponse(int code, const std::map<int, std::string> &errorPages);
 };
 
 #endif
