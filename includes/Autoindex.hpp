@@ -2,23 +2,27 @@
 
 #include <string>
 
-class Client; // forward declaration (declaración adelantada) de la clase Client. Usamos esto en vez de #include "Client.hpp" sobretodo para evitar dependencias circulares
+class Client; // forward declaration (declaración adelantada) de la clase
+              // Client. Usamos esto en vez de #include "Client.hpp"
+              // sobretodo para evitar dependencias circulares
+class LocationConfig;
 
-namespace Autoindex
-{
-    void handleDirectory(Client *client, const std::string &dirPath, const std::string &urlPath, bool autoindexEnabled, const std::string &defaultFile);
+namespace Autoindex {
+void handleDirectory(Client *client, const std::string &dirPath,
+                     const std::string &urlPath,
+                     const LocationConfig &location);
+void generateListing(Client *client, const std::string &dirPath,
+                     const std::string &urlPath,
+                     const LocationConfig &location);
 
-    void generateListing(Client *client, const std::string &dirPath, const std::string &urlPath);
-
-    // Funciones helper de seguridad
-    std::string escapeHtml(const std::string &input);
-    std::string urlEncode(const std::string &input);
-}
+// Funciones helper de seguridad
+std::string escapeHtml(const std::string &input);
+std::string urlEncode(const std::string &input);
+} // namespace Autoindex
 /*
-Un namespace es simplemente una forma de agrupar funciones bajo un nombre propio.
-Ventajas:
-✔️ Evita colisiones de nombres
-    No tendrás dos funciones llamadas generateHTML() que se pisen.
+Un namespace es simplemente una forma de agrupar funciones bajo un nombre
+propio.   Ventajas:   ✔️ Evita colisiones de nombres   No tendrás dos funciones
+llamadas generateHTML() que se pisen.
 
 ✔️ Estructura tu proyecto
     Sabes que todo lo que tiene que ver con autoindex está dentro de:
@@ -28,12 +32,15 @@ namespace Autoindex { ... }
 ✔️ No necesita objetos ni clases
     Ideal para funciones puras que no requieren estado interno.
 
-quiero me explique al detalle la funcion y su implementacion, linea por linea, que es todo y que hace
+quiero me explique al detalle la funcion y su implementacion, linea por linea,
+que es todo y que hace
 */
 
 /*
 ¿Qué es el autoindex?
-    El autoindex es una funcionalidad típica de servidores web (como Nginx o Apache) que genera automáticamente una lista de archivos y directorios cuando el usuario accede a una carpeta y no hay un index.html.
+    El autoindex es una funcionalidad típica de servidores web (como Nginx o
+Apache) que genera automáticamente una lista de archivos y directorios cuando el
+usuario accede a una carpeta y no hay un index.html.
 
     Ejemplo:
 
@@ -65,11 +72,13 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
         Descargarlos
         Ver estructura
 
-    Es especialmente útil en Webserv para probar fácilmente los uploads y DELETE.
+    Es especialmente útil en Webserv para probar fácilmente los uploads y
+DELETE.
 
 📌 Para el proyecto, el servidor debe soportar autoindex ON/OFF
 
-        Si el autoindex está activado y no hay index.html en un directorio → mostrar listado
+        Si el autoindex está activado y no hay index.html en un directorio →
+mostrar listado
 
         Si el autoindex está desactivado → devolver 403 Forbidden
 
@@ -90,7 +99,8 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
 
 🛠 ¿Cómo implementarlo técnicamente?
 
-    Cuando detectas que la solicitud apunta a un directorio, en serveStaticFile() o en handleGet() debes:
+    Cuando detectas que la solicitud apunta a un directorio, en
+serveStaticFile() o en handleGet() debes:
 
         1. Detectar si es directorio
             if (S_ISDIR(fileStat.st_mode)) { ... }
@@ -146,7 +156,10 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
         controlar la lógica de routes en un servidor
 
 📝 Resumen corto
-    Autoindex genera automáticamente una página HTML con el listado de archivos de un directorio cuando el usuario accede a una carpeta que no tiene index.html. Si está activado por configuración, se muestra el listado; si está desactivado, se debe devolver 403 Forbidden. Forma parte obligatoria del proyecto Webserv.
+    Autoindex genera automáticamente una página HTML con el listado de archivos
+de un directorio cuando el usuario accede a una carpeta que no tiene index.html.
+Si está activado por configuración, se muestra el listado; si está desactivado,
+se debe devolver 403 Forbidden. Forma parte obligatoria del proyecto Webserv.
 
 
 🧠 Autoindex NO crea nada. Simplemente muestra lo que ya existe.
@@ -154,9 +167,9 @@ quiero me explique al detalle la funcion y su implementacion, linea por linea, q
     No modifica el filesystem, no crea archivos, no crea carpetas.
 
     Lo único que hace es:
-        👉 Leer el contenido real de un directorio en tu disco (con opendir/readdir)
-        👉 Crear una página HTML que lista esos archivos y subdirectorios
-        👉 Mandar esa página al navegador
+        👉 Leer el contenido real de un directorio en tu disco (con
+opendir/readdir) 👉 Crear una página HTML que lista esos archivos y
+subdirectorios 👉 Mandar esa página al navegador
 
     Y el navegador te la muestra como una página web con enlaces.
 
@@ -213,9 +226,11 @@ Tu servidor hace:
     Es importante entender:
         El servidor no crea archivos ni carpetas
         Solo lee lo que ya existe
-        Y el navegador te deja ir siguiendo enlaces como si fuera un explorador web
+        Y el navegador te deja ir siguiendo enlaces como si fuera un explorador
+web
 
-    Es como cuando en tu ordenador usas Finder/Explorer, pero aquí la visualización se hace con una página HTML generada automáticamente.
+    Es como cuando en tu ordenador usas Finder/Explorer, pero aquí la
+visualización se hace con una página HTML generada automáticamente.
 
 🎯 ¿Por qué es útil?
     Para probar tus uploads (POST)

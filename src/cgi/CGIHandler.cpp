@@ -2,10 +2,12 @@
 
 /**
  * @file CGIHandler.cpp
- * @brief CGI request handler - orchestrates complete CGI workflow (Request → Response)
+ * @brief CGI request handler - orchestrates complete CGI workflow (Request
+ * → Response)
  *
- * This is the main entry point and orchestrator for the entire CGI module. It
- * coordinates all 5 CGI submodules to process a request and generate a response:
+ * This is the main entry point and orchestrator for the entire CGI module.
+ * It coordinates all 5 CGI submodules to process a request and generate a
+ * response:
  *
  * Pipeline architecture:
  *   Request (HTTP)
@@ -44,15 +46,16 @@
  *   Response response = cgiHandler.handle(request, locationConfig);
  *   // response ready to send to client
  *
- * @note Stateless design - handle() contains no side effects on class members
+ * @note Stateless design - handle() contains no side effects on class
+ * members
  * @see handle() method for complete workflow documentation
  */
 
 /**
  * @brief Default constructor
  *
- * Initializes a CGIHandler object. The class is stateless (no member variables
- * to initialize), so the constructor is empty.
+ * Initializes a CGIHandler object. The class is stateless (no member
+ * variables to initialize), so the constructor is empty.
  *
  * Design rationale:
  * - All state is local to handle() method (request-scoped)
@@ -61,9 +64,7 @@
  *
  * @note Constructor is empty because CGIHandler is stateless
  */
-CGIHandler::CGIHandler()
-{
-}
+CGIHandler::CGIHandler() {}
 
 /**
  * @brief Destructor
@@ -73,9 +74,7 @@ CGIHandler::CGIHandler()
  *
  * @note Destructor is empty because CGIHandler has no owned resources
  */
-CGIHandler::~CGIHandler()
-{
-}
+CGIHandler::~CGIHandler() {}
 
 /**
  * @brief Handles a CGI request from start to finish (main orchestrator)
@@ -177,7 +176,8 @@ CGIHandler::~CGIHandler()
  *
  * LocationConfig requirements:
  * - root: Document root path (e.g., "./test_scripts")
- * - cgiPaths: List of interpreter paths {"/usr/bin/php-cgi", "/usr/bin/python3"}
+ * - cgiPaths: List of interpreter paths {"/usr/bin/php-cgi",
+ * "/usr/bin/python3"}
  * - cgiExts: List of extensions {".php", ".py", ".sh"}
  * - serverName: Server name from config ("localhost")
  * - serverPort: Listen port (8080)
@@ -233,45 +233,82 @@ CGIHandler::~CGIHandler()
  * @note Memory is always cleaned up (envp freed in all paths)
  * @see RFC 3875 for CGI/1.1 specification
  */
-Response CGIHandler::handle(const Request &req, const LocationConfig &location)
-{
-    // PHASE 1: Detect if request should be handled as CGI
-    bool isCGI = CGIDetector::isCGIRequest(req.getURI(), location.cgiExts);
+HttpResponse CGIHandler::handle(const HttpRequest &request,
+                                const LocationConfig &location,
+                                const std::string &serverName, int serverPort) {
+  // PHASE 1: Detect if request should be handled as CGI
+  // Use getPath() because isCGIRequest checks extension on the path
+  bool isCGI =
+      CGIDetector::isCGIRequest(request.getPath(), location.getCgiExts());
 
-    if (!isCGI)
-        return Response(404, "Not Found");
-    // PHASE 2: Resolve complete filesystem path to script
-    std::string scriptPath = CGIDetector::resolveScriptPath(req.getURI(), location.root);
-    // PHASE 3: Find CGI interpreter executable for this script type
-    std::string executable = CGIDetector::getCGIExecutable(scriptPath, location.cgiPaths, location.cgiExts);
+  if (!isCGI) {
+    HttpResponse response;
+    response.setErrorResponse(404);
+    return response;
+  }
+  // PHASE 2: Resolve complete filesystem path to script
+  std::string scriptPath =
+      CGIDetector::resolveScriptPath(request.getPath(), location.getRoot());
+  // PHASE 3: Buscar el ejecutable del intérprete (python3, bash, etc.)
+  std::string executable = CGIDetector::getCGIExecutable(
+      scriptPath, location.getCgiPaths(), location.getCgiExts());
 
-    if (executable.empty())
-        return Response(404, "Not Found");
-    // PHASE 4: Prepare CGI environment variables
-    std::string scriptName = CGIDetector::removeQueryString(req.getURI());
-    CGIEnvironment env;
-    env.prepare(req, scriptPath, scriptName, location.serverName, location.serverPort);
+  // Verificación de seguridad: Si no hay intérprete configurado O el archivo no
+  // existe en el disco
+  if (executable.empty() || access(scriptPath.c_str(), F_OK) != 0) {
+    HttpResponse response;
+    response.setErrorResponse(
+        404); // Devolvemos 404 porque el recurso no es ejecutable o no existe
+    return response;
+  }
+  // PHASE 4: Prepare CGI environment variables
+  // request.getPath() is already the path without query string (HttpRequest
+  // separates them)
+  std::string scriptName = request.getPath();
+  CGIEnvironment env;
+  env.prepare(request, scriptPath, scriptName, serverName, serverPort);
 
-    char **envp = env.toEnvArray();
-    // PHASE 5 & 6: Execute script and parse output (error-protected)
-    try
-    {
-        // PHASE 5: Execute CGI script via fork/exec/pipes
-        CGIExecutor executor;
-        std::string output = executor.execute(executable, scriptPath, envp, req.getBody());
-        // PHASE 6: Parse raw output into headers and body
-        CGIOutputParser parser;
-        parser.parse(output);
-        // Build HTTP response from parsed CGI output
-        Response response(parser.getStatusCode(), parser.getBody());
-        // Cleanup: Free environment array (success path)
-        env.freeEnvArray(envp);
-        return response;
+  char **envp = env.toEnvArray();
+  // PHASE 5 & 6: Execute script and parse output (error-protected)
+  try {
+    // PHASE 5: Execute CGI script via fork/exec/pipes
+    CGIExecutor executor;
+    std::string output =
+        executor.execute(executable, scriptPath, envp, request.getBody());
+    // PHASE 6: Parse raw output into headers and body
+    CGIOutputParser parser;
+    parser.parse(output);
+
+    // Build HTTP response from parsed CGI output
+    HttpResponse response;
+
+    // 1. Status
+    response.setStatus(parser.getStatusCode(),
+                       "OK"); // TODO: Reason phrase lookup?
+
+    // 2. Body
+    response.setBody(parser.getBody());
+
+    // 3. Headers del CGI
+    std::map<std::string, std::string> cgiHeaders = parser.getHeaders();
+    for (std::map<std::string, std::string>::iterator it = cgiHeaders.begin();
+         it != cgiHeaders.end(); ++it) {
+      if (it->first != "Status") // Status is set via setStatus
+        response.setHeader(it->first, it->second);
     }
-    catch (std::exception &e)
-    {
-        // Cleanup: Free environment array (error path)
-        env.freeEnvArray(envp);
-        return Response(500, "Internal Server Error");
-    }
+
+    // Cleanup: Free environment array (success path)
+    env.freeEnvArray(envp);
+    return response;
+  } catch (std::exception &e) {
+    // Si ocurre cualquier excepción durante la ejecución del script CGI (ej.
+    // fork/execve fallan, el script termina con error, etc.),
+    // se captura aquí y se devuelve un 500 Internal Server Error.
+    // Esto asegura que el servidor no colapse y maneje el error de forma
+    // controlada. Cleanup: Free environment array (error path)
+    env.freeEnvArray(envp);
+    HttpResponse response;
+    response.setErrorResponse(500);
+    return response;
+  }
 }

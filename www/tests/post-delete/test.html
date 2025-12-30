@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Manual POST/DELETE</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.6; background: #f4f4f9; color: #333; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { color: #2c3e50; }
+        .btn { display: inline-block; padding: 10px 20px; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-weight: bold; margin-right: 10px; }
+        .btn-delete { background: #e74c3c; }
+        .btn-post { background: #3498db; }
+        .btn-create { background: #2ecc71; }
+        .btn:hover { opacity: 0.8; }
+        code { background: #eee; padding: 2px 5px; border-radius: 3px; }
+        #status { font-weight: bold; margin-top: 10px; padding: 10px; border-radius: 4px; display: none; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Panel de Control de Pruebas</h1>
+    
+    <div class="card">
+        <h2>1. Prueba de POST (Upload)</h2>
+        <p>Envía datos al servidor para crear un archivo en <code>www/tests/uploads/</code>.</p>
+        <button onclick="doPost('/tests/uploads')" class="btn btn-post">📤 Subir a /uploads</button>
+        <p><small>Este archivo se quedará en el servidor para que lo revises después.</small></p>
+    </div>
+
+    <div class="card">
+        <h2>2. Prueba de DELETE (Segura)</h2>
+        <p>Para no borrar esta página, primero crea un archivo temporal y luego bórralo.</p>
+        <div style="margin-bottom: 15px;">
+            <strong>Paso A:</strong> 
+            <button onclick="doPost('/tests/post-delete', true)" class="btn btn-create">➕ Crear archivo temporal</button>
+        </div>
+        <div>
+            <strong>Paso B:</strong> 
+            <button onclick="doDelete()" class="btn btn-delete">🗑️ Borrar archivo temporal</button>
+        </div>
+        <p id="file-info" style="margin-top: 10px; font-style: italic; display: none;">
+            Archivo creado: <code id="created-filename"></code>
+        </p>
+    </div>
+
+    <div id="status"></div>
+
+    <script>
+        let lastCreatedFile = "";
+
+        function showStatus(msg, type) {
+            const s = document.getElementById('status');
+            s.innerText = msg;
+            s.style.display = 'block';
+            s.className = type; // success, error, info
+        }
+
+        async function doPost(url, isTemp = false) {
+            try {
+                const resp = await fetch(url, { 
+                    method: 'POST',
+                    body: 'Contenido generado desde el navegador el ' + new Date().toLocaleString()
+                });
+                const text = await resp.text();
+                
+                if (resp.ok) {
+                    if (isTemp) {
+                        // Intentar extraer el nombre del archivo si el servidor lo devuelve
+                        // Como nuestro servidor devuelve "Upload successful", no sabemos el nombre exacto
+                        // pero podemos invitar al usuario a verlo en la carpeta o usar un nombre fijo si lo implementamos
+                        showStatus('✅ Archivo temporal creado en ' + url, 'success');
+                        document.getElementById('file-info').style.display = 'block';
+                        document.getElementById('created-filename').innerText = 'Revisa la carpeta ' + url + ' (el servidor genera el nombre)';
+                    } else {
+                        showStatus('✅ ¡POST enviado con éxito a ' + url + '!', 'success');
+                    }
+                } else {
+                    showStatus('❌ Error en POST: ' + resp.status, 'error');
+                }
+            } catch (e) {
+                showStatus('❌ Error de red: ' + e.message, 'error');
+            }
+        }
+
+        async function doDelete() {
+            const filename = prompt("Introduce el nombre del archivo a borrar (ej: upload_12345.dat):");
+            if (!filename) return;
+            
+            try {
+                const resp = await fetch('/tests/post-delete/' + filename, { method: 'DELETE' });
+                if (resp.ok) {
+                    showStatus('✅ ¡Archivo ' + filename + ' borrado con éxito!', 'success');
+                } else {
+                    showStatus('❌ Error al borrar: ' + resp.status + ' (¿Seguro que el nombre es correcto?)', 'error');
+                }
+            } catch (e) {
+                showStatus('❌ Error de red: ' + e.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

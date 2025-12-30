@@ -1,6 +1,6 @@
 #include "../../includes/cgi/CGIDetector.hpp"
-#include <vector>
 #include <string>
+#include <vector>
 
 /**
  * @file CGIDetector.cpp
@@ -45,7 +45,8 @@
  * - Trailing dot: "/path/file." → ""
  * - Query string: "/script.php?id=1" → ".php" (not ".php?id=1")
  * - Multiple dots: "/path/file.tar.gz" → ".gz"
- * - Hidden files: "/.bashrc" (dot at position 0) → not tested, returns from position 0
+ * - Hidden files: "/.bashrc" (dot at position 0) → not tested, returns from
+ * position 0
  *
  * Examples:
  *   "/hello.php"           → ".php"
@@ -61,15 +62,14 @@
  * @note Query string is correctly handled to avoid returning ".php?id=1"
  */
 
-std::string CGIDetector::getExtension(const std::string &path)
-{
-    size_t lastDot = path.find_last_of('.');
-    size_t questPos = path.find('?');
-    if (lastDot == std::string::npos || lastDot == path.size() - 1)
-        return "";
-    if (questPos != std::string::npos && questPos > lastDot)
-        return path.substr(lastDot, (questPos - lastDot));
-    return path.substr(lastDot);
+std::string CGIDetector::getExtension(const std::string &path) {
+  size_t lastDot = path.find_last_of('.');
+  size_t questPos = path.find('?');
+  if (lastDot == std::string::npos || lastDot == path.size() - 1)
+    return "";
+  if (questPos != std::string::npos && questPos > lastDot)
+    return path.substr(lastDot, (questPos - lastDot));
+  return path.substr(lastDot);
 }
 
 /**
@@ -93,23 +93,24 @@ std::string CGIDetector::getExtension(const std::string &path)
  * @return URI without query string (everything before '?')
  *
  * @note Returns original URI if no query string present
- * @note Correctly handles edge case where '?' is at position 0 (unlikely but safe)
+ * @note Correctly handles edge case where '?' is at position 0 (unlikely but
+ * safe)
  */
 
-std::string CGIDetector::removeQueryString(const std::string &uri)
-{
-    size_t quest = uri.find('?');
+std::string CGIDetector::removeQueryString(const std::string &uri) {
+  size_t quest = uri.find('?');
 
-    if (quest == std::string::npos)
-        return uri;
-    return uri.substr(0, quest);
+  if (quest == std::string::npos)
+    return uri;
+  return uri.substr(0, quest);
 }
 
 /**
  * @brief Detects if a request should be handled as CGI based on file extension
  *
- * Compares the URI's file extension against a list of configured CGI extensions.
- * This is the primary decision point for routing requests to the CGI handler.
+ * Compares the URI's file extension against a list of configured CGI
+ * extensions. This is the primary decision point for routing requests to the
+ * CGI handler.
  *
  * Detection process:
  * 1. Extract extension from URI (handles query strings automatically)
@@ -128,29 +129,30 @@ std::string CGIDetector::removeQueryString(const std::string &uri)
  *
  * @param uri Request URI (may include query string)
  * @param cgiExsts Vector of configured CGI extensions (e.g., {".php", ".py"})
- * @return true if URI extension matches any configured CGI extension, false otherwise
+ * @return true if URI extension matches any configured CGI extension, false
+ * otherwise
  *
  * @note Linear search is acceptable - typical cgiExts.size() is 1-3
  * @note Empty extension in URI returns false (no match possible)
  */
 
-bool CGIDetector::isCGIRequest(const std::string &uri, const std::vector<std::string> &cgiExsts)
-{
-    std::string ext = getExtension(uri);
+bool CGIDetector::isCGIRequest(const std::string &uri,
+                               const std::vector<std::string> &cgiExsts) {
+  std::string ext = getExtension(uri);
 
-    for (size_t i = 0; i < cgiExsts.size(); ++i)
-    {
-        if (cgiExsts[i] == ext)
-            return true;
-    }
-    return false;
+  for (size_t i = 0; i < cgiExsts.size(); ++i) {
+    if (cgiExsts[i] == ext)
+      return true;
+  }
+  return false;
 }
 
 /**
  * @brief Finds the CGI executable path for a given script
  *
  * Matches the script's file extension against configured extensions and returns
- * the corresponding executable path. This mapping is defined in the configuration.
+ * the corresponding executable path. This mapping is defined in the
+ * configuration.
  *
  * Configuration mapping (nginx-like):
  *   location ~ \.php$ {
@@ -163,20 +165,22 @@ bool CGIDetector::isCGIRequest(const std::string &uri, const std::vector<std::st
  * Matching logic:
  * - Extension at cgiExts[i] corresponds to executable at cgiPaths[i]
  * - First match wins (assumes unique extensions in config)
- * - Returns first cgiPaths entry on match (simplified - should return cgiPaths[i])
+ * - Returns first cgiPaths entry on match (simplified - should return
+ * cgiPaths[i])
  *
  * Examples:
  *   script="hello.php", cgiPaths={"/usr/bin/php-cgi"}, cgiExts={".php"}
  *     → "/usr/bin/php-cgi"
- *   
+ *
  *   script="test.py", cgiPaths={"/usr/bin/python3"}, cgiExts={".py"}
  *     → "/usr/bin/python3"
- *   
+ *
  *   script="index.html", cgiPaths={"/usr/bin/php-cgi"}, cgiExts={".php"}
  *     → "" (not a CGI extension)
  *
  * @param scriptPath Path to the script file (filesystem path or URI)
- * @param cgiPaths Vector of CGI executable paths (e.g., {"/usr/bin/php-cgi", "/usr/bin/python3"})
+ * @param cgiPaths Vector of CGI executable paths (e.g., {"/usr/bin/php-cgi",
+ * "/usr/bin/python3"})
  * @param cgiExsts Vector of CGI extensions (parallel to cgiPaths)
  * @return Path to CGI executable if match found, empty string otherwise
  *
@@ -185,19 +189,29 @@ bool CGIDetector::isCGIRequest(const std::string &uri, const std::vector<std::st
  * @note Returns empty string if extension not found or is empty
  */
 
-std::string CGIDetector::getCGIExecutable(const std::string &scriptPath, const std::vector<std::string> &cgiPaths, 
-                                    const std::vector<std::string> &cgiExsts)
-{
-    std::string ext = getExtension(scriptPath);
+std::string
+CGIDetector::getCGIExecutable(const std::string &scriptPath,
+                              const std::vector<std::string> &cgiPaths,
+                              const std::vector<std::string> &cgiExsts) {
+  std::string ext = getExtension(scriptPath);
 
-    if (ext.empty())
-        return "";
-    for (size_t i = 0; i < cgiExsts.size(); ++i)
-    {
-        if (cgiExsts[i] == ext)
-            return cgiPaths[0]; //Should return cgiPaths[i] for multi-CGI support
-    }
+  if (ext.empty())
     return "";
+  for (size_t i = 0; i < cgiExsts.size(); ++i) {
+    // Si la extensión del archivo coincide con una de las configuradas
+    if (cgiExsts[i] == ext) {
+      // Importante: Usamos el índice 'i' para devolver el ejecutable
+      // correspondiente. Esto permite que .py use python3, .sh use bash, etc.
+      // (Soporte Multi-CGI)
+      if (i < cgiPaths.size())
+        return cgiPaths[i];
+
+      // Si por error hay menos rutas que extensiones, usamos la primera como
+      // respaldo
+      return cgiPaths[0];
+    }
+  }
+  return "";
 }
 
 /**
@@ -208,10 +222,14 @@ std::string CGIDetector::getCGIExecutable(const std::string &scriptPath, const s
  * trailing slashes to avoid path construction errors.
  *
  * Trailing slash combinations (all produce same result):
- *   1. root="./www"  + uri="/script.php"  → "./www/script.php"   (neither has slash at junction)
- *   2. root="./www/" + uri="/script.php"  → "./www/script.php"   (root has trailing, uri has leading)
- *   3. root="./www"  + uri="script.php"   → "./www/script.php"   (root missing trailing, uri missing leading)
- *   4. root="./www/" + uri="script.php"   → "./www/script.php"   (root has trailing, uri missing leading)
+ *   1. root="./www"  + uri="/script.php"  → "./www/script.php"   (neither has
+ * slash at junction)
+ *   2. root="./www/" + uri="/script.php"  → "./www/script.php"   (root has
+ * trailing, uri has leading)
+ *   3. root="./www"  + uri="script.php"   → "./www/script.php"   (root missing
+ * trailing, uri missing leading)
+ *   4. root="./www/" + uri="script.php"   → "./www/script.php"   (root has
+ * trailing, uri missing leading)
  *
  * Algorithm:
  * 1. Remove query string from URI (filesystem doesn't include params)
@@ -225,10 +243,10 @@ std::string CGIDetector::getCGIExecutable(const std::string &scriptPath, const s
  * Examples:
  *   resolveScriptPath("/hello.php?test=1", "./test_scripts")
  *     → "./test_scripts/hello.php"
- *   
+ *
  *   resolveScriptPath("/api/script.py", "/var/www/")
  *     → "/var/www/api/script.py"
- *   
+ *
  *   resolveScriptPath("index.php", "./www")
  *     → "./www/index.php"
  *
@@ -241,25 +259,25 @@ std::string CGIDetector::getCGIExecutable(const std::string &scriptPath, const s
  * @note Last return "" should never be reached (defensive programming)
  */
 
-std::string CGIDetector::resolveScriptPath(const std::string &uri, const std::string &root)
-{
-    std::string headUri = removeQueryString(uri);
-    char firstUri = headUri[0];
-    char lastRoot = root[root.size() - 1];
+std::string CGIDetector::resolveScriptPath(const std::string &uri,
+                                           const std::string &root) {
+  std::string headUri = removeQueryString(uri);
+  char firstUri = headUri[0];
+  char lastRoot = root[root.size() - 1];
 
-    if (headUri.empty())
-        return root;
-    // Case 1 & 2: XOR - exactly one has slash at junction point
-    if ((lastRoot != '/' && firstUri == '/') || (lastRoot == '/' && firstUri != '/'))
-        return root + headUri;
-    // Case 3: Both missing slash - add separator
-    if (lastRoot != '/' && firstUri != '/')
-        return root + '/' + headUri;
-    // Case 4: Both have slash - remove duplicate
-    if (lastRoot == '/' && firstUri == '/')
-    {
-        std::string root2 = root.substr(0, root.size() - 1);
-        return root2 + headUri;
-    }
-    return ""; // Should never reach here (all cases covered above)
+  if (headUri.empty())
+    return root;
+  // Case 1 & 2: XOR - exactly one has slash at junction point
+  if ((lastRoot != '/' && firstUri == '/') ||
+      (lastRoot == '/' && firstUri != '/'))
+    return root + headUri;
+  // Case 3: Both missing slash - add separator
+  if (lastRoot != '/' && firstUri != '/')
+    return root + '/' + headUri;
+  // Case 4: Both have slash - remove duplicate
+  if (lastRoot == '/' && firstUri == '/') {
+    std::string root2 = root.substr(0, root.size() - 1);
+    return root2 + headUri;
+  }
+  return ""; // Should never reach here (all cases covered above)
 }

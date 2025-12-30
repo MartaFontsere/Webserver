@@ -1,0 +1,11 @@
+#!/bin/bash
+echo "Content-Type: text/html"
+echo ""
+echo "<html>"
+echo "<head><title>CGI Bash</title></head>"
+echo "<body>"
+echo "<h1>¡Hola desde un Script de Bash!</h1>"
+echo "<p>Este script se está ejecutando mediante CGI.</p>"
+echo "<p>Fecha actual: $(date)</p>"
+echo "</body>"
+echo "</html>"

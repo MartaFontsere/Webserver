@@ -2,101 +2,90 @@
 #include <sstream>
 
 HttpResponse::HttpResponse()
-    : _statusCode(200),
-      _statusMessage("OK"),
-      _httpVersion("HTTP/1.1")
-{
+    : _statusCode(200), _statusMessage("OK"), _httpVersion("HTTP/1.1") {}
+
+HttpResponse::~HttpResponse() {}
+
+void HttpResponse::setStatus(int code, const std::string &message) {
+  _statusCode = code;
+  _statusMessage = message;
 }
 
-HttpResponse::~HttpResponse()
-{
+void HttpResponse::setHeader(const std::string &key, const std::string &value) {
+  _headers[key] = value;
 }
 
-void HttpResponse::setStatus(int code, const std::string &message)
-{
-    _statusCode = code;
-    _statusMessage = message;
+void HttpResponse::setBody(const std::string &body) {
+  _body = body;
+  std::ostringstream oss;
+  oss << _body.size();
+  _headers["Content-Length"] = oss.str();
 }
 
-void HttpResponse::setHeader(const std::string &key, const std::string &value)
-{
-    _headers[key] = value;
+void HttpResponse::setErrorResponse(int code) {
+  _httpVersion = "HTTP/1.1";
+
+  switch (code) {
+  case 403:
+    _statusCode = 403;
+    _statusMessage = "Forbidden";
+    _body = "<html><body><h1>403 Forbidden</h1></body></html>";
+    break;
+
+  case 404:
+    _statusCode = 404;
+    _statusMessage = "Not Found";
+    _body = "<html><body><h1>404 Not Found</h1></body></html>";
+    break;
+
+  case 405:
+    _statusCode = 405;
+    _statusMessage = "Method Not Allowed";
+    _body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
+    break;
+
+  case 413:
+    _statusCode = 413;
+    _statusMessage = "Request Entity Too Large";
+    _body = "<html><body><h1>413 Request Entity Too Large</h1>"
+            "<p>Maximum body size is 10MB</p></body></html>";
+    break;
+
+  case 500:
+  default:
+    _statusCode = 500;
+    _statusMessage = "Internal Server Error";
+    _body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
+    break;
+  }
+
+  // Headers necesarios mínimos
+  _headers["Content-Type"] = "text/html";
+
+  std::ostringstream length;
+  length << _body.size();
+  _headers["Content-Length"] = length.str();
 }
 
-void HttpResponse::setBody(const std::string &body)
-{
-    _body = body;
-}
+std::string HttpResponse::buildResponse() const {
+  std::ostringstream oss;
 
-void HttpResponse::setErrorResponse(int code)
-{
-    _httpVersion = "HTTP/1.1";
+  // Status line
+  oss << _httpVersion << " " << _statusCode << " " << _statusMessage << "\r\n";
 
-    switch (code)
-    {
-    case 403:
-        _statusCode = 403;
-        _statusMessage = "Forbidden";
-        _body = "<html><body><h1>403 Forbidden</h1></body></html>";
-        break;
+  // Headers
+  for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
+       it != _headers.end(); ++it) {
+    oss << it->first << ": " << it->second << "\r\n";
+  }
 
-    case 404:
-        _statusCode = 404;
-        _statusMessage = "Not Found";
-        _body = "<html><body><h1>404 Not Found</h1></body></html>";
-        break;
+  // Mandatory blank line
+  oss << "\r\n";
 
-    case 405:
-        _statusCode = 405;
-        _statusMessage = "Method Not Allowed";
-        _body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
-        break;
+  // Body
+  oss << _body;
 
-    case 413:
-        _statusCode = 413;
-        _statusMessage = "Request Entity Too Large";
-        _body = "<html><body><h1>413 Request Entity Too Large</h1>"
-                "<p>Maximum body size is 10MB</p></body></html>";
-        break;
-
-    case 500:
-    default:
-        _statusCode = 500;
-        _statusMessage = "Internal Server Error";
-        _body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
-        break;
-    }
-
-    // Headers necesarios mínimos
-    _headers["Content-Type"] = "text/html";
-
-    std::ostringstream length;
-    length << _body.size();
-    _headers["Content-Length"] = length.str();
-}
-
-std::string HttpResponse::buildResponse() const
-{
-    std::ostringstream oss;
-
-    // Status line
-    oss << _httpVersion << " " << _statusCode << " " << _statusMessage << "\r\n";
-
-    // Headers
-    for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
-         it != _headers.end();
-         ++it)
-    {
-        oss << it->first << ": " << it->second << "\r\n";
-    }
-
-    // Mandatory blank line
-    oss << "\r\n";
-
-    // Body
-    oss << _body;
-
-    return oss.str();
+  return oss.str();
 }
 
 /*
@@ -117,19 +106,22 @@ std::string HttpResponse::buildResponse() const
     std::ostringstream oss;
 
 std::ostringstream oss;
-    Es un stream en memoria que te permite ir escribiendo texto como si fuera un std::cout, pero acabará convertido en un std::string.
+    Es un stream en memoria que te permite ir escribiendo texto como si fuera un
+std::cout, pero acabará convertido en un std::string.
 
-    Es la forma más limpia (y compatible con C++98) de crear strings grandes concatenando muchas partes.
+    Es la forma más limpia (y compatible con C++98) de crear strings grandes
+concatenando muchas partes.
 
 Status Line
-    oss << _httpVersion << " " << _statusCode << " " << _statusMessage << "\r\n";
+    oss << _httpVersion << " " << _statusCode << " " << _statusMessage <<
+"\r\n";
 
     Ejemplo que puede producir:
         HTTP/1.1 200 OK\r\n
 
 Headers
-    for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
-     it != _headers.end();
+    for (std::map<std::string, std::string>::const_iterator it =
+_headers.begin(); it != _headers.end();
      ++it)
     {
         oss << it->first << ": " << it->second << "\r\n";
@@ -154,7 +146,8 @@ Línea en blanco obligatoria
 
     ➡️ “Ya he terminado de listar headers; lo que viene ahora es el cuerpo”
 
-    Si no la pones, el navegador NO SABE dónde empieza el body, y puede interpretar que el body es otro header → respuesta inválida.
+    Si no la pones, el navegador NO SABE dónde empieza el body, y puede
+interpretar que el body es otro header → respuesta inválida.
 
 Body
     oss << _body;
@@ -171,7 +164,8 @@ Solo se escribe tal cual.
 Convertir todo a string
     return oss.str();
 
-    Esto transforma todo lo que concatenaste en el ostringstream en un único std::string que luego enviarás al socket.
+    Esto transforma todo lo que concatenaste en el ostringstream en un único
+std::string que luego enviarás al socket.
 
     Este string es exactamente el que _writeBuffer luego enviará al socket.
 */
@@ -191,7 +185,8 @@ Más adelante necesitarás:
 
     🔹 Incluir header Connection: keep-alive cuando corresponda
 
-        En HTTP/1.1 se supone keep-alive por defecto, pero algunos navegadores lo requieren explícitamente.
+        En HTTP/1.1 se supone keep-alive por defecto, pero algunos navegadores
+lo requieren explícitamente.
 
     🔹 Añadir Date: obligatorio según RFC
 

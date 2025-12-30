@@ -1,26 +1,28 @@
 #ifndef CGIHANDLER_HPP
 #define CGIHANDLER_HPP
 
-#include <string>
-#include "hardcoded/Request.hpp"
-#include "hardcoded/Response.hpp"
-#include "hardcoded/LocationConfig.hpp"
+#include "../HttpRequest.hpp"
+#include "../HttpResponse.hpp"
+#include "../config/LocationConfig.hpp"
 #include "CGIDetector.hpp"
 #include "CGIEnvironment.hpp"
 #include "CGIExecutor.hpp"
 #include "CGIOutputParser.hpp"
+#include <string>
 
-class CGIHandler
-{
+class CGIHandler {
 public:
-    CGIHandler();
-    ~CGIHandler();
+  CGIHandler();
+  ~CGIHandler();
 
-    Response handle(const Request &req, const LocationConfig &location);
+  HttpResponse handle(const HttpRequest &request,
+                      const LocationConfig &location,
+                      const std::string &serverName, int serverPort);
 
 private:
-    std::string resolveScriptPath(const Request &req, const LocationConfig &location);
-    std::string getScriptName(const Request &req);
+  std::string resolveScriptPath(const HttpRequest &request,
+                                const LocationConfig &location);
+  std::string getScriptName(const HttpRequest &request);
 };
 
 #endif

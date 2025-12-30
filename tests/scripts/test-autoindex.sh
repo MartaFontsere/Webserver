@@ -113,7 +113,8 @@ mkdir -p "$BASE_DIR" || cleanup_and_exit "No se pudo crear directorio $BASE_DIR"
 
 # Limpiar pruebas anteriores dentro de tests/
 echo -e "${BLUE}Limpiando pruebas anteriores en $BASE_DIR...${NC}"
-rm -rf "$BASE_DIR"/* 2>/dev/null
+rm -rf "$BASE_DIR" 2>/dev/null
+mkdir -p "$BASE_DIR"
 
 echo -e "${BLUE}Creando estructura de directorios:${NC}"
 
@@ -337,120 +338,17 @@ echo ""
 # 🧹 LIMPIEZA OPCIONAL
 # ============================================
 
-echo -e "${CYAN}🧹 GESTIÓN DE ARCHIVOS DE PRUEBA${NC}"
-echo "════════════════════════════════════════════════════"
+# Fin (No borramos para que el usuario pueda inspeccionar)
+echo -e "${GREEN}Estructura mantenida en $BASE_DIR/${NC}"
 echo ""
-echo "Los archivos de prueba se han creado en: ${BLUE}$BASE_DIR/${NC}"
-echo ""
-echo -e "${YELLOW}¿Qué quieres hacer con los archivos de prueba?${NC}"
-echo "  1) ${GREEN}Mantener todo${NC} (para pruebas manuales)"
-echo "  2) ${YELLOW}Eliminar solo contenido${NC} (dejar directorios vacíos)"
-echo "  3) ${RED}Eliminar todo${NC}"
-echo ""
-echo -n "Elige opción [1/2/3] (default: 1): "
-read -n 1 cleanup_option
-echo ""
-echo ""
+echo -e "${BLUE}📁 Estructura actual:${NC}"
+find "$BASE_DIR" -type f 2>/dev/null | sort | sed 's/^/  /'
 
-case $cleanup_option in
-    2)
-        echo -n "Eliminando contenido pero manteniendo estructura... "
-        find "$BASE_DIR" -type f -name "*" -exec rm -f {} \; 2>/dev/null
-        echo -e "${GREEN}✅${NC}"
-        echo "Directorios vacíos mantenidos en $BASE_DIR/"
-        ;;
-    3)
-        echo -n "Eliminando toda la estructura de prueba... "
-        rm -rf "$BASE_DIR" 2>/dev/null
-        echo -e "${GREEN}✅${NC}"
-        ;;
-    *)
-        echo -e "${GREEN}Estructura mantenida en $BASE_DIR/${NC}"
-        echo ""
-        echo -e "${BLUE}📁 Estructura actual:${NC}"
-        find "$BASE_DIR" -type f 2>/dev/null | sort | sed 's/^/  /'
-        ;;
-esac
-
-# Limpiar archivos temporales
+# Limpiar archivos temporales del script
 rm -f response_body.tmp test_output.tmp 2>/dev/null
 
 echo ""
 echo -e "${GREEN}✅ TEST COMPLETADO${NC}"
 echo ""
 
-# ============================================
-# 🎯 ANÁLISIS DE FALLOS (BASADO EN TU OUTPUT)
-# ============================================
-
-echo -e "${CYAN}🔍 ANÁLISIS DE LOS RESULTADOS OBTENIDOS${NC}"
-echo "════════════════════════════════════════════════════"
-echo ""
-echo -e "${YELLOW}📋 PROBLEMAS DETECTADOS EN TU IMPLEMENTACIÓN:${NC}"
-echo ""
-
-# Basado en tu output anterior:
-echo "1. ${RED}Autoindex no funciona en /tests/files/${NC}"
-echo "   • Esperaba: 200 OK con 'Index of'"
-echo "   • Recibiste: 404 Not Found"
-echo "   • Posible causa: Tu autoindex NO está activado para esa ruta"
-echo ""
-
-echo "2. ${RED}Directorio /tests/private/ devuelve 404${NC}"
-echo "   • Esperaba: 403 Forbidden (sin acceso)"
-echo "   • Recibiste: 404 Not Found"
-echo "   • Posible causa: Tu servidor trata directorios sin index como 404, no 403"
-echo ""
-
-echo "3. ${RED}Archivos con espacios no funcionan${NC}"
-echo "   • Posible causa: Problemas con URL encoding en tu sanitizePath()"
-echo ""
-
-echo "4. ${RED}HEAD request devuelve 405${NC}"
-echo "   • Esperaba: 200 OK"
-echo "   • Recibiste: 405 Method Not Allowed"
-echo "   • Posible causa: No implementaste HEAD method"
-echo ""
-
-echo -e "${BLUE}💡 RECOMENDACIONES:${NC}"
-echo "1. Verifica que tu función handleDirectory() esté siendo llamada"
-echo "2. Revisa getTempRouteConfig() para asegurar que /tests/files/ tiene autoindex ON"
-echo "3. Prueba manualmente: curl -i http://localhost:8080/tests/files/"
-echo "4. Revisa los logs de tu servidor para ver qué está pasando"
-echo ""
-
-# ============================================
-# 🚀 PRUEBA MANUAL RÁPIDA
-# ============================================
-
-echo -e "${CYAN}🚀 PRUEBA MANUAL RÁPIDA${NC}"
-echo "════════════════════════════════════════════════════"
-echo ""
-echo "Para depurar manualmente:"
-echo ""
-echo "1. ${BLUE}Verifica que el servidor está corriendo:${NC}"
-echo "   curl -I http://localhost:8080/"
-echo ""
-echo "2. ${BLUE}Prueba autoindex directamente:${NC}"
-echo "   curl -i http://localhost:8080/tests/files/"
-echo ""
-echo "3. ${BLUE}Prueba archivo específico:${NC}"
-echo "   curl -i http://localhost:8080/tests/files/document1.txt"
-echo ""
-echo "4. ${BLUE}Verifica que existe el directorio:${NC}"
-echo "   ls -la $BASE_DIR/files/"
-echo ""
-echo "5. ${BLUE}Revisa logs del servidor si los tienes${NC}"
-echo ""
-
-# Devolver código de salida apropiado
-if [ $percentage -ge 80 ]; then
-    echo -e "${GREEN}✅ Test considerado EXITOSO${NC}"
-    exit 0
-elif [ $percentage -ge 60 ]; then
-    echo -e "${YELLOW}⚠️  Test con RESULTADOS MEJORABLES${NC}"
-    exit 0
-else
-    echo -e "${RED}❌ Test con RESULTADOS INSUFICIENTES${NC}"
-    exit 1
-fi
+exit 0
