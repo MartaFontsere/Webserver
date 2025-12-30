@@ -9,12 +9,13 @@
 IMPORTANTE: si al ejecutar el servidor aparece este mensaje: 
  - Error en bind(): Address already in use
  - ❌ Error: no se pudo crear el socket.
+                 
 Quiere decir que se ha quedado el socket abierto
 
 Para gestionarlo:
 
 - Listarlos (verás el PID): lsof -i :8080
-- Matar el proceso que esté usando el puerto: kill -9 <PID>
+- Matar el proceso que esté usando el puerto: kill -9 "PID" (poner el PID obtenido antes sin los " ")
                      
 
 TESTS:
@@ -49,7 +50,7 @@ Test Post/Delete:
        - c++ -std=c++98 -Wall -Wextra -Werror -Iincludes src/main.cpp src/Server.cpp src/Client.cpp src/HttpRequest.cpp src/HttpResponse -o server                     
        - ./server
 * Navegador:                         
-       - localhost:8080/post-delete/test.html
+       - localhost:8080/tests/post-delete/test.html
 
 Test Autoindex:
 
