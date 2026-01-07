@@ -1,4 +1,4 @@
-#include "HttpResponse.hpp"
+#include "http/HttpResponse.hpp"
 #include <sstream>
 
 HttpResponse::HttpResponse()
@@ -21,6 +21,8 @@ void HttpResponse::setBody(const std::string &body) {
   oss << _body.size();
   _headers["Content-Length"] = oss.str();
 }
+
+int HttpResponse::getStatusCode() const { return _statusCode; }
 
 void HttpResponse::setErrorResponse(int code) {
   _httpVersion = "HTTP/1.1";

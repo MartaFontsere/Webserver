@@ -1,7 +1,7 @@
 #ifndef CGIENVIRONMENT_HPP
 #define CGIENVIRONMENT_HPP
 
-#include "../HttpRequest.hpp"
+#include "http/HttpRequest.hpp"
 #include <iostream>
 #include <map>
 #include <sstream>

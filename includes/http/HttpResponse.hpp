@@ -1,32 +1,32 @@
 #pragma once
 
-#include <string>
 #include <map>
+#include <string>
 
-class HttpResponse
-{
+class HttpResponse {
 private:
-    int _statusCode;
-    std::string _statusMessage;
-    std::string _httpVersion;
+  int _statusCode;
+  std::string _statusMessage;
+  std::string _httpVersion;
 
-    std::map<std::string, std::string> _headers;
-    std::string _body;
+  std::map<std::string, std::string> _headers;
+  std::string _body;
 
 public:
-    HttpResponse();
-    ~HttpResponse();
+  HttpResponse();
+  ~HttpResponse();
 
-    // setters
-    void setStatus(int code, const std::string &message);
-    void setHeader(const std::string &key, const std::string &value);
-    void setBody(const std::string &body);
+  // setters
+  void setStatus(int code, const std::string &message);
+  void setHeader(const std::string &key, const std::string &value);
+  void setBody(const std::string &body);
+  int getStatusCode() const;
 
-    // ensamblar respuesta final
-    std::string buildResponse() const; // → devuelve el string final
+  // ensamblar respuesta final
+  std::string buildResponse() const; // → devuelve el string final
 
-    // helpers para errores
-    void setErrorResponse(int code);
+  // helpers para errores
+  void setErrorResponse(int code);
 };
 
 /*
@@ -51,7 +51,8 @@ Lo que se va a HttpResponse
 
 ¿Qué es una respuesta HTTP?
 
-Cuando el cliente (navegador, curl, etc.) envía una request, tu servidor debe devolverle una response siguiendo el formato del protocolo HTTP/1.1.
+Cuando el cliente (navegador, curl, etc.) envía una request, tu servidor debe
+devolverle una response siguiendo el formato del protocolo HTTP/1.1.
 
 Una respuesta HTTP siempre tiene tres partes:
     Status line (línea de estado)
@@ -109,7 +110,8 @@ Esto significa:
     El body es texto normal.
     Tiene exactamente 12 bytes.
 
-Tu webserver debe ser estricto con Content-Length, porque los navegadores lo usan para saber cuándo termina la respuesta.
+Tu webserver debe ser estricto con Content-Length, porque los navegadores lo
+usan para saber cuándo termina la respuesta.
 
 
 🧩 3) BODY (opcional)

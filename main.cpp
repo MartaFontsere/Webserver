@@ -1,6 +1,6 @@
 #include "../includes/config/ConfigBuilder.hpp"
 #include "../includes/config_parser/parser/UtilsConfigParser.hpp"
-#include "Server.hpp"
+#include "core/Server.hpp"
 #include <csignal>
 
 // podemos cambiar el tipo de variable a volatile sig_atomic_t para que sea más

@@ -2,23 +2,6 @@
 
 #include <string>
 
-class Client; // forward declaration (declaración adelantada) de la clase
-              // Client. Usamos esto en vez de #include "Client.hpp"
-              // sobretodo para evitar dependencias circulares
-class LocationConfig;
-
-namespace Autoindex {
-void handleDirectory(Client *client, const std::string &dirPath,
-                     const std::string &urlPath,
-                     const LocationConfig &location);
-void generateListing(Client *client, const std::string &dirPath,
-                     const std::string &urlPath,
-                     const LocationConfig &location);
-
-// Funciones helper de seguridad
-std::string escapeHtml(const std::string &input);
-std::string urlEncode(const std::string &input);
-} // namespace Autoindex
 /*
 Un namespace es simplemente una forma de agrupar funciones bajo un nombre
 propio.   Ventajas:   ✔️ Evita colisiones de nombres   No tendrás dos funciones
@@ -31,10 +14,17 @@ namespace Autoindex { ... }
 
 ✔️ No necesita objetos ni clases
     Ideal para funciones puras que no requieren estado interno.
-
-quiero me explique al detalle la funcion y su implementacion, linea por linea,
-que es todo y que hace
 */
+
+namespace Autoindex {
+// Genera el HTML para el listado de un directorio
+std::string generateListing(const std::string &dirPath,
+                            const std::string &urlPath);
+
+// Funciones helper de seguridad y utilidad
+std::string escapeHtml(const std::string &input);
+std::string urlEncode(const std::string &input);
+} // namespace Autoindex
 
 /*
 ¿Qué es el autoindex?
@@ -241,5 +231,4 @@ visualización se hace con una página HTML generada automáticamente.
 🔑 Analogía rápida
     Autoindex = un “explorador de archivos” muy básico hecho en HTML.
     No crea nada, solo muestra lo que ya está en la carpeta real del servidor.
-
 */

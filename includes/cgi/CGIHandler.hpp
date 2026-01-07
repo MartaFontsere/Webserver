@@ -1,8 +1,8 @@
 #ifndef CGIHANDLER_HPP
 #define CGIHANDLER_HPP
 
-#include "../HttpRequest.hpp"
-#include "../HttpResponse.hpp"
+#include "http/HttpRequest.hpp"
+#include "http/HttpResponse.hpp"
 #include "../config/LocationConfig.hpp"
 #include "CGIDetector.hpp"
 #include "CGIEnvironment.hpp"

@@ -1,35 +1,37 @@
 #pragma once
 
-#include "Client.hpp"
 #include "config/ServerConfig.hpp"
+#include "network/ClientConnection.hpp"
+#include "network/PollManager.hpp"
+#include "network/ServerSocket.hpp"
 #include <map>
-#include <string> //la clase usará std::string (para guardar el puerto, por ejemplo).
+#include <string>
 #include <vector>
 
 class Server {
 private:
   std::vector<ServerConfig>
-      _servConfigsList;        // lista de configuraciones de server blocks
-  std::vector<int> _serverFds; // lista de sockets del servidor
-  // Usamos typedef para evitar escribir std::vector<ServerConfig> cada vez
-  typedef std::vector<ServerConfig>
-      ConfigVector; // alias para vector de configs
-  std::map<int, ConfigVector> _configsByServerFd; // map serverFd -> configs
-  std::vector<struct pollfd>
-      _pollFds; // lista de FDs (sockets) a vigilar (server + clients)
-  std::map<int, Client *> _clientsByFd; // map fd -> client*
+      _servConfigsList; // lista de configuraciones del servidor
+  std::vector<ServerSocket *> _serverSockets; // lista de sockets
+  PollManager _pollManager;                   // poll manager
 
-  int createAndBind(int port);
-  int setNonBlocking(int fd);
+  typedef std::vector<ServerConfig>
+      ConfigVector; // alias para vector de configuraciones
+  std::map<int, ConfigVector>
+      _configsByServerFd; // mapeo de configuraciones por fd
+  std::map<int, ClientConnection *> _clientsByFd; // mapeo de clientes por fd
+
   void acceptNewClient(int serverFd);
-  void handleClientData(Client *client, size_t pollIndex);
-  void handleClientWrite(Client *client, size_t pollIndex);
-  void checkClientTimeout(Client *client, int fd, time_t now);
+  void handleClientData(ClientConnection *client, size_t pollIndex);
+  void handleClientWrite(ClientConnection *client, size_t pollIndex);
+  void checkClientTimeout(ClientConnection *client, int fd, time_t now);
   void cleanupClosedClients();
+  std::map<int, ConfigVector>
+  groupConfigsByPort(); // agrupa configuraciones por puerto
 
 public:
-  Server(const std::vector<ServerConfig> &configs);
-  ~Server();
+  Server(const std::vector<ServerConfig> &configs); // constructor
+  ~Server();                                        // destructor
 
   bool init(); // crea y prepara el socket (bind + listen + non-blocking)
   void run();
@@ -99,12 +101,12 @@ std::map<int, Client> vs std::map<int, Client*>
 
 Las dos opciones son posibles, pero cada una tiene implicaciones distintas 👇
 
-✅ Opción 1 — std::map<int, Client>
-std::map<int, Client> clients;
+✅ Opción 1 — std::map<int, ClientConnection>
+std::map<int, ClientConnection> clients;
 
 
-👉 Aquí cada Client se guarda directamente dentro del mapa, como un objeto
-completo. Ventajas:
+👉 Aquí cada ClientConnection se guarda directamente dentro del mapa, como un
+objeto completo. Ventajas:
 
 Gestión automática de memoria (no hay new ni delete).
 
@@ -118,16 +120,16 @@ inserciones/borrados.
 
 Copiar objetos Client puede ser costoso (si son grandes).
 
-✅ Opción 2 — std::map<int, Client*>
-std::map<int, Client*> clients;
+✅ Opción 2 — std::map<int, ClientConnection*>
+std::map<int, ClientConnection*> clients;
 
 
-👉 Aquí el mapa guarda punteros a objetos Client, no los objetos en sí.
+👉 Aquí el mapa guarda punteros a objetos ClientConnection, no los objetos en sí.
 
 Ventajas:
 
-Puedes crear los clientes dinámicamente (new Client(fd)) y controlar cuándo se
-destruyen.
+Puedes crear los clientes dinámicamente (new ClientConnection(fd)) y controlar
+cuándo se destruyen.
 
 El puntero siempre es estable (no cambia aunque el mapa se modifique).
 
@@ -142,16 +144,17 @@ Si olvidas liberar, generas fugas de memoria.
 
 Normalmente se usa:
 
-std::map<int, Client*> _clients;
+std::map<int, ClientConnection*> _clients;
 
 
 porque:
 
 cada cliente se asocia a un socket fd (el int),
 
-y el servidor crea un nuevo Client dinámicamente cuando llega una conexión:
+y el servidor crea un nuevo ClientConnection dinámicamente cuando llega una
+conexión:
 
-_clients[newFd] = new Client(newFd);
+_clients[newFd] = new ClientConnection(newFd);
 
 
 luego, cuando el cliente se desconecta:
