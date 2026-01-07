@@ -229,7 +229,7 @@ bool Server::init() {
 }
 
 // Agrupa las configuraciones por puerto
-std::map<int, std::vector<ServerConfig>> Server::groupConfigsByPort() {
+std::map<int, std::vector<ServerConfig> > Server::groupConfigsByPort() {
   std::map<int, ConfigVector> configsByPort;
   for (size_t i = 0; i < _servConfigsList.size(); ++i) {
     configsByPort[_servConfigsList[i].getListen()].push_back(
