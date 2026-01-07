@@ -14,7 +14,7 @@ Quiere decir que se ha quedado el socket abierto
 Para gestionarlo:
 
 - Listarlos (verás el PID): lsof -i :8080
-- Matar el proceso que esté usando el puerto: kill -9 <PID>
+- Matar el proceso que esté usando el puerto: kill -9 "PID"
                      
 
 ---------- TESTS -------------
