@@ -1,4 +1,5 @@
 #include "core/Server.hpp"
+#include <cstdio>   // para perror
 #include <cstring>  // para memset, strerror, strlen...
 #include <fcntl.h>  // para fcntl() → modo no bloqueante
 #include <iostream> // para imprimir mensajes
