@@ -1,7 +1,8 @@
 #include "network/ClientConnection.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
-#include <cstring>
+#include <cerrno> // para errno (Variable global que contiene el código del último error de una llamada al sistema), EAGAIN (Constante que indica "Resource temporarily unavailable" (común en operaciones no bloqueantes)), EWOULDBLOCK (Constante que indica "Operation would block" (común en operaciones no bloqueantes))
+#include <cstring> // para strerror (Función que devuelve una cadena descriptiva del último error de una llamada al sistema)
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
