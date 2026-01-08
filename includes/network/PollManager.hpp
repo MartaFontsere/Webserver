@@ -1,6 +1,6 @@
 #pragma once
 
-#include <map>
+#include <cstddef> // para size_t
 #include <poll.h>
 #include <vector>
 
