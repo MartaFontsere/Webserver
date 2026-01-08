@@ -27,6 +27,9 @@ public:
 
   // helpers para errores
   void setErrorResponse(int code);
+
+  // método para obtener mensaje de status
+  static std::string getHttpStatusMessage(int code);
 };
 
 /*

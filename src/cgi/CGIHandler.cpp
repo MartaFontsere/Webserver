@@ -283,8 +283,9 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
     HttpResponse response;
 
     // 1. Status
-    response.setStatus(parser.getStatusCode(),
-                       "OK"); // TODO: Reason phrase lookup?
+    response.setStatus(
+        parser.getStatusCode(),
+        HttpResponse::getHttpStatusMessage(parser.getStatusCode()));
 
     // 2. Body
     response.setBody(parser.getBody());

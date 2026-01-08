@@ -1,10 +1,67 @@
 #include "http/HttpResponse.hpp"
+#include <ctime>
 #include <sstream>
+
+// ==================== CONSTRUCTORS ====================
 
 HttpResponse::HttpResponse()
     : _statusCode(200), _statusMessage("OK"), _httpVersion("HTTP/1.1") {}
 
 HttpResponse::~HttpResponse() {}
+
+// ==================== STATIC HELPERS ====================
+
+/**
+ * @brief Generates current date-time in HTTP format (RFC 9110)
+ * Format: "Day, DD Mon YYYY HH:MM:SS GMT"
+ */
+static std::string getHttpDate() {
+  time_t currentTime;
+  time(&currentTime);
+  struct tm *timeInfo = gmtime(&currentTime);
+  char buffer[80];
+  strftime(buffer, 80, "%a, %d %b %Y %H:%M:%S GMT", timeInfo);
+  return std::string(buffer);
+}
+/*
+Esto es el header HTTP Date: que indica cuándo el servidor generó la respuesta.
+Usa gmtime (UTC/GMT) porque el RFC lo exige. El header Date: es obligatorio
+según el RFC de HTTP.
+*/
+
+/**
+ * @brief Maps HTTP status code to standard reason phrase
+ * @note Public static method - usable from other modules (e.g., CGIHandler)
+ */
+std::string HttpResponse::getHttpStatusMessage(int code) {
+  switch (code) {
+  case 200:
+    return "OK";
+  case 201:
+    return "Created";
+  case 204:
+    return "No Content";
+  case 301:
+    return "Moved Permanently";
+  case 302:
+    return "Found";
+  case 400:
+    return "Bad Request";
+  case 403:
+    return "Forbidden";
+  case 404:
+    return "Not Found";
+  case 405:
+    return "Method Not Allowed";
+  case 413:
+    return "Request Entity Too Large";
+  case 500:
+  default:
+    return "Internal Server Error";
+  }
+}
+
+// ==================== SETTERS ====================
 
 void HttpResponse::setStatus(int code, const std::string &message) {
   _statusCode = code;
@@ -24,50 +81,40 @@ void HttpResponse::setBody(const std::string &body) {
 
 int HttpResponse::getStatusCode() const { return _statusCode; }
 
+// ==================== ERROR HANDLING ====================
+
 void HttpResponse::setErrorResponse(int code) {
   _httpVersion = "HTTP/1.1";
+  _statusCode = code;
+  _statusMessage = getHttpStatusMessage(code);
 
   switch (code) {
   case 403:
-    _statusCode = 403;
-    _statusMessage = "Forbidden";
     _body = "<html><body><h1>403 Forbidden</h1></body></html>";
     break;
-
   case 404:
-    _statusCode = 404;
-    _statusMessage = "Not Found";
     _body = "<html><body><h1>404 Not Found</h1></body></html>";
     break;
-
   case 405:
-    _statusCode = 405;
-    _statusMessage = "Method Not Allowed";
     _body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
     break;
-
   case 413:
-    _statusCode = 413;
-    _statusMessage = "Request Entity Too Large";
     _body = "<html><body><h1>413 Request Entity Too Large</h1>"
             "<p>Maximum body size is 10MB</p></body></html>";
     break;
-
   case 500:
   default:
-    _statusCode = 500;
-    _statusMessage = "Internal Server Error";
     _body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
     break;
   }
 
-  // Headers necesarios mínimos
   _headers["Content-Type"] = "text/html";
-
   std::ostringstream length;
   length << _body.size();
   _headers["Content-Length"] = length.str();
 }
+
+// ==================== RESPONSE BUILDER ====================
 
 std::string HttpResponse::buildResponse() const {
   std::ostringstream oss;
@@ -75,16 +122,18 @@ std::string HttpResponse::buildResponse() const {
   // Status line
   oss << _httpVersion << " " << _statusCode << " " << _statusMessage << "\r\n";
 
-  // Headers
+  // Automatic headers (RFC-compliant)
+  oss << "Server: webserv/1.0\r\n";
+  oss << "Date: " << getHttpDate() << "\r\n";
+
+  // User-set headers
   for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
        it != _headers.end(); ++it) {
     oss << it->first << ": " << it->second << "\r\n";
   }
 
-  // Mandatory blank line
+  // Mandatory blank line + body
   oss << "\r\n";
-
-  // Body
   oss << _body;
 
   return oss.str();
@@ -173,31 +222,16 @@ std::string que luego enviarás al socket.
 */
 
 /*
-¿Qué cosas faltan o puedes mejorar más adelante?
+Estado actual de HttpResponse (8.1.26):
 
-Más adelante necesitarás:
+  ✅ Content-Length: calculado automáticamente en setBody()
+  ✅ Date: añadido automáticamente en buildResponse() (RFC 9110)
+  ✅ Server: añadido automáticamente en buildResponse()
+  ✅ Connection: keep-alive lo gestiona RequestHandler::_applyConnectionHeader()
+  ✅ Content-Type dinámico: lo gestiona StaticFileHandler (donde pertenece)
+  ✅ getHttpStatusMessage(): helper público para traducir códigos a mensajes
 
-    🔹 Ordenar headers importantes (opcional, pero recomendado)
-
-        Content-Length
-
-        Connection
-
-        Date
-
-    🔹 Incluir header Connection: keep-alive cuando corresponda
-
-        En HTTP/1.1 se supone keep-alive por defecto, pero algunos navegadores
-lo requieren explícitamente.
-
-    🔹 Añadir Date: obligatorio según RFC
-
-        Ejemplo:
-            Date: Tue, 15 Nov 1994 08:12:31 GMT
-
-    🔹 Añadir header Server: webserv/1.0
-    🔹 Añadir soporte para:
-        respuestas sin body (204, 304)
-        chunked encoding
-        content-type dinámico según archivo
+Posibles mejoras futuras (no críticas para el proyecto):
+  🔹 Chunked encoding (Transfer-Encoding: chunked) para streaming
+  🔹 Validación especial para 204/304 (no deberían tener body)
 */
