@@ -253,12 +253,26 @@ void CGIExecutor::executeChild(const std::string &executable,
   close(_pipeIn[1]);
   close(_pipeIn[0]);
   close(_pipeOut[0]);
+
+  // Change to script directory (subject requirement: CGI should run in correct
+  // directory for relative path file access)
+  std::string scriptName = scriptPath; // Default: use full path
+  size_t lastSlash = scriptPath.find_last_of('/');
+  if (lastSlash != std::string::npos) {
+    std::string scriptDir = scriptPath.substr(0, lastSlash);
+    if (!scriptDir.empty()) {
+      chdir(scriptDir.c_str());
+      // After chdir, use only the filename (not full path)
+      scriptName = scriptPath.substr(lastSlash + 1);
+    }
+  }
+
   // Prepare argv for execve
   char **argv = new char *[3];
   argv[0] = new char[executable.size() + 1];
   stringToCString(executable, argv[0]);
-  argv[1] = new char[scriptPath.size() + 1];
-  stringToCString(scriptPath, argv[1]);
+  argv[1] = new char[scriptName.size() + 1];
+  stringToCString(scriptName, argv[1]);
   argv[2] = NULL;
   // Replace process image with CGI interpreter
   execve(argv[0], argv, envp);

@@ -30,3 +30,7 @@ curl -s -I http://localhost:8080/cgi-bin/header.py | grep -q "X-Custom-Header: M
 # 6. Script inexistente
 echo -n "6. Script inexistente (debe dar 404)... "
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/cgi-bin/no_existe.py | grep -q "404" && echo -e "${GREEN}✅ OK${NC}" || echo -e "${RED}❌ FAIL${NC}"
+
+# 7. chdir() test - Script que lee archivo con path relativo
+echo -n "7. chdir() - Acceso a archivo relativo... "
+curl -s http://localhost:8080/cgi-bin/chdir_test.py | grep -q "SUCCESS: chdir() is working!" && echo -e "${GREEN}✅ OK${NC}" || echo -e "${RED}❌ FAIL${NC}"
