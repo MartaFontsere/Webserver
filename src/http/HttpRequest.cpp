@@ -1,5 +1,6 @@
 #include "http/HttpRequest.hpp"
-#include <cstring> // para atoi
+#include <cstdlib> // para atoi
+#include <cstring> // para strcasecmp, memset, etc.
 #include <iostream>
 #include <sstream>
 #include <strings.h> // para strcasecmp
@@ -155,8 +156,8 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest) {
     // Limpieza de espacios y '\r'
     if (!val.empty() && val[0] == ' ')
       val.erase(0, 1);
-    if (!val.empty() && val.back() == '\r')
-      val.pop_back();
+    if (!val.empty() && val[val.length() - 1] == '\r')
+      val.resize(val.length() - 1); // Elimina el '\r' al final
 
     _headers[key] = val;
 
@@ -449,8 +450,8 @@ std::string val = line.substr(pos + 1);
 Limpiar espacios y caracteres sobrantes
 if (!val.empty() && val[0] == ' ')
     val.erase(0, 1);
-if (!val.empty() && val.back() == '\r')
-    val.pop_back();
+if (!val.empty() && val[val.length() - 1] == '\r')
+    val.resize(val.length() - 1);
 
 Los valores pueden venir con espacios o con un \r al final, así que los
 quitamos.
@@ -461,14 +462,15 @@ val.erase(0, 1)
     Se usa aquí para eliminar el espacio que suele ir tras los dos puntos : en
 las cabeceras.
 
-val.pop_back()
-    Elimina el último carácter de la cadena (el “último elemento del string”).
+val.resize(val.length() - 1)
+    Elimina el último carácter de la cadena.
     Se usa para eliminar el '\r' (retorno de carro) que queda al final de cada
 línea HTTP (porque las líneas acaban en \r\n).
 
 y !val.empty()
     Antes de tocar la cadena, siempre se comprueba que no esté vacía, para
-evitar errores o undefined behavior si se accede a val[0] o val.back().
+evitar errores o undefined behavior si se accede a val[0] o val[val.length() -
+1].
 
 9. Guardar en el mapa de cabeceras
 _headers[key] = val;
