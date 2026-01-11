@@ -79,22 +79,21 @@
  */
 
 /*
-Cambio de body size de 1048576 (1MB) a -1 (no limit). El valor -1 es un
-valor centinela, es decir un valor especial que no es válido como valor real
-(no tiene sentido como tamaño del body), y que significa "esto no ha sido
-configurado".
+Cambio de body size de -1 a 1048576 (1MB). Este es el valor por defecto igual
+que nginx. Si el usuario quiere otro límite, lo define explícitamente en la
+configuración con client_max_body_size.
 
-De este modo, podemos distinguir el origen del body size, es decir, si el
-usuario lo definió explicitamente o si simplemente es el valor por defecto
-del constructor (esta location no define el client max body size). esto
-desbloquea la herencia real.
-
-Si usamos 1048576 como default, no podemos implementar correctamente la
-herencia, overrides y la lógica de prioridad.
+De este modo:
+- Si config tiene client_max_body_size → usa ese valor
+- Si no está definido en location → hereda del server
+- Si tampoco está en server → usa este default (1MB)
 */
 
+// Default: 1MB (igual que nginx)
+static const size_t DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
+
 LocationConfig::LocationConfig()
-    : _returnCode(0), _maxBodySize(static_cast<size_t>(-1)), _alias(""),
+    : _returnCode(0), _maxBodySize(DEFAULT_MAX_BODY_SIZE), _alias(""),
       _autoindex(false) {}
 
 /**

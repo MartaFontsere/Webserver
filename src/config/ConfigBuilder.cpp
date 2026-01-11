@@ -451,7 +451,13 @@ void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock,
     if (loc.getIndex().empty()) {
       loc.setIndex(server.getIndex());
     }
-    if (loc.getMaxBodySize() == static_cast<size_t>(-1)) {
+    // Herencia de client_max_body_size:
+    // Si location no definió explícitamente (usa el default 1MB) y el server
+    // tiene un límite distinto, hereda del server. Esto permite que el server
+    // defina un límite global que todas las locations heredan.
+    static const size_t DEFAULT_BODY_SIZE = 1 * 1024 * 1024;
+    if (loc.getMaxBodySize() == DEFAULT_BODY_SIZE &&
+        server.getClientMaxBodySize() != 0) {
       loc.setMaxBodySize(server.getClientMaxBodySize());
     }
 

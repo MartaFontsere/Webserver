@@ -65,9 +65,9 @@ HttpResponse RequestHandler::handleRequest(
     return response;
   }
 
-  // 4. Check Client Max Body Size
-  if (location.getMaxBodySize() != static_cast<size_t>(-1) &&
-      request.getBody().size() > location.getMaxBodySize()) {
+  // 4. Check Client Max Body Size (default: 1MB, configured via
+  // client_max_body_size en el config)
+  if (request.getBody().size() > location.getMaxBodySize()) {
     _sendError(413, response, *matchedConfig, request, &location);
     return response;
   }

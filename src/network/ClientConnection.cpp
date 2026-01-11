@@ -73,13 +73,10 @@ bool ClientConnection::readRequest() {
   int bytesRead = recv(_clientFd, buffer, sizeof(buffer), 0);
 
   if (bytesRead < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      // Si devuelve esto, no significa error, no hay datos ahora mismo (socket
-      // non-blocking). Por eso no tenemos que cerrar el socket en este caso.
-      return true;
-    }
+    // Si poll() indicó que hay datos con POLLIN y recv() falla, es un error
+    // real (No comprobamos errno por requisito del subject)
     std::cerr << "[Error] Fallo al leer del cliente con recv() (fd: "
-              << _clientFd << "): " << strerror(errno) << "\n";
+              << _clientFd << ")\n";
     _closed = true;
     return false;
   } else if (bytesRead == 0) {
@@ -214,14 +211,10 @@ bool ClientConnection::flushWrite() {
     }
     return true;
   } else if (s == -1) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      // El kernel nos dice: "Vuelve más tarde, ahora mismo no puedo aceptar más
-      // bytes". No es un error, simplemente el buffer de salida está lleno.
-      return true;
-    }
-    // Error serio: marca cerrado para cleanup
-    std::cerr << "[Error] send() fallo (fd: " << _clientFd
-              << "): " << strerror(errno) << "\n";
+    // Si poll() indicó que podemos escribir con POLLOUT y send() falla, es un
+    // error real (No comprobamos errno por requisito del subject)
+    std::cerr << "[Error] Fallo al enviar con send() (fd: " << _clientFd
+              << ")\n";
     _closed = true;
     return false;
   } else { // s == 0

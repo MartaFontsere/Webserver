@@ -48,8 +48,6 @@ private:
 
   // control del body
   int _contentLength;
-  // Constante
-  static const size_t MAX_BODY_SIZE;
 
   // parsing helpers
   bool parseHeaders(const std::string &rawRequest);

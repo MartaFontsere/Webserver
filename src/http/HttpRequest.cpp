@@ -5,21 +5,10 @@
 #include <sstream>
 #include <strings.h> // para strcasecmp
 
-const size_t HttpRequest::MAX_BODY_SIZE = 10 * 1024 * 1024;
 /*
-Las constantes compartidas deben ser miembros de la clase, no locales de
-función, pero su definición va en el .cpp por Mejor encapsulamiento: Si cambias
-el valor, solo recompilas HttpRequest.cpp, no todos los archivos que incluyan el
-header Es más fácil de configurar (cuando luego tenga el archivo de
-configuración) const size_t HttpRequest::MAX_BODY_SIZE =
-Config::getMaxBodySize();
-
-POR QUÉ MIEMBRO DE CLASE?
-    UNICA FUENTE DE VERDAD: Un solo lugar para cambiar el valor
-    COMPARTIDA: Todos los métodos de la clase la pueden usar
-    FÁCIL DE ENCONTRAR: Está declarada en el .hpp de la clase
-    CONSISTENTE: Mismo límite en todo el parsing del body
-
+El límite de tamaño de body ahora viene del config (client_max_body_size)
+y se verifica en RequestHandler, no aquí. Esto permite que cada location
+tenga su propio límite configurado.
 */
 
 HttpRequest::HttpRequest()
@@ -550,28 +539,19 @@ bool HttpRequest::parseBody(const std::string &rawRequest) {
     return false; // No se han recibido todos los headers aún
   bodyStart += 4; // Saltar "\r\n\r\n" (4 caracteres)
 
-  // 🛡️ SEGURIDAD: Validar tamaño máximo del body (10MB por ejemplo)
-  size_t contentLen = static_cast<size_t>(_contentLength);
-  if (contentLen > MAX_BODY_SIZE) {
-    _bodyTooLarge = true;
-    // ✅ IMPORTANTE: Devolvemos TRUE para marcar request "completa"
-    // pero con error, así el cliente recibe respuesta 413
-    return true;
-  }
+  // Nota: El límite de tamaño del body ahora se verifica en RequestHandler
+  // usando el valor de client_max_body_size del config
+  // (location.getMaxBodySize())
 
   if (_isChunked) {
-    // ⚠️ Chunked encoding: el cliente envía el body en trozos
+    // Chunked encoding: el cliente envía el body en trozos
     // Ejemplo: "5\r\nhello\r\n0\r\n\r\n"
     // Esto es común en POST grandes
     // TODO: parsear chunked (más adelante)
     // de momento podemos marcarlo como no soportado
-
-    // Para que compile y funcione sin chunked, consideramos que chunked ya no
-    // está presente. Devolver true para no bloquear (o false si quieres forzar
-    // error).
-
-    std::cerr << "[Warning] Chunked body aún no implementado para POST\n";
-    return true;
+    // Extraer la parte del body (después de los headers)
+    std::string chunkedData = rawRequest.substr(bodyStart);
+    return parseChunkedBody(chunkedData);
   }
 
   // Si hay Content-Length, sabemos exactamente cuántos bytes leer. Esperamos a
@@ -666,4 +646,74 @@ std::string HttpRequest::getOneHeader(const std::string &key) const {
     return it->second;
   }
   return "";
+}
+
+/**
+ * @brief Parsea un body en formato chunked y lo convierte en body normal.
+ *
+ * Formato chunked:
+ *   <tamaño en hex>\r\n
+ *   <datos>\r\n
+ *   ...
+ *   0\r\n
+ *   \r\n
+ *
+ * @param chunkedData Los datos raw después de los headers
+ * @return true si el chunked está completo, false si faltan datos
+ */
+bool HttpRequest::parseChunkedBody(const std::string &chunkedData) {
+  std::string result;
+  size_t pos = 0;
+
+  while (pos < chunkedData.size()) {
+    // 1. Buscar el fin de la línea del tamaño (\r\n)
+    size_t lineEnd = chunkedData.find("\r\n", pos);
+    if (lineEnd == std::string::npos) {
+      return false; // Datos incompletos, esperar más
+    }
+
+    // 2. Extraer el tamaño del chunk (hexadecimal)
+    std::string chunkSizeStr = chunkedData.substr(pos, lineEnd - pos);
+
+    // Ignorar extensiones de chunk (después de ';') si las hubiera
+    size_t semicolon = chunkSizeStr.find(';');
+    if (semicolon != std::string::npos) {
+      chunkSizeStr = chunkSizeStr.substr(0, semicolon);
+    }
+
+    // Convertir hex a entero
+    char *endPtr;
+    long chunkSize = std::strtol(chunkSizeStr.c_str(), &endPtr, 16);
+
+    if (endPtr == chunkSizeStr.c_str() || chunkSize < 0) {
+      // Error de parseo del tamaño
+      std::cerr << "[Error] Chunked: tamaño inválido '" << chunkSizeStr
+                << "'\n";
+      return false;
+    }
+
+    // 3. Es el chunk final? Chunk de tamaño 0 = fin del body
+    if (chunkSize == 0) {
+      _body = result; // guardamos el body completo acumulado
+      return true;
+    }
+
+    // 4. Verificar que tenemos suficientes datos
+    size_t dataStart = lineEnd + 2; // saltamos el \r\n
+    size_t chunkLen = static_cast<size_t>(chunkSize);
+
+    if (dataStart + chunkLen + 2 > chunkedData.size()) {
+      return false; // No tenemos el chunk completo, esperar más datos
+    }
+
+    // 5. Extraer los datos del chunk
+    result.append(chunkedData, dataStart, chunkLen);
+
+    // 7. Avanzar al siguiente chunk (+2 para saltar \r\n después de los datos)
+    pos = dataStart + chunkLen +
+          2; // pos ahora apunta al inicio del siguiente chunk
+  }
+
+  // Si llegamos aquí, no hemos encontrado el chunk final (0\r\n)
+  return false;
 }
