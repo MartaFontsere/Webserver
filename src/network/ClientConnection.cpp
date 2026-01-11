@@ -100,14 +100,8 @@ bool ClientConnection::readRequest() {
   std::cout << "[Debug] Parseando request del cliente fd " << _clientFd
             << std::endl;
   if (_httpRequest.parse(_rawRequest)) {
-    // ✅ Verificar SI el parse fue exitoso PERO con error de tamaño (413)
-    if (_httpRequest.isBodyTooLarge()) {
-      _httpResponse.setErrorResponse(413);
-      // applyConnectionHeader(); // TODO: Revisar si ClientConnection debe
-      // manejar esto o RequestHandler
-      _requestComplete = true; // Marcar como completa PARA RESPONDER el error
-      return true;             // No es error fatal, hay respuesta que enviar
-    }
+    // Nota: El límite de body size ahora se verifica en RequestHandler
+    // usando location.getMaxBodySize() del config
     std::cout << "✅ Request completa (client fd: " << _clientFd << ")\n";
     _requestComplete = true;
     _rawRequest.clear(); // Limpiamos el buffer raw para la próxima request

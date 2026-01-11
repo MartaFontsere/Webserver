@@ -13,7 +13,7 @@ tenga su propio límite configurado.
 
 HttpRequest::HttpRequest()
     : _headersComplete(false), _isChunked(false), _keepAlive(false),
-      _parsedBytes(0), _bodyTooLarge(false), _contentLength(-1) {}
+      _parsedBytes(0), _contentLength(-1) {}
 
 /**
  * @brief Función principal de parseo. Es "progresiva" y se llama cada vez que
@@ -545,11 +545,9 @@ bool HttpRequest::parseBody(const std::string &rawRequest) {
 
   if (_isChunked) {
     // Chunked encoding: el cliente envía el body en trozos
-    // Ejemplo: "5\r\nhello\r\n0\r\n\r\n"
+    // Formato: "5\r\nhello\r\n0\r\n\r\n" (tamaño hex + datos + chunk final 0)
     // Esto es común en POST grandes
-    // TODO: parsear chunked (más adelante)
-    // de momento podemos marcarlo como no soportado
-    // Extraer la parte del body (después de los headers)
+
     std::string chunkedData = rawRequest.substr(bodyStart);
     return parseChunkedBody(chunkedData);
   }
@@ -612,8 +610,6 @@ const std::string &HttpRequest::getBody() const { return _body; }
 const std::map<std::string, std::string> &HttpRequest::getHeaders() const {
   return _headers;
 }
-
-bool HttpRequest::isBodyTooLarge() const { return _bodyTooLarge; }
 
 bool HttpRequest::headersComplete() const { return _headersComplete; }
 /*

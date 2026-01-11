@@ -19,8 +19,6 @@ public:
   std::string getOneHeader(const std::string &key) const;
   int getParsedBytes() const;
 
-  bool isBodyTooLarge() const;
-
   bool headersComplete() const;
   bool isChunked() const;
   bool isKeepAlive() const;
@@ -35,8 +33,6 @@ private:
   bool _isChunked;
   bool _keepAlive;  // true → mantener abierta
   int _parsedBytes; // número de bytes consumidos del rawRequest por el parse
-                    // exitoso
-  bool _bodyTooLarge;
 
   // elementos del request
   std::string _method;
