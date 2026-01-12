@@ -1,9 +1,12 @@
 #include "core/Server.hpp"
-#include <cstdio>   // para perror
-#include <cstring>  // para memset, strerror, strlen...
-#include <fcntl.h>  // para fcntl() → modo no bloqueante
-#include <iostream> // para imprimir mensajes
-#include <unistd.h> // para close(), read, write
+#include "cgi/CGIHandler.hpp" // For buildResponseFromCGIOutput
+#include <cctype>             // para perror
+#include <cstdio>             // para perror
+#include <cstring>            // para memset, strerror, strlen...
+#include <fcntl.h>            // para fcntl() → modo no bloqueante
+#include <iostream>           // para imprimir mensajes
+#include <sys/wait.h>         // para waitpid, WNOHANG
+#include <unistd.h>           // para close(), read, write
 // TODO: CUAL DE LAS DOS? #include <netinet/in.h> // sockaddr_in, htons, etc.
 #include <algorithm>
 #include <arpa/inet.h> // para sockaddr_in, htons, INADDR_ANY
@@ -646,24 +649,44 @@ void Server::run() {
     // actualizamos el tiempo actual
     time_t now = time(NULL);
 
-    // Aceptar nuevas conexiones entrantes - Revisamos los sockets servidores
-    // (sabaemos cuales son de servidor, porque los tenemos guardados en
-    // _serverSockets, por lo que con el size sabemos cuantos son y donde parar,
-    // y el resto son clientes)
+    // El vector de poll tiene una estructura fija al inicio y dinámica después:
+    // 1. Los primeros FDs ([0] a [_serverSockets.size() - 1]) son siempre los
+    //    sockets servidores que escuchan nuevas conexiones.
+    // 2. A partir de ahí, el resto de FDs son dinámicos y pueden ser:
+    //    - Sockets de clientes conectados.
+    //    - Pipes de salida de procesos CGI en ejecución.
 
     // _serverSockets.size() es el número de sockets servidores
     // _pollManager.getSize() es el número total de fds
 
+    // FASE 1: Revisar sockets servidores para aceptar nuevas conexiones
     for (size_t i = 0; i < _serverSockets.size(); ++i) {
-      if (_pollManager.getRevents(i) & POLLIN) {
+      short revents = _pollManager.getRevents(i);
+      if (revents & POLLIN) {
         acceptNewClient(_pollManager.getFd(i));
       }
     }
 
-    // Procesar clientes existentes - Recorremos el resto revisando todos los
-    // clientes
+    // FASE 2: Procesar clientes existentes - Recorremos el resto revisando
+    // todos los clientes Y los pipes CGI
     for (size_t i = _serverSockets.size(); i < _pollManager.getSize();) {
       int fd = _pollManager.getFd(i);
+
+      // ====== CGI PIPE CHECK ======
+      // Si este FD es un pipe CGI, manejarlo de forma especial
+      std::map<int, ClientConnection *>::iterator cgiIt =
+          _cgiPipeToClient.find(fd);
+      if (cgiIt != _cgiPipeToClient.end()) {
+        ClientConnection *client = cgiIt->second;
+        short revents = _pollManager.getRevents(i);
+        if (revents & (POLLIN | POLLHUP | POLLERR)) {
+          handleCGIPipe(fd, client);
+        }
+        ++i;
+        continue; // No procesar como socket de cliente normal
+      }
+
+      // ====== REGULAR CLIENT SOCKET ======
       ClientConnection *client = _clientsByFd[fd];
 
       // 🧹 Si no hay cliente asociado, limpiamos el fd del poll
@@ -703,6 +726,16 @@ void Server::run() {
 
       // Solo incrementar si no borramos el elemento
       if (i < _pollManager.getSize() && _pollManager.getFd(i) == fd) {
+        // Si el cliente tiene datos pendientes en el buffer (Pipelining),
+        // no incrementamos 'i' para volver a procesarlo en la misma vuelta
+        // o al menos asegurar que se revise.
+        if (client && !client->isClosed() &&
+            client->isRequestComplete() == false &&
+            client->hasPendingWrite() == false) {
+          // Si acabamos de terminar una request y queda data, intentamos
+          // procesar la siguiente inmediatamente
+          // (O simplemente dejamos que el bucle vuelva a pasar por aquí)
+        }
         ++i;
       }
     }
@@ -1345,6 +1378,16 @@ void Server::handleClientData(ClientConnection *client, size_t pollIndex) {
   if (client->isRequestComplete()) {
     if (!client->processRequest() || !client->sendResponse())
       return; // Error -> ya marcó closed, cleanup lo limpiará después
+
+    // === CGI ASYNC REGISTRATION ===
+    if (client->getCGIState() == CGI_RUNNING) {
+      int pipeFd = client->getCGIPipeFd();
+      if (pipeFd != -1 &&
+          _cgiPipeToClient.find(pipeFd) == _cgiPipeToClient.end()) {
+        _pollManager.addFd(pipeFd, POLLIN);
+        _cgiPipeToClient[pipeFd] = client;
+      }
+    }
   }
 
   // 3. Si queda algo por enviar, activar POLLOUT para que handleClientWrite
@@ -1446,6 +1489,16 @@ void Server::cleanupClosedClients() {
 
     if (client->isClosed()) {
       std::cout << "Cerrando conexión fd: " << fd << std::endl;
+
+      // Cleanup any associated CGI pipe
+      int pipeFd = client->getCGIPipeFd();
+      if (pipeFd != -1) {
+        std::cout << "[Server] Cleaning up CGI pipe " << pipeFd
+                  << " for client fd " << fd << std::endl;
+        _pollManager.removeFd(pipeFd);
+        _cgiPipeToClient.erase(pipeFd);
+      }
+
       _pollManager.removeFd(fd); // Eliminar el descriptor de archivo
       delete client;             // Liberar la memoria del cliente
       _clientsByFd.erase(it++);  // Eliminar el cliente de la lista
@@ -1453,4 +1506,47 @@ void Server::cleanupClosedClients() {
       ++it;
     }
   }
+}
+
+/**
+ * @brief Handles CGI pipe data when poll() detects POLLIN on a CGI pipe
+ *
+ * This is called when there's data to read from a running CGI process.
+ * Reads available data, handles EOF (CGI done), and triggers response building.
+ */
+void Server::handleCGIPipe(int pipeFd, ClientConnection *client) {
+  if (!client || client->getCGIState() != CGI_RUNNING) {
+    return;
+  }
+
+  // Read available data from CGI pipe (non-blocking)
+  bool readOk = client->readCGIOutput();
+
+  // Check if CGI is done (EOF reached)
+  if (client->getCGIState() == CGI_DONE) {
+    // Reap zombie process with WNOHANG
+    pid_t pid = client->getCGIPid();
+    if (pid > 0) {
+      int status;
+      waitpid(pid, &status, WNOHANG);
+    }
+
+    // Remove CGI pipe from poll and tracking map
+    _pollManager.removeFd(pipeFd);
+    _cgiPipeToClient.erase(pipeFd);
+
+    // Build HTTP response from CGI output
+    CGIHandler cgiHandler;
+    HttpResponse response =
+        cgiHandler.buildResponseFromCGIOutput(client->getCGIBuffer());
+
+    // Set the response in the client's write buffer
+    std::string responseStr = response.buildResponse();
+    client->setCGIResponse(responseStr);
+
+    // Activate POLLOUT to send response
+    int clientFd = client->getFd();
+    _pollManager.updateEvents(clientFd, POLLIN | POLLOUT);
+  }
+  (void)readOk; // Suppress unused warning for now
 }

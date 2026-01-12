@@ -372,3 +372,93 @@ std::string CGIExecutor::readChildOutput() {
 
   return result;
 }
+
+/**
+ * @brief Sets a file descriptor to non-blocking mode
+ *
+ * Uses fcntl() with O_NONBLOCK flag as permitted by the subject for macOS
+ * compatibility and also works on Linux.
+ *
+ * @param fd File descriptor to make non-blocking
+ */
+void CGIExecutor::setNonBlocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1) {
+    throw std::runtime_error("fcntl F_GETFL failed");
+  }
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    throw std::runtime_error("fcntl F_SETFL O_NONBLOCK failed");
+  }
+}
+
+/**
+ * @brief Async version of execute - forks CGI but doesn't wait for completion
+ *
+ * This method is designed for non-blocking CGI execution:
+ * 1. Creates pipes
+ * 2. Forks child process
+ * 3. Writes request body to child (blocking, but typically fast)
+ * 4. Makes output pipe non-blocking
+ * 5. Returns pipe FD and PID to caller
+ *
+ * The caller is responsible for:
+ * - Adding the pipe FD to poll()
+ * - Reading output when POLLIN is signaled
+ * - Calling waitpid(WNOHANG) to reap zombie process
+ *
+ * @return CGIAsyncResult with pipe FD and child PID
+ */
+CGIAsyncResult CGIExecutor::executeAsync(const std::string &executable,
+                                         const std::string &scriptPath,
+                                         char **envp,
+                                         const std::string &requestBody) {
+  CGIAsyncResult result;
+  result.pipeFd = -1;
+  result.childPid = 0;
+  result.success = false;
+
+  try {
+    setupPipes();
+
+    _childPid = fork();
+
+    if (_childPid < 0) {
+      // Fork failed
+      close(_pipeIn[0]);
+      close(_pipeIn[1]);
+      close(_pipeOut[0]);
+      close(_pipeOut[1]);
+      return result;
+    }
+
+    if (_childPid == 0) {
+      // Child process
+      executeChild(executable, scriptPath, envp);
+      // Never returns
+    }
+
+    // Parent process
+    close(_pipeIn[0]);  // Parent doesn't read from stdin pipe
+    close(_pipeOut[1]); // Parent doesn't write to stdout pipe
+
+    // Write request body to child (this is blocking but typically fast)
+    writeToChild(requestBody);
+    close(_pipeIn[1]); // Signal EOF to child
+
+    // Make output pipe non-blocking for poll() integration
+    setNonBlocking(_pipeOut[0]);
+
+    result.pipeFd = _pipeOut[0];
+    result.childPid = _childPid;
+    result.success = true;
+
+    std::cout << "[CGI] Async fork successful (pid: " << _childPid
+              << ", pipe: " << _pipeOut[0] << ")\n";
+
+  } catch (const std::exception &e) {
+    std::cerr << "[CGI] Async execute error: " << e.what() << "\n";
+    result.success = false;
+  }
+
+  return result;
+}

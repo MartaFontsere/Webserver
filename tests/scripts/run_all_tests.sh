@@ -14,6 +14,8 @@ echo
 
 "$BASE_DIR"/test_cgi.sh
 echo
+"$BASE_DIR"/test_non_blocking_cgi.sh
+echo
 "$BASE_DIR"/test_limits.sh
 echo
 "$BASE_DIR"/test_redirects.sh

@@ -96,8 +96,10 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest) {
       std::string::npos) // significa “no encontrado” o “posición inválida”
     return false;        // aún no ha llegado toda la cabecera
 
-  _headersComplete = true; // Si llega hasta ahquí, significa que ha encontrado
-                           // el final, ha recibido todas las cabeceras
+  _headersComplete =
+      true; // Si llega hasta aquí, significa que ha encontrado
+            // el final, ha recibido todas las cabeceras (headers, no el body)
+  _parsedBytes = headerEnd + 4; // Headers + \r\n\r\n
   // A partir de ahora, se puede intentar parsear (interpretar) lo que se ha
   // recibido.
 
@@ -562,6 +564,7 @@ bool HttpRequest::parseBody(const std::string &rawRequest) {
   // Si llegamos aquí, ya tenemos todo
   // Guardamos el cuerpo completo
   _body = rawRequest.substr(bodyStart, _contentLength);
+  _parsedBytes += _contentLength;
   return true;
 }
 
@@ -624,6 +627,8 @@ const std::string &HttpRequest::getSpecificHeader(const std::string &key) const
 bool HttpRequest::isChunked() const { return _isChunked; }
 
 int HttpRequest::getContentLength() const { return _contentLength; }
+
+int HttpRequest::getParsedBytes() const { return _parsedBytes; }
 
 void HttpRequest::reset() {
   _headersComplete = false;
@@ -690,7 +695,8 @@ bool HttpRequest::parseChunkedBody(const std::string &chunkedData) {
 
     // 3. Es el chunk final? Chunk de tamaño 0 = fin del body
     if (chunkSize == 0) {
-      _body = result; // guardamos el body completo acumulado
+      _body = result;             // guardamos el body completo acumulado
+      _parsedBytes = lineEnd + 4; // pos + 0\r\n\r\n
       return true;
     }
 

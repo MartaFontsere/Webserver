@@ -1,6 +1,7 @@
 #include "http/RequestHandler.hpp"
 #include "cgi/CGIDetector.hpp"
 #include "cgi/CGIHandler.hpp"
+#include "network/ClientConnection.hpp" // For CGI async
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -20,9 +21,10 @@ RequestHandler::RequestHandler() {}
 
 RequestHandler::~RequestHandler() {}
 
-HttpResponse RequestHandler::handleRequest(
-    const HttpRequest &request,
-    const std::vector<ServerConfig> &candidateConfigs) {
+HttpResponse
+RequestHandler::handleRequest(const HttpRequest &request,
+                              const std::vector<ServerConfig> &candidateConfigs,
+                              ClientConnection *client) {
   // 0. Reseteamos cualquier HttpResponse previa (estado limpio) -> Limpia
   // HttpResponse previo
   HttpResponse response;
@@ -103,6 +105,28 @@ HttpResponse RequestHandler::handleRequest(
     int serverPort =
         matchedConfig->getListen(); // obtenemos el puerto del server
 
+    // === CGI ASYNC PATH ===
+    if (client) {
+      // Async execution: fork now, read later via poll()
+      CGIAsyncResult asyncResult =
+          cgiHandler.handleAsync(request, location, serverName, serverPort);
+
+      if (asyncResult.success) {
+        // Start tracking CGI in client
+        client->startCGI(asyncResult.pipeFd, asyncResult.childPid);
+        // Mark response as pending - will be completed by Server::handleCGIPipe
+        response.setCGIPending(true);
+        return response;
+      } else {
+        // If async failed, return 500 Internal Server Error
+        std::cerr << "[Error] CGI async execution failed" << std::endl;
+        _sendError(500, response, *matchedConfig, request, &location);
+        _applyConnectionHeader(request, response);
+        return response;
+      }
+    }
+
+    // Fallback: sync execution (when client is NULL, e.g. internal tests)
     response = cgiHandler.handle(request, location, serverName,
                                  serverPort); // Ejecutamos el CGI usando las
     // reglas de esta location

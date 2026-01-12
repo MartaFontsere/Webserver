@@ -11,6 +11,7 @@ private:
 
   std::map<std::string, std::string> _headers;
   std::string _body;
+  bool _cgiPending; // True when CGI async is in progress
 
 public:
   HttpResponse();
@@ -21,6 +22,10 @@ public:
   void setHeader(const std::string &key, const std::string &value);
   void setBody(const std::string &body);
   int getStatusCode() const;
+
+  // CGI async state
+  void setCGIPending(bool pending);
+  bool isCGIPending() const;
 
   // ensamblar respuesta final
   std::string buildResponse() const; // → devuelve el string final

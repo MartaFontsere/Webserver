@@ -33,7 +33,8 @@ ClientConnection::ClientConnection(
     const std::vector<ServerConfig> &servCandidateConfigs)
     : _clientFd(fd), _addr(addr), _closed(false), _rawRequest(""),
       _writeBuffer(""), _writeOffset(0), _lastActivity(time(NULL)),
-      _requestComplete(false), _servCandidateConfigs(servCandidateConfigs) {
+      _requestComplete(false), _servCandidateConfigs(servCandidateConfigs),
+      _cgiState(CGI_NONE), _cgiPipeFd(-1), _cgiPid(0) {
   /*
   ¿Por qué ahora recibe configs?
     Porque recuerda el flujo real:
@@ -104,12 +105,40 @@ bool ClientConnection::readRequest() {
     // usando location.getMaxBodySize() del config
     std::cout << "✅ Request completa (client fd: " << _clientFd << ")\n";
     _requestComplete = true;
-    _rawRequest.clear(); // Limpiamos el buffer raw para la próxima request
+
+    // Soporte para Pipelining: eliminamos solo la parte procesada
+    int parsedBytes = _httpRequest.getParsedBytes();
+    if (parsedBytes > 0 && (size_t)parsedBytes <= _rawRequest.size()) {
+      _rawRequest.erase(0, parsedBytes);
+      std::cout << "[Debug] Pipelining: erased " << parsedBytes
+                << " bytes. Remaining in buffer: " << _rawRequest.size()
+                << std::endl;
+    } else {
+      _rawRequest.clear();
+    }
+  } else if (_httpRequest.headersComplete()) {
+    // EARLY BODY SIZE CHECK: Si los headers están listos, ya podemos saber
+    // el Content-Length. Si es mayor que el máximo permitido, no seguimos
+    // leyendo el cuerpo.
+    // Nota: Usamos un valor por defecto conservador (1MB) si no tenemos
+    // acceso fácil a la config específica aquí, o dejamos que RequestHandler
+    // lo gestione, pero marcamos como completo para que processRequest actúe.
+    if (_httpRequest.getContentLength() > 0) {
+      // Buscamos el límite en la primera config candidata (como fallback)
+      size_t maxBody = 1024 * 1024; // 1MB default
+      if (!_servCandidateConfigs.empty()) {
+        // Esto es aproximado, RequestHandler hará el check exacto por location
+        maxBody = _servCandidateConfigs[0].getClientMaxBodySize();
+      }
+
+      if ((size_t)_httpRequest.getContentLength() > maxBody) {
+        std::cout << "⚠️ Body too large (" << _httpRequest.getContentLength()
+                  << " > " << maxBody << "). Stopping read.\n";
+        _requestComplete =
+            true; // Forzamos fin para que processRequest de el 413
+      }
+    }
   }
-  // TODO: IMPORTANTEEEEEEE!!!!
-  // Nota: más adelante, si quieres soportar pipelining, cambia esto por
-  // _rawRequest.erase(0, parsedBytes) y haz que HttpRequest devuelva
-  // parsedBytes.
   return true;
 }
 
@@ -117,10 +146,25 @@ bool ClientConnection::processRequest() {
   if (!_requestComplete)
     return true;
 
-  _httpResponse =
-      _requestHandler.handleRequest(_httpRequest, _servCandidateConfigs);
+  // Guard: If CGI is already running or done (waiting to be sent), don't
+  // process again
+  if (_cgiState != CGI_NONE)
+    return true;
 
-  // Prepare write buffer
+  // Pass 'this' to handleRequest to enable async CGI path
+  _httpResponse =
+      _requestHandler.handleRequest(_httpRequest, _servCandidateConfigs, this);
+
+  // If CGI is pending, we don't prepare the write buffer yet.
+  // The response will be built and set via setCGIResponse() when the CGI
+  // finishes.
+  if (_httpResponse.isCGIPending()) {
+    std::cout << "[ClientConnection] CGI is pending for fd: " << _clientFd
+              << std::endl;
+    return true;
+  }
+
+  // Prepare write buffer for normal (non-CGI or sync CGI) responses
   _writeBuffer = _httpResponse.buildResponse();
   _writeOffset = 0;
 
@@ -245,7 +289,85 @@ void ClientConnection::resetForNextRequest() {
   */
   _httpRequest.reset();
   _requestComplete = false;
-  _rawRequest.clear();
+  // _rawRequest.clear(); // COMENTADO: No limpiar para soportar Pipelining
+  std::cout << "[Debug] resetForNextRequest: rawRequest size remaining: "
+            << _rawRequest.size() << std::endl;
   _writeBuffer.clear();
+  _writeOffset = 0;
+  // Reset CGI state
+  _cgiState = CGI_NONE;
+  if (_cgiPipeFd != -1) {
+    close(_cgiPipeFd);
+    _cgiPipeFd = -1;
+  }
+  _cgiPid = 0;
+  _cgiBuffer.clear();
+}
+
+// ====== CGI Non-blocking Methods ======
+
+CGIState ClientConnection::getCGIState() const { return _cgiState; }
+
+int ClientConnection::getCGIPipeFd() const { return _cgiPipeFd; }
+
+pid_t ClientConnection::getCGIPid() const { return _cgiPid; }
+
+const std::string &ClientConnection::getCGIBuffer() const { return _cgiBuffer; }
+
+void ClientConnection::startCGI(int pipeFd, pid_t pid) {
+  _cgiState = CGI_RUNNING;
+  _cgiPipeFd = pipeFd;
+  _cgiPid = pid;
+  _cgiBuffer.clear();
+  std::cout << "[CGI] Started async CGI (pid: " << pid << ", pipe: " << pipeFd
+            << ")\n";
+}
+
+bool ClientConnection::readCGIOutput() {
+  if (_cgiState != CGI_RUNNING || _cgiPipeFd == -1) {
+    return false;
+  }
+
+  char buffer[4096];
+  ssize_t bytesRead = read(_cgiPipeFd, buffer, sizeof(buffer));
+
+  if (bytesRead > 0) {
+    _cgiBuffer.append(buffer, bytesRead);
+    _lastActivity = time(NULL);
+    return true;
+  } else if (bytesRead == 0) {
+    // EOF - CGI cerró stdout
+    std::cout << "[CGI] EOF reached, output size: " << _cgiBuffer.size()
+              << " bytes\n";
+    close(_cgiPipeFd);
+    _cgiPipeFd = -1;
+    _cgiState = CGI_DONE;
+    return true;
+  } else {
+    // bytesRead < 0
+    // En non-blocking, EAGAIN/EWOULDBLOCK significa "no hay datos aún"
+    // Pero el subject prohibe verificar errno - asumimos que si poll()
+    // indicó POLLIN y read() falla, es un error real
+    std::cerr << "[CGI] Read error on pipe\n";
+    close(_cgiPipeFd);
+    _cgiPipeFd = -1;
+    _cgiState = CGI_DONE;
+    return false;
+  }
+}
+
+void ClientConnection::finishCGI(int exitStatus) {
+  (void)exitStatus; // Puede usarse para logging
+  _cgiState = CGI_DONE;
+  if (_cgiPipeFd != -1) {
+    close(_cgiPipeFd);
+    _cgiPipeFd = -1;
+  }
+}
+
+void ClientConnection::setCGIResponse(const std::string &responseStr) {
+  // Set the write buffer with the CGI response
+  // This allows Server to send the response via normal POLLOUT flow
+  _writeBuffer = responseStr;
   _writeOffset = 0;
 }

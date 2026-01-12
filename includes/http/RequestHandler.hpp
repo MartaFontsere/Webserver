@@ -6,6 +6,9 @@
 #include "http/StaticFileHandler.hpp"
 #include <vector>
 
+// Forward declaration for CGI async
+class ClientConnection;
+
 /**
  * La clase RequestHandler es el Orquestador de la capa HTTP.
  *
@@ -30,10 +33,12 @@ public:
    *
    * @param request La petición HTTP completa.
    * @param candidateConfigs Lista de ServerConfigs que coinciden con el puerto.
-   * @return HttpResponse La respuesta generada.
+   * @param client Opcional - si se proporciona, CGI se ejecuta async.
+   * @return HttpResponse La respuesta generada (o pending si CGI async).
    */
   HttpResponse handleRequest(const HttpRequest &request,
-                             const std::vector<ServerConfig> &candidateConfigs);
+                             const std::vector<ServerConfig> &candidateConfigs,
+                             ClientConnection *client = NULL);
 
 private:
   StaticFileHandler _staticHandler;

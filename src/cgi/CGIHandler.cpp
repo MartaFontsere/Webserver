@@ -313,3 +313,88 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
     return response;
   }
 }
+
+/**
+ * @brief Async version of handle - forks CGI but doesn't wait
+ *
+ * Same as handle() but uses executeAsync() instead of execute().
+ * Returns pipe FD and PID so caller can add to poll() and read later.
+ */
+CGIAsyncResult CGIHandler::handleAsync(const HttpRequest &request,
+                                       const LocationConfig &location,
+                                       const std::string &serverName,
+                                       int serverPort) {
+  CGIAsyncResult failResult;
+  failResult.pipeFd = -1;
+  failResult.childPid = 0;
+  failResult.success = false;
+
+  // PHASE 1: Detect if request should be handled as CGI
+  CGIDetector detector;
+  if (!detector.isCGIRequest(request.getPath(), location.getCgiExts())) {
+    return failResult;
+  }
+
+  // PHASE 2: Resolve script path (using CGIDetector static method)
+  std::string scriptPath =
+      CGIDetector::resolveScriptPath(request.getPath(), location.getRoot());
+
+  // PHASE 3: Determine executable (using CGIDetector static method)
+  std::string executable = CGIDetector::getCGIExecutable(
+      scriptPath, location.getCgiPaths(), location.getCgiExts());
+  if (executable.empty()) {
+    return failResult;
+  }
+
+  // PHASE 4: Build environment
+  CGIEnvironment env;
+  // scriptName es el path URL del script (ej: /cgi-bin/test.py)
+  std::string scriptName = request.getPath();
+  env.prepare(request, scriptPath, scriptName, serverName, serverPort);
+  char **envp = env.toEnvArray();
+
+  // PHASE 5: Execute async (fork but don't wait)
+  CGIExecutor executor;
+  CGIAsyncResult result =
+      executor.executeAsync(executable, scriptPath, envp, request.getBody());
+
+  // Free environment array immediately - child has its own copy
+  env.freeEnvArray(envp);
+
+  return result;
+}
+
+/**
+ * @brief Build HTTP response from completed CGI output buffer
+ *
+ * Used after readCGIOutput() has collected all the CGI output.
+ * Parses headers and body, builds proper HttpResponse.
+ */
+HttpResponse
+CGIHandler::buildResponseFromCGIOutput(const std::string &cgiOutput) {
+  HttpResponse response;
+
+  if (cgiOutput.empty()) {
+    response.setErrorResponse(500);
+    return response;
+  }
+
+  CGIOutputParser parser;
+  parser.parse(cgiOutput);
+
+  // 1. Status (use "OK" as default message since parser doesn't provide it)
+  response.setStatus(parser.getStatusCode(), "OK");
+
+  // 2. Body
+  response.setBody(parser.getBody());
+
+  // 3. Headers
+  std::map<std::string, std::string> cgiHeaders = parser.getHeaders();
+  for (std::map<std::string, std::string>::iterator it = cgiHeaders.begin();
+       it != cgiHeaders.end(); ++it) {
+    if (it->first != "Status")
+      response.setHeader(it->first, it->second);
+  }
+
+  return response;
+}

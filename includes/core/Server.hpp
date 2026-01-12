@@ -21,9 +21,15 @@ private:
       _configsByServerFd; // mapeo de configuraciones por fd
   std::map<int, ClientConnection *> _clientsByFd; // mapeo de clientes por fd
 
+  // ====== CGI Pipe Tracking ======
+  // Maps CGI pipe FD -> client that owns it (for poll() lookup)
+  std::map<int, ClientConnection *> _cgiPipeToClient;
+
   void acceptNewClient(int serverFd);
   void handleClientData(ClientConnection *client, size_t pollIndex);
   void handleClientWrite(ClientConnection *client, size_t pollIndex);
+  void handleCGIPipe(int pipeFd,
+                     ClientConnection *client); // NEW: CGI pipe handler
   void checkClientTimeout(ClientConnection *client, int fd, time_t now);
   void cleanupClosedClients();
   std::map<int, ConfigVector>

@@ -5,7 +5,8 @@
 // ==================== CONSTRUCTORS ====================
 
 HttpResponse::HttpResponse()
-    : _statusCode(200), _statusMessage("OK"), _httpVersion("HTTP/1.1") {}
+    : _statusCode(200), _statusMessage("OK"), _httpVersion("HTTP/1.1"),
+      _cgiPending(false) {}
 
 HttpResponse::~HttpResponse() {}
 
@@ -80,6 +81,10 @@ void HttpResponse::setBody(const std::string &body) {
 }
 
 int HttpResponse::getStatusCode() const { return _statusCode; }
+
+void HttpResponse::setCGIPending(bool pending) { _cgiPending = pending; }
+
+bool HttpResponse::isCGIPending() const { return _cgiPending; }
 
 // ==================== ERROR HANDLING ====================
 

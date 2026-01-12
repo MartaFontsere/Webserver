@@ -16,13 +16,10 @@ bool ServerSocket::init() {
     return false;
   }
 
-  // 2. Configurar socket para reutilizar puerto (SO_REUSEADDR y SO_REUSEPORT)
+  // 2. Configurar socket para reutilizar dirección (SO_REUSEADDR)
   // SO_REUSEADDR: Permite reiniciar el servidor sin esperar a que el puerto se
   // libere del estado TIME_WAIT. Sin esto, si paras y arrancas rápido, el SO
   // podría decir "Address already in use".
-  // SO_REUSEPORT: (Especialmente útil en
-  // macOS/BSD) permite que varios sockets se vinculen exactamente al mismo
-  // puerto.
   int opt = 1;
   if (setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
     std::cerr << "❌ Error configurando SO_REUSEADDR en puerto " << _port << ": "
@@ -30,15 +27,6 @@ bool ServerSocket::init() {
     closeSocket();
     return false;
   }
-  // REVISAR SI ES NECESARIO EN UBUNTU!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#ifdef SO_REUSEPORT
-  if (setsockopt(_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
-    std::cerr << "❌ Error configurando SO_REUSEPORT en puerto " << _port << ": "
-              << strerror(errno) << std::endl;
-    // No salimos aquí porque SO_REUSEPORT no es crítico si SO_REUSEADDR
-    // funcionó
-  }
-#endif
 
   // 3. Poner en modo no bloqueante
   // Evita que funciones como accept(), recv() o send() detengan la ejecución
