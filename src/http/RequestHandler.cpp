@@ -49,6 +49,9 @@ RequestHandler::handleRequest(const HttpRequest &request,
     // This should theoretically not happen if candidateConfigs is not empty
     // We don't have a config yet, so we use a dummy one or just the default
     // error
+    std::cerr << "[RequestHandler] Critical error: No matching virtual host "
+                 "found for path: "
+              << request.getPath() << std::endl;
     response.setErrorResponse(500);
     return response;
   }
@@ -317,6 +320,10 @@ void RequestHandler::_sendError(int errorCode, HttpResponse &response,
   // --- PASO 3: Fallback (Error por defecto) ---
   // Si no hay página personalizada definida, o si el archivo no se pudo leer,
   // generamos una respuesta de error genérica (hardcoded en HttpResponse).
+  if (errorCode >= 400) {
+    std::cerr << "[RequestHandler] Sending error " << errorCode
+              << " for path: " << _lastPath << std::endl;
+  }
   response.setErrorResponse(errorCode);
   _applyConnectionHeader(request, response);
 }

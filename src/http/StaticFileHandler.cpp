@@ -182,6 +182,8 @@ void StaticFileHandler::handleGet(const HttpRequest &request,
   // 2. Sanitizar
   std::string cleanPath = _sanitizePath(decodedPath);
   if (cleanPath == "__FORBIDDEN__") {
+    std::cerr << "[StaticFileHandler:GET] Path forbidden by sanitization: "
+              << decodedPath << std::endl;
     response.setErrorResponse(403);
     return;
   }
@@ -238,11 +240,16 @@ void StaticFileHandler::handleGet(const HttpRequest &request,
   // Comprobar existencia con stat()
   struct stat fileStat;
   if (stat(fullPath.c_str(), &fileStat) != 0) {
-    // stat no pudo acceder: ENOENT → 404, EACCES → 403
-    if (errno == EACCES)
+    // stat no pudo acceder: ENOENT -> 404, EACCES -> 403
+    if (errno == EACCES) {
+      std::cerr << "[StaticFileHandler:GET] Access denied to path: " << fullPath
+                << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(403);
-    else
+    } else {
+      std::cerr << "[StaticFileHandler:GET] File not found: " << fullPath
+                << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(404);
+    }
     return;
   }
 
@@ -275,6 +282,8 @@ void StaticFileHandler::serveStaticFile(const std::string &fullPath,
 
   // 1) Caso prohibido desde buildFullPath o sanitize
   if (fullPath == "__FORBIDDEN__") {
+    std::cerr << "[StaticFileHandler:GET] Path forbidden: " << fullPath
+              << std::endl;
     response.setErrorResponse(403);
     return;
   }
@@ -282,23 +291,32 @@ void StaticFileHandler::serveStaticFile(const std::string &fullPath,
   // Comprobar existencia con stat()
   struct stat fileStat;
   if (stat(fullPath.c_str(), &fileStat) != 0) {
-    // stat no pudo acceder: ENOENT → 404, EACCES → 403
-    if (errno == EACCES)
+    // stat no pudo acceder: ENOENT -> 404, EACCES -> 403
+    if (errno == EACCES) {
+      std::cerr << "[StaticFileHandler:GET] Access denied to: " << fullPath
+                << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(403);
-    else
+    } else {
+      std::cerr << "[StaticFileHandler:GET] Not found: " << fullPath << " ("
+                << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(404);
+    }
     return;
   }
 
   // Protección contra archivos gigantes
   // 4) Validar tamaño
   if (fileStat.st_size < 0) {
+    std::cerr << "[StaticFileHandler:GET] Invalid file size for: " << fullPath
+              << std::endl;
     response.setErrorResponse(500);
     return;
   }
 
   size_t size = static_cast<size_t>(fileStat.st_size);
   if (size > MAX_STATIC_FILE_SIZE) {
+    std::cerr << "[StaticFileHandler:GET] File too large (" << size
+              << " bytes): " << fullPath << std::endl;
     response.setErrorResponse(413); // Payload Too Large
     return;
   }
@@ -307,14 +325,23 @@ void StaticFileHandler::serveStaticFile(const std::string &fullPath,
   std::string content;
   if (!_readFileToString(fullPath, content, size)) {
     // open/read error → revisar errno
-    if (errno == EACCES)
+    if (errno == EACCES) {
+      std::cerr << "[StaticFileHandler:GET] Read permission denied: "
+                << fullPath << std::endl;
       response.setErrorResponse(403);
-    else if (errno == ENOENT)
+    } else if (errno == ENOENT) {
+      std::cerr << "[StaticFileHandler:GET] File disappeared during read: "
+                << fullPath << std::endl;
       response.setErrorResponse(404);
-    else if (errno == EFBIG)
+    } else if (errno == EFBIG) {
+      std::cerr << "[StaticFileHandler:GET] File too large for read buffer: "
+                << fullPath << std::endl;
       response.setErrorResponse(413);
-    else
+    } else {
+      std::cerr << "[StaticFileHandler:GET] System error reading file: "
+                << fullPath << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(500);
+    }
     return;
   }
 
@@ -592,10 +619,17 @@ void StaticFileHandler::_handleDirectory(const std::string &dirPath,
     std::string html = Autoindex::generateListing(dirPath, urlPath);
     if (html.empty()) {
       // Si opendir falló dentro de generateListing
-      if (errno == EACCES)
+      if (errno == EACCES) {
+        std::cerr << "[StaticFileHandler:GET] Autoindex: Permission denied "
+                     "opening directory: "
+                  << dirPath << std::endl;
         response.setErrorResponse(403);
-      else
+      } else {
+        std::cerr
+            << "[StaticFileHandler:GET] Autoindex: Failed to open directory: "
+            << dirPath << " (" << strerror(errno) << ")" << std::endl;
         response.setErrorResponse(404);
+      }
       return;
     }
     response.setStatus(200, "OK");
@@ -745,6 +779,9 @@ void StaticFileHandler::handlePost(const HttpRequest &request,
   std::string uploadDir = location.getUploadPath();
   if (uploadDir.empty()) {
     // Si no hay ruta de subida configurada, es un error del servidor.
+    std::cerr << "[StaticFileHandler:POST] No upload_path configured for this "
+                 "location"
+              << std::endl;
     response.setErrorResponse(500);
     return;
   }
@@ -758,11 +795,17 @@ void StaticFileHandler::handlePost(const HttpRequest &request,
           0) // Permisos 0755 → lectura + escritura para owner, lectura para
              // otros. Si falla, damos error del servidor
       {
+        std::cerr
+            << "[StaticFileHandler:POST] Failed to create upload directory: "
+            << uploadDir << " (" << strerror(errno) << ")" << std::endl;
         response.setErrorResponse(500); // Error al crear carpeta
         return;
       }
     } else // stat falló por otra razón → error
     {
+      std::cerr
+          << "[StaticFileHandler:POST] stat() failed on upload directory: "
+          << uploadDir << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(500); // Error de sistema (permisos, etc.)
       return;
     }
@@ -770,12 +813,18 @@ void StaticFileHandler::handlePost(const HttpRequest &request,
     // EL MISMO CODIGO?
   } else if (!S_ISDIR(fileStat.st_mode)) {
     // Si existe pero no es un directorio (es un archivo), error.
+    std::cerr << "[StaticFileHandler:POST] Upload path exists but is not a "
+                 "directory: "
+              << uploadDir << std::endl;
     response.setErrorResponse(500);
     return;
   }
 
   // Comprobar que tenemos permisos de escritura en la carpeta
   if (access(uploadDir.c_str(), W_OK) != 0) {
+    std::cerr << "[StaticFileHandler:POST] Write permission denied in upload "
+                 "directory: "
+              << uploadDir << std::endl;
     response.setErrorResponse(403); // Prohibido escribir aquí
     return;
   }
@@ -801,6 +850,9 @@ void StaticFileHandler::handlePost(const HttpRequest &request,
   // la apertura fallaría en lugar de sobrescribirlo.
   int fd = open(filepath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
   if (fd == -1) {
+    std::cerr
+        << "[StaticFileHandler:POST] Failed to open/create file for upload: "
+        << filepath << " (" << strerror(errno) << ")" << std::endl;
     response.setErrorResponse(500);
     return;
   }
@@ -822,6 +874,8 @@ void StaticFileHandler::handlePost(const HttpRequest &request,
         continue; // Si una señal interrumpe write → repetir.
 
       // Error grave: cerramos y borramos el archivo incompleto (limpieza)
+      std::cerr << "[StaticFileHandler:POST] Error writing to file: "
+                << filepath << " (" << strerror(errno) << ")" << std::endl;
       close(fd);
       unlink(filepath.c_str()); // Limpiamos el archivo corrupto con unlink()
       response.setErrorResponse(500);
@@ -904,17 +958,26 @@ void StaticFileHandler::handleDelete(const HttpRequest &request,
   struct stat fileStat;
   if (stat(fullPath.c_str(), &fileStat) != 0) {
     // Si stat falla, el archivo no existe o no tenemos permiso para verlo
-    if (errno == ENOENT)
+    if (errno == ENOENT) {
+      std::cerr << "[StaticFileHandler:DELETE] File not found: " << fullPath
+                << std::endl;
       response.setErrorResponse(404); // No encontrado, el archivo no existe
-    else if (errno == EACCES)
+    } else if (errno == EACCES) {
+      std::cerr << "[StaticFileHandler:DELETE] Permission denied to stat: "
+                << fullPath << std::endl;
       response.setErrorResponse(403); // Prohibido
-    else
+    } else {
+      std::cerr << "[StaticFileHandler:DELETE] System error on stat(): "
+                << fullPath << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(500); // Error interno
+    }
     return;
   }
 
   // Por seguridad, no permitimos borrar directorios a través de DELETE
   if (S_ISDIR(fileStat.st_mode)) {
+    std::cerr << "[StaticFileHandler:DELETE] Attempted to delete a directory: "
+              << fullPath << std::endl;
     response.setErrorResponse(403);
     return;
   }
@@ -927,6 +990,9 @@ void StaticFileHandler::handleDelete(const HttpRequest &request,
     parentDir = ".";
 
   if (access(parentDir.c_str(), W_OK) != 0) {
+    std::cerr << "[StaticFileHandler:DELETE] No write permission in parent "
+                 "directory: "
+              << parentDir << std::endl;
     response.setErrorResponse(403); // No tenemos permiso para borrar
     return;
   }
@@ -934,8 +1000,13 @@ void StaticFileHandler::handleDelete(const HttpRequest &request,
   // --- PASO 4: Borrar el archivo ---
   if (std::remove(fullPath.c_str()) != 0) {
     if (errno == EACCES || errno == EPERM) {
+      std::cerr
+          << "[StaticFileHandler:DELETE] Permission denied to remove file: "
+          << fullPath << std::endl;
       response.setErrorResponse(403);
     } else {
+      std::cerr << "[StaticFileHandler:DELETE] Failed to remove file: "
+                << fullPath << " (" << strerror(errno) << ")" << std::endl;
       response.setErrorResponse(500);
     }
     return;
@@ -946,5 +1017,6 @@ void StaticFileHandler::handleDelete(const HttpRequest &request,
   response.setStatus(204, "No Content");
   response.setBody("");
 
-  std::cout << "[DELETE] File removed OK => " << fullPath << std::endl;
+  std::cout << "[StaticFileHandler:DELETE] File removed OK => " << fullPath
+            << std::endl;
 }

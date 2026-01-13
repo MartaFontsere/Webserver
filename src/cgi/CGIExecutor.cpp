@@ -95,8 +95,14 @@ CGIExecutor::~CGIExecutor() {}
  * @note Pipes are unidirectional - each direction requires separate pipe
  */
 void CGIExecutor::setupPipes() {
-  pipe(_pipeIn);
-  pipe(_pipeOut);
+  if (pipe(_pipeIn) == -1) {
+    std::cerr << "[CGIExecutor] pipe() failed for stdin: " << strerror(errno)
+              << std::endl;
+  }
+  if (pipe(_pipeOut) == -1) {
+    std::cerr << "[CGIExecutor] pipe() failed for stdout: " << strerror(errno)
+              << std::endl;
+  }
 }
 
 /**
@@ -166,8 +172,11 @@ std::string CGIExecutor::execute(const std::string &executable,
 
   _childPid = fork();
 
-  if (_childPid < 0)
+  if (_childPid < 0) {
+    std::cerr << "[CGIExecutor] fork() failed: " << strerror(errno)
+              << std::endl;
     throw std::runtime_error("Failed to fork CGI process");
+  }
 
   if (_childPid == 0)
     executeChild(executable, scriptPath,
@@ -277,6 +286,9 @@ void CGIExecutor::executeChild(const std::string &executable,
   // Replace process image with CGI interpreter
   execve(argv[0], argv, envp);
   // Only reached if execve fails
+  std::cerr << "[CGIExecutor] execve() failed: " << strerror(errno)
+            << " (executable: " << argv[0] << ", script: " << argv[1] << ")"
+            << std::endl;
   delete[] argv[0];
   delete[] argv[1];
   delete[] argv;
@@ -311,8 +323,12 @@ void CGIExecutor::executeChild(const std::string &executable,
  * @warning Parent MUST close _pipeIn[1] after this to signal EOF
  */
 void CGIExecutor::writeToChild(const std::string &data) {
-  if (!data.empty())
-    write(_pipeIn[1], data.c_str(), data.size());
+  if (!data.empty()) {
+    if (write(_pipeIn[1], data.c_str(), data.size()) == -1) {
+      std::cerr << "[CGIExecutor] write() to child stdin failed: "
+                << strerror(errno) << std::endl;
+    }
+  }
 }
 
 /**
@@ -365,8 +381,13 @@ std::string CGIExecutor::readChildOutput() {
   while (true) {
     ssize_t bytesRead = read(_pipeOut[0], buffer, 4096);
 
-    if (bytesRead <= 0)
-      break;                          // EOF (0) or error (-1)
+    if (bytesRead < 0) {
+      std::cerr << "[CGIExecutor] read() from child stdout failed: "
+                << strerror(errno) << std::endl;
+      break;
+    }
+    if (bytesRead == 0)
+      break;                          // EOF (0)
     result.append(buffer, bytesRead); // Append only actual bytes read
   }
 

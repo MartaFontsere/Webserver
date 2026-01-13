@@ -234,7 +234,7 @@ bool Server::init() {
 }
 
 // Agrupa las configuraciones por puerto
-std::map<int, std::vector<ServerConfig> > Server::groupConfigsByPort() {
+std::map<int, std::vector<ServerConfig>> Server::groupConfigsByPort() {
   std::map<int, ConfigVector> configsByPort;
   for (size_t i = 0; i < _servConfigsList.size(); ++i) {
     configsByPort[_servConfigsList[i].getListen()].push_back(
@@ -1283,8 +1283,8 @@ void Server::acceptNewClient(int serverFd) {
     // Poner el socket del cliente en modo no bloqueante
     int flags = fcntl(clientFd, F_GETFL, 0);
     if (flags == -1 || fcntl(clientFd, F_SETFL, flags | O_NONBLOCK) == -1) {
-      std::cerr << "Error poniendo socket de cliente en modo no bloqueante"
-                << std::endl;
+      std::cerr << "[Server] Error setting client socket to non-blocking mode: "
+                << strerror(errno) << std::endl;
       close(clientFd);
       continue;
     }

@@ -242,6 +242,8 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
       CGIDetector::isCGIRequest(request.getPath(), location.getCgiExts());
 
   if (!isCGI) {
+    std::cerr << "[CGIHandler] Request path is not a CGI script: "
+              << request.getPath() << std::endl;
     HttpResponse response;
     response.setErrorResponse(404);
     return response;
@@ -256,6 +258,9 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
   // Verificación de seguridad: Si no hay intérprete configurado O el archivo no
   // existe en el disco
   if (executable.empty() || access(scriptPath.c_str(), F_OK) != 0) {
+    std::cerr << "[CGIHandler] CGI executable not found or script not "
+                 "accessible: "
+              << scriptPath << std::endl;
     HttpResponse response;
     response.setErrorResponse(
         404); // Devolvemos 404 porque el recurso no es ejecutable o no existe
@@ -307,6 +312,8 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
     // se captura aquí y se devuelve un 500 Internal Server Error.
     // Esto asegura que el servidor no colapse y maneje el error de forma
     // controlada. Cleanup: Free environment array (error path)
+    std::cerr << "[CGIHandler] Exception during CGI execution: " << e.what()
+              << std::endl;
     env.freeEnvArray(envp);
     HttpResponse response;
     response.setErrorResponse(500);
@@ -375,6 +382,7 @@ CGIHandler::buildResponseFromCGIOutput(const std::string &cgiOutput) {
   HttpResponse response;
 
   if (cgiOutput.empty()) {
+    std::cerr << "[CGIHandler] CGI output is empty" << std::endl;
     response.setErrorResponse(500);
     return response;
   }
