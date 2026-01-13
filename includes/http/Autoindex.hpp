@@ -4,8 +4,8 @@
 
 /*
 Un namespace es simplemente una forma de agrupar funciones bajo un nombre
-propio.   Ventajas:   ✔️ Evita colisiones de nombres   No tendrás dos funciones
-llamadas generateHTML() que se pisen.
+propio.   Ventajas:   ✔️ Evita colisiones de nombres   No tendrás dos
+funciones llamadas generateHTML() que se pisen.
 
 ✔️ Estructura tu proyecto
     Sabes que todo lo que tiene que ver con autoindex está dentro de:

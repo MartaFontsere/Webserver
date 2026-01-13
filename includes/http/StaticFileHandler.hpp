@@ -8,10 +8,11 @@
 
 /**
  * @class StaticFileHandler
- * @brief Manejador especializado en recursos estáticos y sistema de archivos.
+ * @brief Manejador especializado en recursos estáticos y sistema de
+ * archivos.
  *
- * Esta clase hereda la lógica que antes estaba dispersa en Client y Autoindex.
- * Se encarga de la interacción directa con el disco.
+ * Esta clase hereda la lógica que antes estaba dispersa en Client y
+ * Autoindex. Se encarga de la interacción directa con el disco.
  *
  * Responsabilidades:
  * 1. Servir archivos: Lectura de archivos y determinación de tipos MIME.
@@ -63,9 +64,7 @@ private:
   std::string _determineMimeType(const std::string &path);
 
   // Helpers moved from Client/Autoindex
-  std::string _getDecodedPath(const std::string &rawPath) const;
   std::string _sanitizePath(const std::string &decodedPath) const;
-  std::string _urlDecode(const std::string &encoded, bool plusAsSpace) const;
   bool _readFileToString(const std::string &fullPath, std::string &out,
                          size_t size);
 

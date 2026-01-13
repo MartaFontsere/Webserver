@@ -2,7 +2,7 @@
 import time
 import sys
 
-# Slow CGI for non-blocking test (3s delay)
-time.sleep(3)
+# Long running CGI
+time.sleep(10)
 print("Content-Type: text/plain\r\n\r\n")
-print("Slow CGI Finished")
+print("CGI Finished")

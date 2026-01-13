@@ -22,6 +22,7 @@ public:
   bool headersComplete() const;
   bool isChunked() const;
   bool isKeepAlive() const;
+  bool isMalformed() const;
   int getContentLength() const;
 
   // resetea el estado para reutilizar el objeto
@@ -31,8 +32,9 @@ private:
   // estado interno
   bool _headersComplete;
   bool _isChunked;
-  bool _keepAlive;  // true → mantener abierta
-  int _parsedBytes; // número de bytes consumidos del rawRequest por el parse
+  bool _keepAlive;   // true → mantener abierta
+  bool _isMalformed; // true → error en el parseo
+  int _parsedBytes;  // número de bytes consumidos del rawRequest por el parse
 
   // elementos del request
   std::string _method;
@@ -49,6 +51,7 @@ private:
   bool parseHeaders(const std::string &rawRequest);
   bool parseBody(const std::string &rawRequest);
   bool parseChunkedBody(const std::string &chunkedData);
+  std::string _urlDecode(const std::string &encoded, bool plusAsSpace) const;
 };
 
 /*

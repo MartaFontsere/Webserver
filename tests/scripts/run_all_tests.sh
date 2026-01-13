@@ -30,6 +30,8 @@ echo
 echo
 "$BASE_DIR"/test_chunked.sh
 echo
+"$BASE_DIR"/test_parser_robustness.sh
+echo
 echo "--- RUNNING LEGACY TESTS ---"
 "$BASE_DIR"/test-autoindex.sh
 echo

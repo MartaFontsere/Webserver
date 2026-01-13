@@ -1,22 +1,23 @@
 #include "core/Server.hpp"
 #include "cgi/CGIHandler.hpp" // For buildResponseFromCGIOutput
-#include <cctype>             // para perror
-#include <cstdio>             // para perror
-#include <cstring>            // para memset, strerror, strlen...
-#include <fcntl.h>            // para fcntl() → modo no bloqueante
-#include <iostream>           // para imprimir mensajes
-#include <sys/wait.h>         // para waitpid, WNOHANG
-#include <unistd.h>           // para close(), read, write
-// TODO: CUAL DE LAS DOS? #include <netinet/in.h> // sockaddr_in, htons, etc.
 #include <algorithm>
-#include <arpa/inet.h> // para sockaddr_in, htons, INADDR_ANY
+#include <cstdio>       // para perror
+#include <cstring>      // para memset, strerror, strlen...
+#include <fcntl.h>      // para fcntl() → modo no bloqueante
+#include <iostream>     // para imprimir mensajes
+#include <netinet/in.h> // para sockaddr_in
 #include <poll.h>
 #include <sstream>
 #include <sys/socket.h> // para socket(), bind(), listen()
+#include <sys/wait.h>   // para waitpid, WNOHANG
+#include <unistd.h>     // para close(), read, write
 
-extern bool g_running; // Variable global para controlar el bucle principal y
-                       // determinar si el servidor debe continuar ejecutándose.
-                       // Se define en main.cpp.
+#include <csignal> // para sig_atomic_t
+
+extern volatile sig_atomic_t
+    g_running; // Variable global para controlar el bucle principal
+               // y determinar si el servidor debe continuar
+               // ejecutándose. Se define en main.cpp.
 
 // Constructor: guarda las configuraciones (es capaz de manjar múltiples
 // configuraciones de servidor virtual)

@@ -12,10 +12,14 @@
 // Aunque bool funciona el 99% de las veces, sig_atomic_t es el tipo estándar
 // para esto.
 
-// TODO: Valorar si cambiar a sig_atomic_t
-
-bool g_running = true; // Variable global para controlar el bucle principal y
-                       // determinar si el servidor debe continuar ejecutándose.
+volatile sig_atomic_t g_running =
+    true; // Variable global para controlar el bucle principal y
+          // determinar si el servidor debe continuar ejecutándose.
+          // sig_atomic_t es un tipo de dato que garantiza que se puede
+          // leer/escribir en una sola operación de CPU (evita problemas si la
+          // señal llega justo cuando estás leyendo la variable). Este tipo de
+          // variable es el estándar de seguridad para manejar variables
+          // modificadas por señales del sistema operativo.
 
 /*
 Justificación del uso de una variable global:

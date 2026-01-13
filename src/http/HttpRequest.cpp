@@ -13,7 +13,7 @@ tenga su propio límite configurado.
 
 HttpRequest::HttpRequest()
     : _headersComplete(false), _isChunked(false), _keepAlive(false),
-      _parsedBytes(0), _contentLength(-1) {}
+      _isMalformed(false), _parsedBytes(0), _contentLength(-1) {}
 
 /**
  * @brief Función principal de parseo. Es "progresiva" y se llama cada vez que
@@ -38,21 +38,24 @@ bool HttpRequest::parse(const std::string &rawRequest) {
   }
 
   // --- ETAPA 2: Parsear Cuerpo (Body) ---
+  // Si los headers están malformados, no seguimos con el cuerpo.
+  if (_isMalformed)
+    return true;
+
   // Una vez tenemos los headers, comprobamos si la petición requiere parsear un
   // cuerpo. Esto ocurre si hay 'Content-Length' > 0 o si es 'Transfer-Encoding:
   // chunked'.
   if (_headersComplete && (_contentLength > 0 || _isChunked)) {
     if (!parseBody(rawRequest))
       return false; // Aún no tenemos todos los bytes del cuerpo esperados.
-    // TODO: REVISAR: SI el body es demasiado largo envia false tambien, por lo
-    // que se quedara siempre abierto esperando todo el cuerpo? no habria que
-    // cerar como error o algo?
   }
 
   // ✅ ÉXITO: Si llegamos aquí, la petición está completa y lista para ser
   // procesada.
   return true;
 }
+
+bool HttpRequest::isMalformed() const { return _isMalformed; }
 
 /*
 18.11.25
@@ -115,15 +118,21 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest) {
 
   std::istringstream firstLine(line);
   std::string fullTarget;
-  firstLine >> _method >> fullTarget >> _version;
+  std::string extra;
+  if (!(firstLine >> _method >> fullTarget >> _version) ||
+      (firstLine >> extra)) {
+    std::cout << "[Debug] Malformed request line: " << line << std::endl;
+    _isMalformed = true;
+    return true; // Terminamos el parseo pero marcamos error
+  }
 
   // Separar PATH y QUERY
   size_t qpos = fullTarget.find('?');
   if (qpos != std::string::npos) {
-    _path = fullTarget.substr(0, qpos);
-    _query = fullTarget.substr(qpos + 1);
+    _path = _urlDecode(fullTarget.substr(0, qpos), false);
+    _query = _urlDecode(fullTarget.substr(qpos + 1), true);
   } else {
-    _path = fullTarget;
+    _path = _urlDecode(fullTarget, false);
     _query.clear();
   }
 
@@ -148,20 +157,26 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest) {
     if (!val.empty() && val[0] == ' ')
       val.erase(0, 1);
     if (!val.empty() && val[val.length() - 1] == '\r')
-      val.resize(val.length() - 1); // Elimina el '\r' al final
+      val.erase(val.length() - 1); // Eliminar '\r' al final
+
+    // Normalizar key a lowercase para búsqueda case-insensitive
+    for (size_t i = 0; i < key.length(); ++i) {
+      if (key[i] >= 'A' && key[i] <= 'Z')
+        key[i] = key[i] - 'A' + 'a';
+    }
 
     _headers[key] = val;
 
     // Detectar Content-Length y Transfer-Encoding
-    if (strcasecmp(key.c_str(), "Content-Length") == 0)
-      _contentLength = std::atoi(val.c_str());
-    else if (strcasecmp(key.c_str(), "Transfer-Encoding") == 0 &&
-             val == "chunked")
+    if (strcasecmp(key.c_str(), "content-length") == 0)
+      _contentLength = atoi(val.c_str());
+    else if (strcasecmp(key.c_str(), "transfer-encoding") == 0 &&
+             val.find("chunked") != std::string::npos)
       _isChunked = true;
 
     // Aunque ya está puesto por defecto, aqui permites sobreescrivir si se
     // especifica lo contrario en connection
-    if (strcasecmp(key.c_str(), "Connection") == 0) {
+    if (strcasecmp(key.c_str(), "connection") == 0) {
       if (strcasecmp(val.c_str(), "close") == 0)
         _keepAlive = false;
       else if (strcasecmp(val.c_str(), "keep-alive") == 0)
@@ -172,7 +187,267 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest) {
     // default. Así es como funciona el protocolo
   }
 
+  // VALIDACIÓN: Header Host es obligatorio en HTTP/1.1
+  // Buscamos "host" en minúsculas porque acabamos de normalizar
+  if (_version == "HTTP/1.1" && _headers.find("host") == _headers.end()) {
+    std::cout << "[Debug] HTTP/1.1 request missing Host header" << std::endl;
+    _isMalformed = true;
+  }
+
   return true;
+}
+
+static int hexVal(char c) {
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'A' && c <= 'F')
+    return 10 + (c - 'A');
+  if (c >= 'a' && c <= 'f')
+    return 10 + (c - 'a');
+  return -1;
+}
+
+/*
+¿Por qué existen urlEncode y urlDecode?
+    Cuando un navegador envía una URL, no puede enviar caracteres especiales tal
+cual, siempre envía el path codificado.
+
+    Esto NO es válido en una URL:
+        /file with spaces.txt
+
+    El navegador lo convierte automáticamente en:
+        /file%20with%20spaces.txt
+
+    Esto pasa siempre, independientemente de que escribas la URL a mano, hagas
+clic, vengas de autoindex... al servidor siempre le llega codificado. Por eso
+hay que decodificar
+
+    Ejemplos de caracteres problemáticos:
+        espacio
+        á é í ó ü
+        # (marca fragmentos)
+        ? (abre query string)
+        / (separador)
+        % (inicio de codificación)
+        : (protocolo)
+        ;
+        "
+
+    Si los enviara tal cual, rompería la sintaxis del protocolo.
+
+
+Solución del estándar: URL encoding (RFC 3986)
+    La URL debe codificar esos caracteres raros como:
+        %XX   ← valor hexadecimal del byte
+
+    Ejemplos:
+        "hola mundo" → hola%20mundo
+        ñ           → %C3%B1  (UTF-8)
+        ?           → %3F
+        #           → %23
+
+
+    Esto significa que cuando el servidor recibe una URL, NO es la URL real:
+    es una versión escapada → tu servidor debe decodificarla para trabajar con
+rutas reales del sistema de archivos.
+
+¿POR QUÉ ES IMPORTANTE PARA WEBSERV?
+    Porque sin esto:
+
+        /hola%20marta.txt → buscarías un archivo literal con %20 en el nombre
+        (y fallaría con 404)
+
+        consulta GET con parámetros ?name=Marta+Fontseré
+        → recibirías Marta+Fontseré en vez de Marta Fontseré
+
+        autoindex mostrando rutas tendría enlaces rotos
+
+        seguridad: ataques de path traversal pueden venir codificados:
+            ..%2F..%2Fetc/passwd
+
+
+    Por eso es OBLIGATORIO para cualquier servidor web serio.
+
+¿Y si el archivo se llama literalmente file%20.txt?
+    Archivo real:
+        file%20.txt
+
+    Para pedirlo correctamente:
+        El % debe codificarse como %25
+
+            /file%2520.txt
+
+        Decodificación:
+             %25 → %
+
+        Resultado final:
+            file%20.txt
+
+Qué es una query string?
+    Una query string es la parte opcional de la URL que va después del ?
+
+    Ejemplo:
+        /search?q=hello+world&page=2
+               ↑
+               query string
+
+    La URL se divide así:
+        /search          → PATH
+        ?q=hello+world   → QUERY STRING
+
+    👉 NO son lo mismo
+    👉 Se procesan distinto
+    👉 Se codifican distinto
+
+PATH vs QUERY
+
+| Parte     | Qué es                | Para qué se usa           |
+| --------- | --------------------- | ------------------------- |
+|   PATH    | Identifica el recurso | Archivo / directorio      |
+|   QUERY   | Parámetros            | Búsquedas, filtros, flags |
+
+Ejemplo:
+    /images/my photo.jpg?size=large
+
+    PATH → /images/my photo.jpg
+    QUERY → size=large
+
+    El archivo es el mismo, cambie lo que cambie la query
+
+¿Puede llegar una query string al webserver?
+    Sí, totalmente.
+    Cualquier request HTTP puede traerla:
+        GET /file.txt?download=true HTTP/1.1
+
+    Tu parser HTTP debería separar:
+        path → /file.txt
+        query → download=true
+
+    Importante:
+        La query NO forma parte del path del archivo.
+        El filesystem no debe verla.
+
+
+¿Y el carácter +? (esta es la trampa)
+    + NO significa espacio en el PATH
+
+    En URLs:
+        PATH → espacios = %20
+        QUERY → espacios = + (solo en form encoding)
+
+
+Reglas definitivas para tu webserver (guárdalas)
+    ✔ PATH
+        Siempre viene URL-encoded
+        Espacios → %20
+        + es literal
+        Decodifica %XX
+        NO conviertas + → space
+        Decodifica antes de sanitizePath
+
+    ✔ QUERY STRING
+        Espacios pueden venir como +
+        Decodifica %XX
+        Convierte + → space
+
+    ✔ Autoindex
+        Genera URLs codificadas (urlEncode)
+        Usa %20 para espacios
+
+
+CÓDIGO:
+    Objetivo:
+        Tomar una cadena así:
+            /hola%20marta/archivo%2Etxt
+
+        y convertirla en:
+            /hola marta/archivo.txt
+
+std::string decoded;
+    Se crea la cadena que devolveremos, donde iremos añadiendo los caracteres ya
+decodificados.
+
+decoded.reserve(encoded.size());
+    Reservamos capacidad para decoded igual al tamaño de la cadena de entrada.
+    Por qué: evita realocaciones internas al push_back/operator+= y mejora
+rendimiento. Nota: el tamaño final nunca será mayor que encoded.size() (de hecho
+suele ser ≤), así que es una reserva razonable.
+
+for (size_t i = 0; i < encoded.size(); ++i)
+    Recorre cada carácter de la cadena
+
+    🔸 Caso 1 — detecta %XX (el inicio de una secuencia percent-encoded)
+        if (encoded[i] == '%' && i + 2 < encoded.size())
+
+        Esto significa:
+            encoded[i] == '%' → el carácter % indica codificación, por lo que
+indica que viene una secuencia %XX i + 2 < encoded.size() → faseguramos que hay
+al menos dos caracteres hex detrás (% + 2 hex) para no salirnos del buffer
+        Importante: si hay un % al final sin dos hex, este if será falso y se
+tratará más abajo como carácter normal
+
+        int high = hexVal(encoded[i + 1]);
+        int low = hexVal(encoded[i + 2]);
+            Usamos la función auxiliar hexVal para convertir los dos caracteres
+hexadecimales a sus valores numéricos correspondientes.
+
+        if (high >= 0 && low >= 0)
+            Si ambos caracteres eran hexadecimales válidos, calculamos el byte
+final combinando ambos nibbles: (high << 4) | low.
+
+        decoded.push_back(static_cast<char>((high << 4) | low));
+            Añadimos el carácter resultante a la cadena decodificada.
+
+        i += 2; // saltamos los dos hexadecimales que acabamos de procesar.
+
+    🔸 Caso 2 — detecta +
+        else if (c == '+' && plusAsSpace)
+            Si estamos decodificando una QUERY STRING (plusAsSpace = true),
+convertimos el + en un espacio. Si es el PATH, lo dejamos como un + literal.
+
+    🔸 Caso 3 — cualquier otro carácter
+        decoded.push_back(c);
+            Si no requiere decode, lo dejamos igual.
+
+Devolvemos la cadena decodificada.
+*/
+std::string HttpRequest::_urlDecode(const std::string &encoded,
+                                    bool plusAsSpace) const {
+  std::string decoded;
+  decoded.reserve(encoded.size()); // Reservar memoria para evitar realocaciones
+
+  for (size_t i = 0; i < encoded.size();
+       ++i) // Recorrer cáda caracter de la cadena
+  {
+    char c = encoded[i];
+    if (c == '%' && i + 2 < encoded.size()) {
+      int highNibble =
+          hexVal(encoded[i + 1]); // guardamos el valor después de %
+      int lowNibble =
+          hexVal(encoded[i + 2]); // guardamos el valor dos veces después de %
+      if (highNibble >= 0 && lowNibble >= 0) {
+        decoded.push_back(static_cast<char>(
+            (highNibble << 4) |
+            lowNibble)); // pusheamos los dos valores convertidos a hexadecimal
+                         // haciendo movimiento de bits, para reconstruir el
+                         // byte y decodificarlo (pasar de %2B, a high Nibble 2
+                         // y lowNibble 11, en hexadecimal, y al juntarlo en
+                         // bits sea 2 → 0010 y 11 → 1011, y por lo tanto 0010
+                         // 1011 = 0x2B = '+', decodificado)
+        i += 2; // saltamos los dos hex procesados
+      } else {
+        // secuencia mal formada: conservador → dejamos '%' literal
+        decoded.push_back('%');
+        // no saltamos, así G y Z se procesarán en siguientes iteraciones
+      }
+    } else if (c == '+' && plusAsSpace) {
+      // Solo convertir '+' → ' ' si explícitamente pedimos plusAsSpace=true.
+      decoded.push_back(' ');
+    } else {
+      decoded.push_back(c);
+    }
+  }
+  return decoded;
 }
 
 /*
@@ -392,8 +667,8 @@ primero lo guardas completo y luego lo separas.
             | `fullTarget` | `"/tests/files/?sort=name"` |
             | `_version`   | `"HTTP/1.1"`                |
 
-            TODO: Si la línea fuera inválida (faltan cosas), el stream fallaría
-(algo que luego puedes validar)
+            Si la línea fuera inválida (faltan cosas), el stream fallaría
+            (algo que luego puedes validar)
 
         Luego separamos path y query string.
             Ahora tenemos:
@@ -633,16 +908,26 @@ int HttpRequest::getParsedBytes() const { return _parsedBytes; }
 void HttpRequest::reset() {
   _headersComplete = false;
   _isChunked = false;
+  _keepAlive = false;
+  _isMalformed = false;
+  _parsedBytes = 0;
   _contentLength = -1;
   _method.clear();
   _path.clear();
+  _query.clear();
   _version.clear();
   _headers.clear();
   _body.clear();
 }
 
 std::string HttpRequest::getOneHeader(const std::string &key) const {
-  std::map<std::string, std::string>::const_iterator it = _headers.find(key);
+  std::string lowerKey = key;
+  for (size_t i = 0; i < lowerKey.length(); ++i) {
+    if (lowerKey[i] >= 'A' && lowerKey[i] <= 'Z')
+      lowerKey[i] = lowerKey[i] - 'A' + 'a';
+  }
+  std::map<std::string, std::string>::const_iterator it =
+      _headers.find(lowerKey);
   if (it != _headers.end()) {
     return it->second;
   }

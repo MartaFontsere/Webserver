@@ -94,6 +94,9 @@ void HttpResponse::setErrorResponse(int code) {
   _statusMessage = getHttpStatusMessage(code);
 
   switch (code) {
+  case 400:
+    _body = "<html><body><h1>400 Bad Request</h1></body></html>";
+    break;
   case 403:
     _body = "<html><body><h1>403 Forbidden</h1></body></html>";
     break;

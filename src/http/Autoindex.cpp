@@ -1,20 +1,21 @@
 /*
 Este archivo se encarga de generar listados
 
-✔ Concepto:
-    Cuando accedes a una ruta que es un directorio sin index.html, y el
-autoindex está activado en la config, el servidor debe devolver una página HTML
-generada al vuelo que lista: Archivos, Directorios y Con enlaces navegables
+  ✔ Concepto:
+      Cuando accedes a una ruta que es un directorio sin index.html, y el
+  autoindex está activado en la config, el servidor debe devolver una página
+ HTML generada al vuelo que lista: Archivos, Directorios y Con enlaces
+ navegables
 
-🔥 Función final: generateListing(dirPath, urlPath)
-    Se encarga de:
-        Abrir el directorio
-        Leer contenido
-        Ordenarlo alfabéticamente (detalle elegante)
-        Crear HTML escapado
-        Generar enlaces correctos incluso con rutas con /
+  🔥 Función final: generateListing(dirPath, urlPath)
+      Se encarga de:
+          Abrir el directorio
+          Leer contenido
+          Ordenarlo alfabéticamente (detalle elegante)
+          Crear HTML escapado
+          Generar enlaces correctos incluso con rutas con /
 
-*/
+  */
 
 #include "http/Autoindex.hpp"
 #include <cstring>
@@ -130,7 +131,6 @@ std::string generateListing(const std::string &dirPath,
         strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d %H:%M:%S", timeinfo);
       else
         std::strcpy(dateBuf, "-");
-      // TODO: REVISAR QUE SE PUEDAN USAR ESTAS FUNCIONES
 
       // 6. Formatear la fecha de modificación y el tamaño (Convertir bytes a
       // KB/MB)
@@ -177,11 +177,11 @@ std::string generateListing(const std::string &dirPath,
 
   // Si llegamos al límite, mostrar advertencia
   if (entryCount >= MAX_ENTRIES) {
-    html
-        << "    <tr>\n"
-        << "      <td colspan=\"3\" style=\"color: #666; font-style: italic;\">"
-        << "(Showing first " << MAX_ENTRIES << " entries)</td>\n"
-        << "    </tr>\n";
+    html << "    <tr>\n"
+         << "      <td colspan=\"3\" style=\"color: #666; font-style: "
+            "italic;\">"
+         << "(Showing first " << MAX_ENTRIES << " entries)</td>\n"
+         << "    </tr>\n";
   }
 
   // Cerrar HTML
@@ -274,5 +274,3 @@ std::string urlEncode(const std::string &input) {
 }
 
 } // namespace Autoindex
-
-// TODO: REVISAR SI HAY QUE HACER UN urlEncodeQuery o algo asi

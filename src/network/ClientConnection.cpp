@@ -2,9 +2,11 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno> // para errno (Variable global que contiene el código del último error de una llamada al sistema), EAGAIN (Constante que indica "Resource temporarily unavailable" (común en operaciones no bloqueantes)), EWOULDBLOCK (Constante que indica "Operation would block" (común en operaciones no bloqueantes))
+#include <csignal>
 #include <cstring> // para strerror (Función que devuelve una cadena descriptiva del último error de una llamada al sistema)
 #include <iostream>
 #include <sstream>
+#include <sys/wait.h>
 #include <unistd.h>
 
 /*
@@ -50,6 +52,21 @@ ClientConnection::ClientConnection(
 }
 
 ClientConnection::~ClientConnection() {
+  // Cleanup CGI process if running
+  if (_cgiPid > 0) {
+    std::cout << "[ClientConnection] Killing CGI process " << _cgiPid
+              << " for client fd " << _clientFd << std::endl;
+    kill(_cgiPid, SIGKILL);
+    int status;
+    waitpid(_cgiPid, &status, 0);
+  }
+
+  // Close CGI pipe if open
+  if (_cgiPipeFd != -1) {
+    close(_cgiPipeFd);
+    _cgiPipeFd = -1;
+  }
+
   if (!_closed) {
     std::cout << "[ClientConnection] Cerrando conexión con " << getIp()
               << std::endl;

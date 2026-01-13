@@ -29,6 +29,15 @@ RequestHandler::handleRequest(const HttpRequest &request,
   // HttpResponse previo
   HttpResponse response;
 
+  // 0. Check for malformed request (e.g., missing Host header in HTTP/1.1)
+  if (request.isMalformed()) {
+    std::cout << "[RequestHandler] Malformed request detected (e.g. missing "
+                 "Host in HTTP/1.1). Sending 400."
+              << std::endl;
+    response.setErrorResponse(400);
+    return response;
+  }
+
   // 1. Virtual Hosting: Match ServerConfig based on Host header
   // De todos los servers que escuchan en este puerto, buscamos el
   // que tenga el host que coincide con el host del request (el que
