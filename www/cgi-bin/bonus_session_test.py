@@ -7,10 +7,12 @@ import sys
 
 cookies = os.environ.get("HTTP_COOKIE", "")
 session_id = None
-for cookie in cookies.split(";"):
-    cookie = cookie.strip()
-    if cookie.startswith("session_id="):
-        session_id = cookie.split("=")[1]
+
+if cookies:
+    for cookie in cookies.split(";"):
+        cookie = cookie.strip()
+        if "=" in cookie and cookie.startswith("session_id="):
+            session_id = cookie.split("=")[1]
 
 if not session_id:
     # Generate a dummy session ID
@@ -26,5 +28,5 @@ print("<h1>Hello from Python CGI!</h1>")
 print("<h2>Session Management Demo</h2>")
 print(f"<p>{msg}</p>")
 print("<p>Check your browser cookies to see 'session_id'.</p>")
-print("<p><a href='/cgi-bin/session_test.py'>Refresh this page</a></p>")
+print("<p><a href='/cgi-bin/bonus_session_test.py'>Refresh this page</a></p>")
 print("</body></html>")
