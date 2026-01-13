@@ -18,6 +18,7 @@ public:
   const std::map<std::string, std::string> &getHeaders() const;
   std::string getOneHeader(const std::string &key) const;
   int getParsedBytes() const;
+  const std::map<std::string, std::string> &getCookies() const;
 
   bool headersComplete() const;
   bool isChunked() const;
@@ -42,6 +43,7 @@ private:
   std::string _query; // Lo que va tras '?'
   std::string _version;
   std::map<std::string, std::string> _headers;
+  std::map<std::string, std::string> _cookies;
   std::string _body; // buffer con los datos recibidos del body
 
   // control del body
@@ -51,6 +53,7 @@ private:
   bool parseHeaders(const std::string &rawRequest);
   bool parseBody(const std::string &rawRequest);
   bool parseChunkedBody(const std::string &chunkedData);
+  void _parseCookies();
   std::string _urlDecode(const std::string &encoded, bool plusAsSpace) const;
 };
 

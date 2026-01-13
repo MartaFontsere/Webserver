@@ -10,6 +10,7 @@ private:
   std::string _httpVersion;
 
   std::map<std::string, std::string> _headers;
+  std::vector<std::string> _setCookies;
   std::string _body;
   bool _cgiPending; // True when CGI async is in progress
 
@@ -20,6 +21,7 @@ public:
   // setters
   void setStatus(int code, const std::string &message);
   void setHeader(const std::string &key, const std::string &value);
+  void setCookie(const std::string &cookie);
   void setBody(const std::string &body);
   int getStatusCode() const;
 

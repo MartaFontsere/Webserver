@@ -194,6 +194,8 @@ bool HttpRequest::parseHeaders(const std::string &rawRequest) {
     _isMalformed = true;
   }
 
+  _parseCookies();
+
   return true;
 }
 
@@ -905,6 +907,10 @@ int HttpRequest::getContentLength() const { return _contentLength; }
 
 int HttpRequest::getParsedBytes() const { return _parsedBytes; }
 
+const std::map<std::string, std::string> &HttpRequest::getCookies() const {
+  return _cookies;
+}
+
 void HttpRequest::reset() {
   _headersComplete = false;
   _isChunked = false;
@@ -917,6 +923,7 @@ void HttpRequest::reset() {
   _query.clear();
   _version.clear();
   _headers.clear();
+  _cookies.clear();
   _body.clear();
 }
 
@@ -1003,4 +1010,30 @@ bool HttpRequest::parseChunkedBody(const std::string &chunkedData) {
 
   // Si llegamos aquí, no hemos encontrado el chunk final (0\r\n)
   return false;
+}
+
+void HttpRequest::_parseCookies() {
+  _cookies.clear();
+  std::map<std::string, std::string>::const_iterator it =
+      _headers.find("cookie");
+  if (it == _headers.end())
+    return;
+
+  std::string cookieHeader = it->second;
+  std::istringstream ss(cookieHeader);
+  std::string item;
+  while (std::getline(ss, item, ';')) {
+    // Trim leading spaces
+    size_t start = item.find_first_not_of(" ");
+    if (start == std::string::npos)
+      continue;
+    item = item.substr(start);
+
+    size_t eq = item.find('=');
+    if (eq != std::string::npos) {
+      std::string key = item.substr(0, eq);
+      std::string val = item.substr(eq + 1);
+      _cookies[key] = val;
+    }
+  }
 }

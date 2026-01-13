@@ -322,7 +322,7 @@ void RequestHandler::_sendError(int errorCode, HttpResponse &response,
   // generamos una respuesta de error genérica (hardcoded en HttpResponse).
   if (errorCode >= 400) {
     std::cerr << "[RequestHandler] Sending error " << errorCode
-              << " for path: " << _lastPath << std::endl;
+              << " for path: " << request.getPath() << std::endl;
   }
   response.setErrorResponse(errorCode);
   _applyConnectionHeader(request, response);

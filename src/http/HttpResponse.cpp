@@ -73,6 +73,10 @@ void HttpResponse::setHeader(const std::string &key, const std::string &value) {
   _headers[key] = value;
 }
 
+void HttpResponse::setCookie(const std::string &cookie) {
+  _setCookies.push_back(cookie);
+}
+
 void HttpResponse::setBody(const std::string &body) {
   _body = body;
   std::ostringstream oss;
@@ -138,6 +142,12 @@ std::string HttpResponse::buildResponse() const {
   for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
        it != _headers.end(); ++it) {
     oss << it->first << ": " << it->second << "\r\n";
+  }
+
+  // Set-Cookie headers
+  for (std::vector<std::string>::const_iterator it = _setCookies.begin();
+       it != _setCookies.end(); ++it) {
+    oss << "Set-Cookie: " << *it << "\r\n";
   }
 
   // Mandatory blank line + body
