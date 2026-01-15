@@ -87,9 +87,16 @@
     <div class="container">
         <header>
             <h1>Webserv 42</h1>
-            <p class="subtitle">Panel de Control para Pruebas Exhaustivas (Mandatory)</p>
+            <p class="subtitle">Panel de Control para Pruebas Exhaustivas</p>
         </header>
 
+        <!-- MANDATORY SECTION -->
+        <div style="margin-bottom: 1.5rem;">
+            <h2 style="color: var(--primary); font-size: 1.5rem; margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>📋</span> Mandatory
+            </h2>
+            <div style="height: 2px; background: linear-gradient(90deg, var(--primary), transparent); width: 100%;"></div>
+        </div>
         <div class="grid">
             <!-- 1. GET & AUTOINDEX -->
             <div class="card">
@@ -114,9 +121,6 @@
                     <textarea name="user_message" rows="2" placeholder="Escribe algo..."></textarea>
                     <button type="submit" class="btn">Enviar a CGI (Python)</button>
                 </form>
-                <div class="test-group" style="margin-top: 1rem;">
-                    <a href="/cgi-bin/bonus_multi_cgi_test.sh" class="btn btn-outline">Probar CGI (Bash)</a>
-                </div>
             </div>
 
             <!-- 3. POST (Upload) -->
@@ -155,11 +159,14 @@
 
             <!-- 5. REDIRECCIONES -->
             <div class="card">
-                <h2>🔗 Redirecciones</h2>
-                <p>Verifica que el servidor redirige correctamente (301 Moved Permanently).</p>
+                <h2>🔗 Redirecciones (301)</h2>
+                <p>Prueba que el servidor puede redirigir a otra URL automáticamente.</p>
                 <div class="test-group">
-                    <a href="/google" class="btn btn-outline">Ir a /google (Redirige a Google)</a>
+                    <a href="/google" class="btn btn-outline">Ir a http://localhost:8080/google</a>
                 </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    Al pedir esto, el servidor responde con <code>301 Moved Permanently</code>, indicando la nueva URL. El navegador sigue automáticamente la redirección a <code>www.google.com</code>.
+                </p>
             </div>
 
             <!-- 6. VIRTUAL HOSTING -->
@@ -186,16 +193,40 @@
                     El puerto 9090 tiene su propia configuración y contenido.
                 </p>
             </div>
+        </div>
 
-            <!-- 7. BONUS: SESIONES & COOKIES -->
+        <!-- BONUS SECTION -->
+        <div style="margin: 3rem 0 1.5rem 0;">
+            <h2 style="color: var(--success); font-size: 1.5rem; margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>⭐</span> Bonus
+            </h2>
+            <div style="height: 2px; background: linear-gradient(90deg, var(--success), transparent); width: 100%;"></div>
+        </div>
+        <div class="grid">
+            <!-- BONUS 1: MÚLTIPLES TIPOS CGI -->
             <div class="card">
-                <h2>🍪 Bonus: Sesiones & Cookies</h2>
+                <h2>🔧 Múltiples Tipos CGI</h2>
+                <p>Prueba que el servidor puede ejecutar CGI en distintos lenguajes.</p>
+                <div class="test-group">
+                    <a href="/cgi-bin/bonus_multi_cgi_python.py" class="btn btn-outline">Ejecutar Python CGI</a>
+                </div>
+                <div class="test-group">
+                    <a href="/cgi-bin/bonus_multi_cgi_bash.sh" class="btn btn-outline">Ejecutar Bash CGI</a>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    El servidor detecta la extensión (.py, .sh) y usa el intérprete correcto.
+                </p>
+            </div>
+
+            <!-- BONUS 2: SESIONES & COOKIES -->
+            <div class="card">
+                <h2>🍪 Sesiones & Cookies</h2>
                 <p>Verifica la persistencia de datos mediante cookies.</p>
                 <div class="test-group">
                     <a href="/cgi-bin/bonus_session_test.py" class="btn btn-outline">Probar Sesiones (Python CGI)</a>
                 </div>
                 <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
-                    Abre las DevTools (F12) -> Application -> Cookies para ver el <code>session_id</code>.
+                    Cada refresh incrementa el contador de visitas gracias a las cookies.
                 </p>
             </div>
         </div>

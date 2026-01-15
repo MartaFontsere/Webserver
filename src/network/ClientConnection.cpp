@@ -67,14 +67,15 @@ ClientConnection::~ClientConnection() {
     _cgiPipeFd = -1;
   }
 
-  if (!_closed) {
+  // Always close the client socket if it's still open
+  // (regardless of _closed flag - that flag is just for marking state)
+  if (_clientFd != -1) {
     std::cout << "[ClientConnection] Cerrando conexión con " << getIp()
-              << std::endl;
-    if (_clientFd != -1)
-      close(_clientFd);
-    _closed = true;
+              << " (fd: " << _clientFd << ")" << std::endl;
+    close(_clientFd);
     _clientFd = -1;
   }
+  _closed = true;
 }
 
 int ClientConnection::getFd() const { return _clientFd; }
