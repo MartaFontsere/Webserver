@@ -321,6 +321,35 @@ void ClientConnection::resetForNextRequest() {
   _cgiBuffer.clear();
 }
 
+bool ClientConnection::checkForNextRequest() {
+  if (_rawRequest.empty())
+    return false;
+
+  std::cout << "[Debug] Checking for next request in buffer (size: "
+            << _rawRequest.size() << ") for fd " << _clientFd << std::endl;
+
+  // Reset HttpRequest state before parsing to avoid stale state issues
+  _httpRequest.reset();
+
+  if (_httpRequest.parse(_rawRequest)) {
+    std::cout << "✅ Next request complete in buffer (client fd: " << _clientFd
+              << ")\n";
+    _requestComplete = true;
+
+    // Soporte para Pipelining: eliminamos solo la parte procesada
+    int parsedBytes = _httpRequest.getParsedBytes();
+    if (parsedBytes > 0 && (size_t)parsedBytes <= _rawRequest.size()) {
+      _rawRequest.erase(0, parsedBytes);
+      std::cout << "[Debug] Pipelining (buffer): erased " << parsedBytes
+                << " bytes. Remaining: " << _rawRequest.size() << std::endl;
+    } else {
+      _rawRequest.clear();
+    }
+    return true;
+  }
+  return false;
+}
+
 // ====== CGI Non-blocking Methods ======
 
 CGIState ClientConnection::getCGIState() const { return _cgiState; }

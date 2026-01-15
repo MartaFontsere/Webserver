@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webserv 42 - Dashboard de Pruebas</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --primary: #38bdf8;
+            --success: #22c55e;
+            --error: #ef4444;
+        }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container { max-width: 1000px; width: 100%; }
+        header { text-align: center; margin-bottom: 3rem; }
+        h1 { font-size: 2.5rem; color: var(--primary); margin-bottom: 0.5rem; }
+        p.subtitle { color: var(--muted); font-size: 1.1rem; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        .card {
+            background-color: var(--card);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid #334155;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .card:hover { transform: translateY(-4px); border-color: var(--primary); }
+        h2 { font-size: 1.25rem; margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+        
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background-color: var(--primary);
+            color: var(--bg);
+            text-decoration: none;
+            border-radius: 0.4rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        
+        input, textarea {
+            width: 100%;
+            padding: 0.5rem;
+            margin: 0.5rem 0;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            border-radius: 0.4rem;
+            box-sizing: border-box;
+        }
+        
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 1rem;
+            background: #334155;
+            color: var(--muted);
+        }
+        
+        .test-group { margin-bottom: 1rem; }
+        .test-group label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Webserv 42</h1>
+            <p class="subtitle">Panel de Control para Pruebas Exhaustivas (Mandatory)</p>
+        </header>
+
+        <div class="grid">
+            <!-- 1. GET & AUTOINDEX -->
+            <div class="card">
+                <h2>📂 GET & Autoindex</h2>
+                <p>Verifica que el servidor sirve archivos y genera listados de directorios.</p>
+                <div class="test-group">
+                    <a href="/tests/files/" class="btn btn-outline">Ver /tests/files/ (Autoindex)</a>
+                </div>
+                <div class="test-group">
+                    <a href="/" class="btn btn-outline">Ver Raíz (Index.html)</a>
+                </div>
+            </div>
+
+            <!-- 2. POST (CGI) -->
+            <div class="card">
+                <h2>⚙️ POST (CGI)</h2>
+                <p>Envía datos a un script de Python para procesarlos.</p>
+                <form action="/cgi-bin/post_echo.py" method="POST">
+                    <label>Nombre:</label>
+                    <input type="text" name="user_name" placeholder="Tu nombre...">
+                    <label>Mensaje:</label>
+                    <textarea name="user_message" rows="2" placeholder="Escribe algo..."></textarea>
+                    <button type="submit" class="btn">Enviar a CGI (Python)</button>
+                </form>
+                <div class="test-group" style="margin-top: 1rem;">
+                    <a href="/cgi-bin/bonus_multi_cgi_test.sh" class="btn btn-outline">Probar CGI (Bash)</a>
+                </div>
+            </div>
+
+            <!-- 3. POST (Upload) -->
+            <div class="card">
+                <h2>📤 POST (Upload)</h2>
+                <p>Sube archivos directamente a la carpeta <code>/uploads</code>.</p>
+                <form action="/uploads" method="POST" enctype="multipart/form-data">
+                    <input type="file" name="file_to_upload">
+                    <button type="submit" class="btn">Subir Archivo</button>
+                </form>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    Luego bórralos con <code>curl -X DELETE</code> o desde la terminal.
+                </p>
+            </div>
+
+            <!-- 4. ERRORES HTTP -->
+            <div class="card">
+                <h2>⚠️ Errores HTTP</h2>
+                <p>Fuerza errores para verificar la robustez y las páginas personalizadas.</p>
+                <div class="test-group">
+                    <a href="/no-existo" class="btn btn-outline">404 Not Found</a>
+                </div>
+                <div class="test-group">
+                    <a href="/forbidden/" class="btn btn-outline">403 Forbidden</a>
+                </div>
+                <div class="test-group">
+                    <button onclick="fetch('/only-get', {method: 'POST'}).then(r => alert('Status: ' + r.status + ' ' + r.statusText))" class="btn btn-outline">405 Method Not Allowed</button>
+                </div>
+                <div class="test-group">
+                    <form action="/limit_size" method="POST">
+                        <input type="hidden" name="data" value="Este texto es demasiado largo para el limite de 10 bytes">
+                        <button type="submit" class="btn btn-outline">413 Payload Too Large</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 5. REDIRECCIONES -->
+            <div class="card">
+                <h2>🔗 Redirecciones</h2>
+                <p>Verifica que el servidor redirige correctamente (301 Moved Permanently).</p>
+                <div class="test-group">
+                    <a href="/google" class="btn btn-outline">Ir a /google (Redirige a Google)</a>
+                </div>
+            </div>
+
+            <!-- 6. VIRTUAL HOSTING -->
+            <div class="card">
+                <h2>🌐 Virtual Hosting</h2>
+                <p>Prueba diferentes nombres de servidor y puertos.</p>
+                <div class="test-group">
+                    <label>Diferente Puerto:</label>
+                    <a href="http://localhost:9090/" target="_blank" class="btn btn-outline">Ir a Puerto 9090</a>
+                </div>
+                <div class="test-group">
+                    <label>Diferente Nombre (example.com):</label>
+                    <code>curl -H "Host: example.com" http://localhost:8080/</code>
+                </div>
+            </div>
+
+            <!-- 7. BONUS: SESIONES & COOKIES -->
+            <div class="card">
+                <h2>🍪 Bonus: Sesiones & Cookies</h2>
+                <p>Verifica la persistencia de datos mediante cookies.</p>
+                <div class="test-group">
+                    <a href="/cgi-bin/bonus_session_test.py" class="btn btn-outline">Probar Sesiones (Python CGI)</a>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    Abre las DevTools (F12) -> Application -> Cookies para ver el <code>session_id</code>.
+                </p>
+            </div>
+        </div>
+        
+        <footer style="margin-top: 4rem; text-align: center; color: var(--muted); font-size: 0.8rem;">
+            Webserver 42 Project - Exhaustive Testing Suite
+        </footer>
+    </div>
+</body>
+</html>

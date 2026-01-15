@@ -144,6 +144,11 @@ std::string HttpResponse::buildResponse() const {
     oss << it->first << ": " << it->second << "\r\n";
   }
 
+  // Automatic Content-Length if not manually set
+  if (_headers.find("Content-Length") == _headers.end()) {
+    oss << "Content-Length: " << _body.size() << "\r\n";
+  }
+
   // Set-Cookie headers
   for (std::vector<std::string>::const_iterator it = _setCookies.begin();
        it != _setCookies.end(); ++it) {

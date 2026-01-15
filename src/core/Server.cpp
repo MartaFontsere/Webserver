@@ -235,14 +235,15 @@ bool Server::init() {
 }
 
 // Agrupa las configuraciones por puerto
-std::map<int, std::vector<ServerConfig> > Server::groupConfigsByPort() {
+std::map<int, std::vector<ServerConfig> /* > */> Server::groupConfigsByPort() {
   std::map<int, ConfigVector> configsByPort;
   for (size_t i = 0; i < _servConfigsList.size(); ++i) {
     configsByPort[_servConfigsList[i].getListen()].push_back(
         _servConfigsList[i]);
   }
   return configsByPort;
-}
+} // TODO: QUITAR EL COMENTARIO ENTRE ASTERISCOS DE ARRIBA Y DEJAR UN ESPACIO
+  // ENTRE LOS >>
 
 /*
 std::map<int, std::vector<ServerConfig> > configsByPort;
@@ -1372,12 +1373,12 @@ Así liberas memoria y evitas que poll() siga vigilando un socket muerto.
 void Server::handleClientData(ClientConnection *client, size_t pollIndex) {
   // 1. Leer datos del socket
   if (!client->readRequest())
-    return; // error o desconexión del cliente → cleanup lo limpiará->
-            // marcó closed
+    return; // error o desconexión del cliente → cleanup lo limpiará
 
-  // 2. Si la petición está completa, procesar la request y generar la respuesta
-  // + enviar la respuesta
-  if (client->isRequestComplete()) {
+  // 2. Procesar peticiones (Bucle para soportar Pipelining y buffer residue)
+  // Mientras la petición esté completa, procesar y buscar la siguiente en el
+  // buffer.
+  while (client->isRequestComplete()) {
     if (!client->processRequest() || !client->sendResponse())
       return; // Error -> ya marcó closed, cleanup lo limpiará después
 
@@ -1389,11 +1390,18 @@ void Server::handleClientData(ClientConnection *client, size_t pollIndex) {
         _pollManager.addFd(pipeFd, POLLIN);
         _cgiPipeToClient[pipeFd] = client;
       }
+      // Si hay un CGI corriendo, no podemos procesar la siguiente petición
+      // del mismo cliente hasta que el CGI termine (para mantener el orden).
+      break;
+    }
+
+    // 3. Si no hay CGI, comprobar si ya hay otra petición completa en el buffer
+    if (!client->checkForNextRequest()) {
+      break; // No hay más peticiones completas por ahora
     }
   }
 
-  // 3. Si queda algo por enviar, activar POLLOUT para que handleClientWrite
-  // termine el trabajo
+  // 4. Si queda algo por enviar, activar POLLOUT
   if (client->hasPendingWrite()) {
     _pollManager.updateEvents(pollIndex, POLLIN | POLLOUT);
   }

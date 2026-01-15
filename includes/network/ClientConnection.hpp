@@ -69,6 +69,7 @@ public:
 
   // preparar para la próxima request cuando hay keep-alive
   void resetForNextRequest();
+  bool checkForNextRequest(); // Comprobar si hay otra request en el buffer
 
   // ====== CGI Non-blocking API ======
   CGIState getCGIState() const;
