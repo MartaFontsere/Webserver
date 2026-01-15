@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Puerto 9090 - Servidor Alternativo</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 3rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 1rem;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        h1 { font-size: 3rem; margin-bottom: 1rem; }
+        .port { color: #38bdf8; font-size: 5rem; font-weight: bold; }
+        p { color: #94a3b8; font-size: 1.2rem; }
+        .badge {
+            display: inline-block;
+            background: #22c55e;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Servidor Alternativo:</h1>
+        <div class="port">9090</div>
+        <p>Estás conectado al servidor en el puerto <strong>9090</strong>.</p>
+        <p>Esto demuestra que el webserver puede escuchar en múltiples puertos.</p>
+        <div class="badge">✓ Múltiples Puertos Funcionando</div>
+        <div style="margin-top: 2rem;">
+            <a href="http://localhost:8080/tests/index.html" style="display: inline-block; padding: 0.75rem 1.5rem; background: #38bdf8; color: #0f172a; text-decoration: none; border-radius: 0.5rem; font-weight: bold;">← Volver al Puerto 8080</a>
+        </div>
+    </div>
+</body>
+</html>

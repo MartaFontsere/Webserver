@@ -165,15 +165,26 @@
             <!-- 6. VIRTUAL HOSTING -->
             <div class="card">
                 <h2>🌐 Virtual Hosting</h2>
-                <p>Prueba diferentes nombres de servidor y puertos.</p>
+                <p>Comprueba que un mismo puerto puede servir diferentes sitios según el header <code>Host:</code></p>
                 <div class="test-group">
-                    <label>Diferente Puerto:</label>
+                    <label style="font-weight: bold; color: var(--primary);">Ejecutar en terminal:</label>
+                    <code style="display: block; background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; margin: 0.5rem 0;">curl http://localhost:8080/</code>
+                    <p style="font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0 0.75rem 0;">→ Devuelve la landing page (Host: localhost)</p>
+                    <code style="display: block; background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; margin: 0.5rem 0;">curl -H "Host: example.com" http://localhost:8080/</code>
+                    <p style="font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0;">→ Devuelve la página del virtual host (Host: example.com)</p>
+                </div>
+            </div>
+
+            <!-- 7. MÚLTIPLES PUERTOS -->
+            <div class="card">
+                <h2>🔌 Múltiples Puertos</h2>
+                <p>Confirma que el servidor escucha en más de un puerto simultáneamente.</p>
+                <div class="test-group">
                     <a href="http://localhost:9090/" target="_blank" class="btn btn-outline">Ir a Puerto 9090</a>
                 </div>
-                <div class="test-group">
-                    <label>Diferente Nombre (example.com):</label>
-                    <code>curl -H "Host: example.com" http://localhost:8080/</code>
-                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    El puerto 9090 tiene su propia configuración y contenido.
+                </p>
             </div>
 
             <!-- 7. BONUS: SESIONES & COOKIES -->
