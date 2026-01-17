@@ -19,6 +19,7 @@ public:
   void addFd(int fd, short events);
   void removeFd(int fd);
   void updateEvents(int fd, short events);
+  void updateEventsByIndex(size_t index, short events);
 
   int wait(int timeoutMs);
 

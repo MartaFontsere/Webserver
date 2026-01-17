@@ -26,7 +26,9 @@ visit_count += 1
 
 # Set cookies
 if not session_id:
-    session_id = "user_" + str(hash(os.environ.get("REMOTE_ADDR", "unknown")) % 10000)
+    import hashlib
+    remote_addr = os.environ.get("REMOTE_ADDR", "unknown")
+    session_id = "user_" + hashlib.md5(remote_addr.encode()).hexdigest()[:6]
     print(f"Set-Cookie: session_id={session_id}; Path=/; HttpOnly")
 
 print(f"Set-Cookie: visit_count={visit_count}; Path=/")

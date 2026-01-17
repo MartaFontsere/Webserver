@@ -55,33 +55,90 @@ std::string generateListing(const std::string &dirPath,
   // Escapar urlPath para HTML
   std::string safeUrlPath = escapeHtml(urlPath);
 
-  // Cabecera HTML + CSS
+  // Cabecera HTML + CSS moderno (dark theme)
   html << "<!DOCTYPE html>\n"
        << "<html>\n"
        << "<head>\n"
        << "  <meta charset=\"UTF-8\">\n"
        << "  <title>Index of " << safeUrlPath << "</title>\n"
        << "  <style>\n"
-       << "    body { font-family: Arial, sans-serif; margin: 40px; }\n"
-       << "    h1 { color: #333; margin-bottom: 20px; }\n"
-       << "    table { width: 100%; border-collapse: collapse; }\n"
-       << "    th, td { text-align: left; padding: 8px; border-bottom: 1px "
-          "solid #ddd; }\n"
-       << "    th { background-color: #f2f2f2; font-weight: bold; }\n"
-       << "    a { text-decoration: none; color: #0066cc; }\n"
-       << "    a:hover { text-decoration: underline; }\n"
-       << "    .size { text-align: right; }\n"
-       << "    .dir { font-weight: bold; }\n"
+       << "    * { box-sizing: border-box; margin: 0; padding: 0; }\n"
+       << "    body {\n"
+       << "      font-family: 'Segoe UI', system-ui, sans-serif;\n"
+       << "      background: linear-gradient(135deg, #0f172a 0%, #1e293b "
+          "100%);\n"
+       << "      color: #f8fafc;\n"
+       << "      min-height: 100vh;\n"
+       << "      padding: 2rem;\n"
+       << "    }\n"
+       << "    .container {\n"
+       << "      max-width: 900px;\n"
+       << "      margin: 0 auto;\n"
+       << "      background: rgba(30, 41, 59, 0.8);\n"
+       << "      border-radius: 1rem;\n"
+       << "      padding: 2rem;\n"
+       << "      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);\n"
+       << "    }\n"
+       << "    h1 {\n"
+       << "      color: #38bdf8;\n"
+       << "      margin-bottom: 1.5rem;\n"
+       << "      font-size: 1.5rem;\n"
+       << "      display: flex;\n"
+       << "      align-items: center;\n"
+       << "      gap: 0.5rem;\n"
+       << "    }\n"
+       << "    table {\n"
+       << "      width: 100%;\n"
+       << "      border-collapse: collapse;\n"
+       << "    }\n"
+       << "    th {\n"
+       << "      text-align: left;\n"
+       << "      padding: 0.75rem 1rem;\n"
+       << "      background: rgba(56, 189, 248, 0.1);\n"
+       << "      color: #94a3b8;\n"
+       << "      font-weight: 600;\n"
+       << "      font-size: 0.8rem;\n"
+       << "      text-transform: uppercase;\n"
+       << "      letter-spacing: 0.05em;\n"
+       << "    }\n"
+       << "    td {\n"
+       << "      padding: 0.75rem 1rem;\n"
+       << "      border-bottom: 1px solid rgba(148, 163, 184, 0.1);\n"
+       << "    }\n"
+       << "    tr:hover td {\n"
+       << "      background: rgba(56, 189, 248, 0.05);\n"
+       << "    }\n"
+       << "    a {\n"
+       << "      text-decoration: none;\n"
+       << "      color: #f8fafc;\n"
+       << "      display: flex;\n"
+       << "      align-items: center;\n"
+       << "      gap: 0.5rem;\n"
+       << "    }\n"
+       << "    a:hover { color: #38bdf8; }\n"
+       << "    .size { text-align: right; color: #64748b; }\n"
+       << "    .date { color: #64748b; }\n"
+       << "    .dir a { color: #fbbf24; font-weight: 500; }\n"
+       << "    .icon { font-size: 1.1rem; }\n"
+       << "    footer {\n"
+       << "      margin-top: 1.5rem;\n"
+       << "      padding-top: 1rem;\n"
+       << "      border-top: 1px solid rgba(148, 163, 184, 0.1);\n"
+       << "      color: #64748b;\n"
+       << "      font-size: 0.8rem;\n"
+       << "      text-align: center;\n"
+       << "    }\n"
        << "  </style>\n"
        << "</head>\n"
        << "<body>\n"
-       << "  <h1>Index of " << safeUrlPath << "</h1>\n"
-       << "  <table>\n"
-       << "    <tr>\n"
-       << "      <th>Name</th>\n"
-       << "      <th>Last Modified</th>\n"
-       << "      <th class=\"size\">Size</th>\n"
-       << "    </tr>\n";
+       << "  <div class=\"container\">\n"
+       << "    <h1>🗂️ Index of " << safeUrlPath << "</h1>\n"
+       << "    <table>\n"
+       << "      <tr>\n"
+       << "        <th>Name</th>\n"
+       << "        <th>Last Modified</th>\n"
+       << "        <th class=\"size\">Size</th>\n"
+       << "      </tr>\n";
 
   // 3. Generamos el enlace "../" para subir de nivel (si no estamos en raíz)
   if (urlPath != "/" && !urlPath.empty()) {
@@ -95,11 +152,12 @@ std::string generateListing(const std::string &dirPath,
       parentPath = "/";
     else
       parentPath = parentPath.substr(0, lastSlash + 1);
-    html << "    <tr>\n"
-         << "      <td><a href=\"" << parentPath << "\">../</a></td>\n"
-         << "      <td>-</td>\n"
-         << "      <td class=\"size\">-</td>\n"
-         << "    </tr>\n";
+    html << "      <tr class=\"dir\">\n"
+         << "        <td><a href=\"" << parentPath
+         << "\"><span class=\"icon\">⬆️</span> ../</a></td>\n"
+         << "        <td class=\"date\">-</td>\n"
+         << "        <td class=\"size\">-</td>\n"
+         << "      </tr>\n";
   }
   // 4. El bucle principal: leer entradas del directorio
   struct dirent *entry;
@@ -162,13 +220,39 @@ std::string generateListing(const std::string &dirPath,
       // 7. Generar el enlace seguro y la URL codificada
       std::string urlEncodedName = urlEncode(name);
 
-      html << "    <tr>\n"
-           << "      <td class=\"" << (isDirectory ? "dir" : "") << "\">"
+      // Determinar icono basado en tipo de archivo
+      std::string icon = isDirectory ? "📁" : "📄";
+      // Extensiones comunes
+      if (!isDirectory) {
+        size_t dotPos = name.rfind('.');
+        if (dotPos != std::string::npos) {
+          std::string ext = name.substr(dotPos);
+          if (ext == ".html" || ext == ".htm")
+            icon = "🌐";
+          else if (ext == ".css")
+            icon = "🎨";
+          else if (ext == ".js")
+            icon = "⚡";
+          else if (ext == ".png" || ext == ".jpg" || ext == ".gif" ||
+                   ext == ".webp")
+            icon = "🖼️";
+          else if (ext == ".pdf")
+            icon = "📝";
+          else if (ext == ".txt")
+            icon = "📄";
+          else if (ext == ".py" || ext == ".sh" || ext == ".cpp" || ext == ".c")
+            icon = "💻";
+        }
+      }
+
+      html << "      <tr>\n"
+           << "        <td class=\"" << (isDirectory ? "dir" : "") << "\">"
            << "<a href=\"" << urlEncodedName << (isDirectory ? "/" : "")
-           << "\">" << displayName << "</a></td>\n"
-           << "      <td>" << dateBuf << "</td>\n"
-           << "      <td class=\"size\">" << sizeStr << "</td>\n"
-           << "    </tr>\n";
+           << "\"><span class=\"icon\">" << icon << "</span> " << displayName
+           << "</a></td>\n"
+           << "        <td class=\"date\">" << dateBuf << "</td>\n"
+           << "        <td class=\"size\">" << sizeStr << "</td>\n"
+           << "      </tr>\n";
       entryCount++;
     }
   }
@@ -185,9 +269,11 @@ std::string generateListing(const std::string &dirPath,
   }
 
   // Cerrar HTML
-  html << "  </table>\n"
-       << "  <hr>\n"
-       << "  <p><em>webserv/1.0</em> - Autoindex</p>\n"
+  html << "    </table>\n"
+       << "    <footer>\n"
+       << "      webserv/1.0 \xC2\xB7 Autoindex generado din\xC3\xA1micamente\n"
+       << "    </footer>\n"
+       << "  </div>\n"
        << "</body>\n"
        << "</html>";
 

@@ -14,8 +14,26 @@ Quiere decir que se ha quedado el socket abierto
 Para gestionarlo:
 
 - Listarlos (verás el PID): lsof -i :8080
-- Matar el proceso que esté usando el puerto: kill -9 <PID>
-                     
+- Matar el proceso que esté usando el puerto: kill -9 "PID"
+
+O directamente: pkill webServer.out
+
+PERMISOS:
+🔒 Pruebas de Error 403
+
+Para probar el error 403 Forbidden con un archivo sin permisos de lectura:
+
+Quitar permisos (antes de probar):
+
+- chmod 000 www/tests/files/secret.pdf
+
+Restaurar permisos (antes de hacer commit):
+
+- chmod 644 www/tests/files/secret.pdf
+
+⚠️ Nota: Git no puede leer archivos con permisos 000. Restaura los permisos antes de hacer commit.
+
+
 
 ---------- TESTS -------------
 

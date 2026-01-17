@@ -34,6 +34,12 @@ void PollManager::updateEvents(int fd, short events) {
   }
 }
 
+void PollManager::updateEventsByIndex(size_t index, short events) {
+  if (index < _pollFds.size()) {
+    _pollFds[index].events = events;
+  }
+}
+
 int PollManager::wait(int timeoutMs) {
   // poll(): Vigilante que observa múltiples descriptores a la vez.
   // Devuelve el número de descriptores que tienen eventos listos, 0 si hubo

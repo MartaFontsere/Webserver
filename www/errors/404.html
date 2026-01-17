@@ -5,36 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 - Página no encontrada</title>
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Inter', -apple-system, sans-serif;
-            background-color: #0f172a;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%);
             color: #f8fafc;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
+            min-height: 100vh;
             text-align: center;
+            padding: 2rem;
         }
-        h1 { font-size: 6rem; margin: 0; color: #38bdf8; }
-        p { font-size: 1.5rem; color: #94a3b8; }
+        .badge {
+            display: inline-block;
+            margin-bottom: 1.5rem;
+            padding: 0.8rem 2rem;
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 2rem;
+            font-size: 1.3rem;
+            color: #c4b5fd;
+            letter-spacing: 0.2em;
+            font-weight: 700;
+        }
+        .container {
+            background: rgba(30, 27, 75, 0.6);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 1.5rem;
+            padding: 3rem;
+            max-width: 500px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .icon { font-size: 5rem; margin-bottom: 1rem; }
+        h1 { 
+            font-size: 5rem; 
+            margin: 0; 
+            background: linear-gradient(135deg, #a78bfa, #c4b5fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 { font-size: 1.5rem; color: #c4b5fd; margin-top: 0.5rem; }
+        p { font-size: 1rem; color: #a5b4fc; margin-top: 1rem; line-height: 1.5; }
         .btn {
             margin-top: 2rem;
+            display: inline-block;
             padding: 0.75rem 1.5rem;
-            background-color: #38bdf8;
-            color: #0f172a;
+            background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+            color: #fff;
             text-decoration: none;
             border-radius: 0.5rem;
-            font-weight: bold;
-            transition: transform 0.2s;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .btn:hover { transform: scale(1.05); }
+        .btn:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 10px 20px -5px rgba(139, 92, 246, 0.4);
+        }
     </style>
 </head>
 <body>
-    <h1>404</h1>
-    <p>¡Ups! Lo siento chati, pero esta página no existe en nuestro servidor.</p>
-    <a href="/tests/index.html" class="btn">Volver al Dashboard</a>
+    <div class="badge">CUSTOM ERROR PAGE</div>
+    <div class="container">
+        <div class="icon">🚀</div>
+        <h1>404</h1>
+        <h2>Página no encontrada</h2>
+        <p>Lo siento, pero esta página se ha perdido en el espacio. Puede que haya sido movida o eliminada.</p>
+        <a href="/tests/" class="btn">← Volver al Dashboard</a>
+    </div>
 </body>
 </html>

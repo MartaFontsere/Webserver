@@ -234,10 +234,11 @@ bool ClientConnection::flushWrite() {
     _writeOffset += static_cast<size_t>(s);
     _lastActivity = time(NULL);
 
-    // Imprimimos lo que estamos enviando (útil para depuración)
+    // Debug: solo mostrar resumen, no el contenido (para archivos
+    // grandes/binarios)
     std::cout << "\n[Info] Enviando respuesta al cliente (fd: " << _clientFd
               << "):\n"
-              << buf << "\n\n";
+              << " sent:" << _writeOffset << "/" << _writeBuffer.size() << "\n";
 
     // Si ya hemos enviado todo el buffer tras este send()
     if (_writeOffset >= _writeBuffer.size()) {
@@ -295,6 +296,8 @@ const HttpRequest &ClientConnection::getHttpRequest() const {
 }
 
 time_t ClientConnection::getLastActivity() const { return _lastActivity; }
+
+void ClientConnection::updateActivity() { _lastActivity = time(NULL); }
 
 bool ClientConnection::isTimedOut(time_t now, int timeoutSec) const {
   return (now - _lastActivity) > timeoutSec;

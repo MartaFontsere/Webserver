@@ -163,7 +163,13 @@ void CGIOutputParser::parse(const std::string &rawOutput) {
     size_t firstNotSpace = valueLine.find_first_not_of(" \t");
     if (firstNotSpace != std::string::npos)
       valueLine = valueLine.substr(firstNotSpace);
-    _headers[keyLine] = valueLine;
+
+    // Special handling for Set-Cookie (can have multiple)
+    if (toUpperCase(keyLine) == "SET-COOKIE") {
+      _setCookies.push_back(valueLine);
+    } else {
+      _headers[keyLine] = valueLine;
+    }
   }
 }
 
@@ -252,6 +258,10 @@ int CGIOutputParser::getStatusCode() const {
  */
 std::map<std::string, std::string> CGIOutputParser::getHeaders() const {
   return _headers;
+}
+
+std::vector<std::string> CGIOutputParser::getSetCookies() const {
+  return _setCookies;
 }
 
 /**

@@ -1262,6 +1262,12 @@ limpiar
 
 void Server::checkClientTimeout(ClientConnection *client, int fd, time_t now) {
   const int CLIENT_TIMEOUT = 30;
+
+  // No cerrar por timeout si hay datos pendientes de enviar
+  if (client->hasPendingWrite()) {
+    return;
+  }
+
   if (client->isTimedOut(now, CLIENT_TIMEOUT)) {
     std::cout << "[Timeout] Cliente fd " << fd << " inactivo más de "
               << CLIENT_TIMEOUT << " segundos, cerrando.\n";
@@ -1403,11 +1409,15 @@ void Server::handleClientData(ClientConnection *client, size_t pollIndex) {
 
   // 4. Si queda algo por enviar, activar POLLOUT
   if (client->hasPendingWrite()) {
-    _pollManager.updateEvents(pollIndex, POLLIN | POLLOUT);
+    _pollManager.updateEventsByIndex(pollIndex, POLLIN | POLLOUT);
   }
 }
 
 void Server::handleClientWrite(ClientConnection *client, size_t pollIndex) {
+  // Actualizar actividad: si poll() nos despierta con POLLOUT, el cliente
+  // sigue activo recibiendo datos, aunque el kernel buffer esté lleno
+  client->updateActivity();
+
   // Intentar vaciar el buffer de salida
   if (!client->flushWrite())
     return; // Error -> se marcó closed y cleanup lo limpiará
@@ -1415,7 +1425,7 @@ void Server::handleClientWrite(ClientConnection *client, size_t pollIndex) {
   // Actualizar eventos -> Si ya no queda nada pendiente por enviar, desactivar
   // POLLOUT
   if (!client->hasPendingWrite()) {
-    _pollManager.updateEvents(pollIndex, POLLIN);
+    _pollManager.updateEventsByIndex(pollIndex, POLLIN);
   }
 }
 /*

@@ -1,1 +1,1 @@
-Archivo#con#hashes
+File#with#hashes

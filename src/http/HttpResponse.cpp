@@ -97,30 +97,86 @@ void HttpResponse::setErrorResponse(int code) {
   _statusCode = code;
   _statusMessage = getHttpStatusMessage(code);
 
+  // CSS común para todas las páginas de error (dark theme)
+  std::string css =
+      "<style>"
+      "*{box-sizing:border-box;margin:0;padding:0}"
+      "body{font-family:'Segoe UI',system-ui,sans-serif;"
+      "background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);"
+      "color:#f8fafc;min-height:100vh;display:flex;align-items:center;"
+      "justify-content:center;padding:2rem}"
+      ".card{background:rgba(30,41,59,0.8);border-radius:1rem;padding:3rem;"
+      "text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);"
+      "max-width:500px}"
+      ".icon{font-size:4rem;margin-bottom:1rem}"
+      "h1{color:#f87171;font-size:1.8rem;margin-bottom:0.5rem}"
+      "p{color:#94a3b8;margin-top:1rem}"
+      "a{color:#38bdf8;text-decoration:none}"
+      "a:hover{text-decoration:underline}"
+      ".code{font-size:5rem;font-weight:700;color:#38bdf8;opacity:0.3}"
+      "</style>";
+
+  std::string head = "<html lang=\"en\"><head><meta charset=\"UTF-8\">"
+                     "<meta name=\"viewport\" content=\"width=device-width,"
+                     "initial-scale=1.0\">" +
+                     css + "</head><body><div class=\"card\">";
+  std::string foot =
+      "<p><a href=\"/tests/\">← Back to Dashboard</a></p></div></body></html>";
+
   switch (code) {
   case 400:
-    _body = "<html><body><h1>400 Bad Request</h1></body></html>";
+    _body = head +
+            "<div class=\"code\">400</div>"
+            "<div class=\"icon\">🚫</div>"
+            "<h1>Bad Request</h1>"
+            "<p>The server could not understand your request.</p>" +
+            foot;
     break;
   case 403:
-    _body = "<html><body><h1>403 Forbidden</h1></body></html>";
+    _body = head +
+            "<div class=\"code\">403</div>"
+            "<div class=\"icon\">🔒</div>"
+            "<h1>Forbidden</h1>"
+            "<p>You don't have permission to access this resource.</p>" +
+            foot;
     break;
   case 404:
-    _body = "<html><body><h1>404 Not Found</h1></body></html>";
+    _body = head +
+            "<div class=\"code\">404</div>"
+            "<div class=\"icon\">🔍</div>"
+            "<h1>Not Found</h1>"
+            "<p>The page you're looking for doesn't exist.</p>" +
+            foot;
     break;
   case 405:
-    _body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
+    _body = head +
+            "<div class=\"code\">405</div>"
+            "<div class=\"icon\">⛔</div>"
+            "<h1>Method Not Allowed</h1>"
+            "<p>This HTTP method is not allowed for this resource.</p>" +
+            foot;
     break;
   case 413:
-    _body = "<html><body><h1>413 Request Entity Too Large</h1>"
-            "<p>Maximum body size is 10MB</p></body></html>";
+    _body = head +
+            "<div class=\"code\">413</div>"
+            "<div class=\"icon\">📦</div>"
+            "<h1>Payload Too Large</h1>"
+            "<p>The uploaded file exceeds the maximum size limit (10MB).</p>" +
+            foot;
     break;
   case 500:
   default:
-    _body = "<html><body><h1>500 Internal Server Error</h1></body></html>";
+    _body = head +
+            "<div class=\"code\">500</div>"
+            "<div class=\"icon\">💥</div>"
+            "<h1>Internal Server Error</h1>"
+            "<p>Something went wrong on our end. Please try again later.</p>" +
+            foot;
     break;
   }
 
   _headers["Content-Type"] = "text/html";
+  _headers["X-Content-Type-Options"] = "nosniff";
   std::ostringstream length;
   length << _body.size();
   _headers["Content-Length"] = length.str();

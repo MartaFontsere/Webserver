@@ -65,6 +65,7 @@ public:
 
   // timeout helpers
   time_t getLastActivity() const;
+  void updateActivity(); // Actualiza _lastActivity al tiempo actual
   bool isTimedOut(time_t now, int timeoutSec) const;
 
   // preparar para la próxima request cuando hay keep-alive

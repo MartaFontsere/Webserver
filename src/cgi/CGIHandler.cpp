@@ -1,4 +1,5 @@
 #include "../../includes/cgi/CGIHandler.hpp"
+#include "../../includes/cgi/CGIUtils.hpp"
 
 /**
  * @file CGIHandler.cpp
@@ -299,8 +300,14 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
     std::map<std::string, std::string> cgiHeaders = parser.getHeaders();
     for (std::map<std::string, std::string>::iterator it = cgiHeaders.begin();
          it != cgiHeaders.end(); ++it) {
-      if (it->first != "Status") // Status is set via setStatus
+      if (toUpperCase(it->first) != "STATUS") // Status is set via setStatus
         response.setHeader(it->first, it->second);
+    }
+
+    // 4. Cookies del CGI
+    std::vector<std::string> cgiCookies = parser.getSetCookies();
+    for (size_t i = 0; i < cgiCookies.size(); ++i) {
+      response.setCookie(cgiCookies[i]);
     }
 
     // Cleanup: Free environment array (success path)
@@ -400,8 +407,14 @@ CGIHandler::buildResponseFromCGIOutput(const std::string &cgiOutput) {
   std::map<std::string, std::string> cgiHeaders = parser.getHeaders();
   for (std::map<std::string, std::string>::iterator it = cgiHeaders.begin();
        it != cgiHeaders.end(); ++it) {
-    if (it->first != "Status")
+    if (toUpperCase(it->first) != "STATUS")
       response.setHeader(it->first, it->second);
+  }
+
+  // 4. Cookies
+  std::vector<std::string> cgiCookies = parser.getSetCookies();
+  for (size_t i = 0; i < cgiCookies.size(); ++i) {
+    response.setCookie(cgiCookies[i]);
   }
 
   return response;

@@ -98,17 +98,54 @@
             <div style="height: 2px; background: linear-gradient(90deg, var(--primary), transparent); width: 100%;"></div>
         </div>
         <div class="grid">
-            <!-- 1. GET & AUTOINDEX -->
+            <!-- 1. Autoindex (Directorios) -->
             <div class="card">
-                <h2>📂 GET & Autoindex</h2>
-                <p>Verifica que el servidor sirve archivos y genera listados de directorios.</p>
-                <div class="test-group">
-                    <a href="/tests/files/" class="btn btn-outline">Ver /tests/files/ (Autoindex)</a>
+                <h2>🗂️ Autoindex (Directorios)</h2>
+                <p>Comprueba que el servidor genera listados automáticos para directorios.</p>
+                
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 0.3rem;">Directorios de prueba:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/files/" class="btn btn-outline">/files/</a>
+                    <a href="/tests/files/subdir/" class="btn btn-outline">/subdir/</a>
+                    <a href="/uploads/" class="btn btn-outline">/uploads/</a>
                 </div>
-                <div class="test-group">
-                    <a href="/" class="btn btn-outline">Ver Raíz (Index.html)</a>
+
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin: 0.8rem 0 0.3rem;">Casos especiales:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/public/" class="btn btn-outline">Con index.html</a>
+                    <a href="/tests/private/" class="btn btn-outline">Sin autoindex</a>
                 </div>
+
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 1.8rem; line-height: 1.4;">
+                    💡 <strong>Prioridad:</strong> El servidor primero busca un archivo índice, si no existe y autoindex está ON genera el listado, si no devuelve 403 Forbidden.
+                </p>
             </div>
+
+            <!-- 2. GET (Archivos Estáticos) -->
+            <div class="card">
+                <h2>📂 GET (Archivos Estáticos)</h2>
+                <p>Verifica que el servidor sirve diferentes tipos de archivos correctamente.</p>
+                
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 0.3rem;">Tipos de archivo:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/files/test.html" target="_blank" class="btn btn-outline">HTML</a>
+                    <a href="/tests/files/styles.css" target="_blank" class="btn btn-outline">CSS</a>
+                    <a href="/tests/files/document1.txt" target="_blank" class="btn btn-outline">TXT</a>
+                    <a href="/tests/files/gato.png" target="_blank" class="btn btn-outline">PNG</a>
+                    <a href="/tests/files/en.subject.webserver.pdf" target="_blank" class="btn btn-outline">PDF</a>
+                </div>
+                
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin: 0.8rem 0 0.3rem;">URL encoding:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/files/file%20with%20spaces.txt" target="_blank" class="btn btn-outline">Espacios</a>
+                    <a href="/tests/files/file%23with%23hashes.txt" target="_blank" class="btn btn-outline">Hashes #</a>
+                </div>
+                
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 1.8rem; line-height: 1.4;">
+                    💡 <strong>Tip:</strong> El servidor asigna el Content-Type según la extensión (.html → text/html, .png → image/png, etc).
+                </p>
+            </div>
+
 
             <!-- 2. POST (CGI) -->
             <div class="card">
@@ -127,34 +164,48 @@
             <div class="card">
                 <h2>📤 POST (Upload)</h2>
                 <p>Sube archivos directamente a la carpeta <code>/uploads</code>.</p>
-                <form action="/uploads" method="POST" enctype="multipart/form-data">
-                    <input type="file" name="file_to_upload">
+                <form onsubmit="uploadFile(event)" action="/uploads" method="POST" enctype="multipart/form-data">
+                    <input type="file" name="file_to_upload" accept=".txt,.pdf,.png,.jpg,.jpeg,.gif">
                     <button type="submit" class="btn">Subir Archivo</button>
                 </form>
-                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
-                    Luego bórralos con <code>curl -X DELETE</code> o desde la terminal.
+                <p id="upload-status" style="font-size: 0.8rem; margin-top: 0.5rem; min-height: 1.2rem;"></p>
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.8rem; line-height: 1.2;">
+                    💡 <strong>Tip:</strong> Puedes encontrar archivos de prueba en <code>www/tests/sample_files/</code>. El navegador recordará la carpeta que elijas.
                 </p>
+            </div>
+
+            <!-- 4. DELETE -->
+            <div class="card" id="delete-card">
+                <h2>🗑️ DELETE</h2>
+                <p>Elimina archivos de la carpeta <code>/uploads</code>.</p>
+                <div class="test-group" id="delete-controls">
+                    <select id="delete-filename" class="btn btn-outline" style="width: 100%; text-align: left; margin-bottom: 0.5rem; background: #1e293b;">
+                        <option value="">Cargando archivos...</option>
+                    </select>
+                    <button id="delete-btn" onclick="deleteFile()" class="btn btn-danger" style="background: #ef4444; width: 100%;">Eliminar Archivo</button>
+                </div>
+                <p id="delete-empty-msg" style="display: none; color: var(--muted); font-style: italic;">No hay archivos en /uploads para eliminar.</p>
+                <p id="delete-status" style="font-size: 0.8rem; margin-top: 0.5rem; min-height: 1.2rem;"></p>
             </div>
 
             <!-- 4. ERRORES HTTP -->
             <div class="card">
                 <h2>⚠️ Errores HTTP</h2>
                 <p>Fuerza errores para verificar la robustez y las páginas personalizadas.</p>
-                <div class="test-group">
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                     <a href="/no-existo" class="btn btn-outline">404 Not Found</a>
+                    <a href="/tests/files/secret.pdf" class="btn btn-outline">403 Forbidden</a>
+                    <a href="/only-get" class="btn btn-outline" onclick="event.preventDefault(); fetch('/only-get', {method: 'POST'}).then(r => r.text()).then(html => { document.open(); document.write(html); document.close(); });">405 Method Not Allowed</a>
                 </div>
-                <div class="test-group">
-                    <a href="/forbidden/" class="btn btn-outline">403 Forbidden</a>
-                </div>
-                <div class="test-group">
-                    <button onclick="fetch('/only-get', {method: 'POST'}).then(r => alert('Status: ' + r.status + ' ' + r.statusText))" class="btn btn-outline">405 Method Not Allowed</button>
-                </div>
-                <div class="test-group">
-                    <form action="/limit_size" method="POST">
+                <div class="test-group" style="margin-top: 0.8rem;">
+                    <form action="/limit_size" method="POST" style="display: inline;">
                         <input type="hidden" name="data" value="Este texto es demasiado largo para el limite de 10 bytes">
                         <button type="submit" class="btn btn-outline">413 Payload Too Large</button>
                     </form>
                 </div>
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 1.5rem; line-height: 1.4;">
+                    💡 <strong>Nota:</strong> El 404 usa una página personalizada vía <code>error_page</code> en la config. Los demás usan el fallback del servidor.
+                </p>
             </div>
 
             <!-- 5. REDIRECCIONES -->
@@ -162,9 +213,9 @@
                 <h2>🔗 Redirecciones (301)</h2>
                 <p>Prueba que el servidor puede redirigir a otra URL automáticamente.</p>
                 <div class="test-group">
-                    <a href="/google" class="btn btn-outline">Ir a http://localhost:8080/google</a>
+                    <a href="/google" target="_blank" class="btn btn-outline">Ir a http://localhost:8080/google</a>
                 </div>
-                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1.3rem;">
                     Al pedir esto, el servidor responde con <code>301 Moved Permanently</code>, indicando la nueva URL. El navegador sigue automáticamente la redirección a <code>www.google.com</code>.
                 </p>
             </div>
@@ -235,5 +286,143 @@
             Webserver 42 Project - Exhaustive Testing Suite
         </footer>
     </div>
+    <script>
+        // ========================================
+        // UPLOAD - Subida de archivos via AJAX
+        // ========================================
+        async function uploadFile(event) {
+            event.preventDefault();
+            const form = event.target;
+            const fileInput = form.querySelector('input[type="file"]');
+            const status = document.getElementById('upload-status');
+            
+            if (!fileInput.files.length) {
+                status.textContent = '❌ Por favor, selecciona un archivo primero';
+                status.style.color = '#ef4444';
+                return;
+            }
+
+            const formData = new FormData(form);
+            try {
+                status.textContent = '⏳ Subiendo...';
+                status.style.color = '#94a3b8';
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    status.textContent = '✅ ¡Archivo subido con éxito!';
+                    status.style.color = '#22c55e';
+                    form.reset();
+                    await updateFileList(); // Sincronizar el desplegable de borrar
+                } else {
+                    status.textContent = '❌ Error: ' + response.status + ' ' + response.statusText;
+                    status.style.color = '#ef4444';
+                }
+            } catch (error) {
+                status.textContent = '❌ Error de red o conexión';
+                status.style.color = '#ef4444';
+            }
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+
+        // ========================================
+        // UPDATE FILE LIST - Sincronizar dropdown
+        // ========================================
+        async function updateFileList() {
+            const select = document.getElementById('delete-filename');
+            const controls = document.getElementById('delete-controls');
+            const emptyMsg = document.getElementById('delete-empty-msg');
+            const deleteBtn = document.getElementById('delete-btn');
+
+            try {
+                const response = await fetch('/uploads/');
+                if (!response.ok) throw new Error('No se pudo obtener la lista');
+                
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Extraer enlaces que no sean el de volver atrás (../)
+                const links = Array.from(doc.querySelectorAll('a'))
+                    .map(a => a.getAttribute('href'))
+                    .filter(href => href && href !== '/' && href !== '../' && !href.startsWith('?'));
+
+                select.innerHTML = '';
+                
+                if (links.length === 0) {
+                    controls.style.display = 'none';
+                    emptyMsg.style.display = 'block';
+                } else {
+                    controls.style.display = 'block';
+                    emptyMsg.style.display = 'none';
+                    
+                    // Opción por defecto
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = "";
+                    defaultOpt.textContent = "-- Selecciona un archivo --";
+                    defaultOpt.disabled = true;
+                    defaultOpt.selected = true;
+                    select.appendChild(defaultOpt);
+
+                    links.forEach(link => {
+                        const filename = decodeURIComponent(link);
+                        const option = document.createElement('option');
+                        option.value = filename;
+                        option.textContent = filename;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error actualizando lista:', error);
+                select.innerHTML = '<option value="">Error al cargar archivos</option>';
+                deleteBtn.disabled = true;
+            }
+        }
+
+        // ========================================
+        // DELETE - Borrado de archivos via AJAX
+        // ========================================
+        async function deleteFile() {
+            const select = document.getElementById('delete-filename');
+            const filename = select.value;
+            const status = document.getElementById('delete-status');
+            
+            if (!filename) {
+                status.textContent = '⚠️ Selecciona un archivo primero';
+                status.style.color = '#f59e0b';
+                return;
+            }
+
+            if (!confirm(`¿Estás seguro de que quieres eliminar "${filename}"?`)) return;
+
+            try {
+                const response = await fetch('/uploads/' + filename, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    status.textContent = '✅ Archivo eliminado correctamente';
+                    status.style.color = '#22c55e';
+                    await updateFileList(); // Esto reseteará el select a la opción por defecto
+                } else {
+                    status.textContent = '❌ Error: ' + response.status + ' ' + response.statusText;
+                    status.style.color = '#ef4444';
+                }
+            } catch (error) {
+                status.textContent = '❌ Error de red o conexión';
+                status.style.color = '#ef4444';
+            }
+            
+            // Limpiar mensaje después de 3 segundos
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+
+        // ========================================
+        // INIT - Cargar lista al iniciar la página
+        // ========================================
+        document.addEventListener('DOMContentLoaded', updateFileList);
+    </script>
 </body>
 </html>
