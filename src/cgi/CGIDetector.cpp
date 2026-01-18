@@ -198,16 +198,15 @@ CGIDetector::getCGIExecutable(const std::string &scriptPath,
   if (ext.empty())
     return "";
   for (size_t i = 0; i < cgiExsts.size(); ++i) {
-    // Si la extensión del archivo coincide con una de las configuradas
+    // If the file extension matches one of the configured extensions
     if (cgiExsts[i] == ext) {
-      // Importante: Usamos el índice 'i' para devolver el ejecutable
-      // correspondiente. Esto permite que .py use python3, .sh use bash, etc.
-      // (Soporte Multi-CGI)
+      // Important: Use index 'i' to return the corresponding executable.
+      // This allows .py to use python3, .sh to use bash, etc. (Multi-CGI
+      // support)
       if (i < cgiPaths.size())
         return cgiPaths[i];
 
-      // Si por error hay menos rutas que extensiones, usamos la primera como
-      // respaldo
+      // Fallback: If there are fewer paths than extensions, use the first one
       return cgiPaths[0];
     }
   }

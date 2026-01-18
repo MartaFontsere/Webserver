@@ -243,7 +243,7 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
       CGIDetector::isCGIRequest(request.getPath(), location.getCgiExts());
 
   if (!isCGI) {
-    std::cerr << "[CGIHandler] Request path is not a CGI script: "
+    std::cerr << "❌ [Error] Request path is not a CGI script: "
               << request.getPath() << std::endl;
     HttpResponse response;
     response.setErrorResponse(404);
@@ -252,19 +252,16 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
   // PHASE 2: Resolve complete filesystem path to script
   std::string scriptPath =
       CGIDetector::resolveScriptPath(request.getPath(), location.getRoot());
-  // PHASE 3: Buscar el ejecutable del intérprete (python3, bash, etc.)
+  // PHASE 3: Find the interpreter executable (python3, bash, etc.)
   std::string executable = CGIDetector::getCGIExecutable(
       scriptPath, location.getCgiPaths(), location.getCgiExts());
 
-  // Verificación de seguridad: Si no hay intérprete configurado O el archivo no
-  // existe en el disco
+  // Security check: No interpreter configured OR script doesn't exist on disk
   if (executable.empty() || access(scriptPath.c_str(), F_OK) != 0) {
-    std::cerr << "[CGIHandler] CGI executable not found or script not "
-                 "accessible: "
+    std::cerr << "❌ [Error] CGI executable not found or script not accessible: "
               << scriptPath << std::endl;
     HttpResponse response;
-    response.setErrorResponse(
-        404); // Devolvemos 404 porque el recurso no es ejecutable o no existe
+    response.setErrorResponse(404); // Resource not executable or doesn't exist
     return response;
   }
   // PHASE 4: Prepare CGI environment variables
@@ -314,13 +311,9 @@ HttpResponse CGIHandler::handle(const HttpRequest &request,
     env.freeEnvArray(envp);
     return response;
   } catch (std::exception &e) {
-    // Si ocurre cualquier excepción durante la ejecución del script CGI (ej.
-    // fork/execve fallan, el script termina con error, etc.),
-    // se captura aquí y se devuelve un 500 Internal Server Error.
-    // Esto asegura que el servidor no colapse y maneje el error de forma
-    // controlada. Cleanup: Free environment array (error path)
-    std::cerr << "[CGIHandler] Exception during CGI execution: " << e.what()
-              << std::endl;
+    // Exception during CGI execution (fork/execve failed, script error, etc.)
+    // Return 500 Internal Server Error and ensure memory cleanup
+    std::cerr << "❌ [Error] CGI execution failed: " << e.what() << std::endl;
     env.freeEnvArray(envp);
     HttpResponse response;
     response.setErrorResponse(500);
@@ -389,7 +382,7 @@ CGIHandler::buildResponseFromCGIOutput(const std::string &cgiOutput) {
   HttpResponse response;
 
   if (cgiOutput.empty()) {
-    std::cerr << "[CGIHandler] CGI output is empty" << std::endl;
+    std::cerr << "❌ [Error] CGI output is empty" << std::endl;
     response.setErrorResponse(500);
     return response;
   }
