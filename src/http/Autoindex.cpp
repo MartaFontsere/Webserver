@@ -1,22 +1,3 @@
-/*
-Este archivo se encarga de generar listados
-
-  ✔ Concepto:
-      Cuando accedes a una ruta que es un directorio sin index.html, y el
-  autoindex está activado en la config, el servidor debe devolver una página
- HTML generada al vuelo que lista: Archivos, Directorios y Con enlaces
- navegables
-
-  🔥 Función final: generateListing(dirPath, urlPath)
-      Se encarga de:
-          Abrir el directorio
-          Leer contenido
-          Ordenarlo alfabéticamente (detalle elegante)
-          Crear HTML escapado
-          Generar enlaces correctos incluso con rutas con /
-
-  */
-
 #include "http/Autoindex.hpp"
 #include <cstring>
 #include <ctime>
@@ -28,34 +9,54 @@ Este archivo se encarga de generar listados
 #include <sys/stat.h>
 #include <unistd.h>
 
+/**
+ * @file Autoindex.cpp
+ * @brief Directory listing generation for web server
+ *
+ * This module generates HTML directory listings when:
+ * - The requested URL points to a directory
+ * - No index file (e.g., index.html) exists
+ * - Autoindex is enabled in the location config
+ *
+ * Features:
+ * - Modern dark theme styling
+ * - File type icons based on extension
+ * - File size formatting (B/KB/MB)
+ * - Last modification timestamps
+ * - Parent directory navigation (..)
+ * - URL encoding for special characters
+ * - HTML escaping to prevent XSS
+ * - Entry limit for security (1000 max)
+ *
+ * @see StaticFileHandler for directory handling
+ */
+
 namespace Autoindex {
 
 /**
- * @brief Genera el listado HTML de un directorio.
+ * @brief Generates an HTML directory listing
  *
- * Esta función genera una página HTML con el listado del contenido de un
- * directorio. Es lo que en Apache o Nginx se llama autoindex.
+ * Creates a styled HTML page listing all files and subdirectories
+ * in the specified directory.
  *
- * @param dirPath Ruta real en el sistema de archivos.
- * @param urlPath Ruta URL solicitada por el cliente.
- * @return std::string El contenido HTML generado.
+ * @param dirPath Absolute filesystem path to the directory
+ * @param urlPath URL path as requested by client (for links and title)
+ * @return HTML string, or empty string if directory can't be opened
+ *
+ * @note Returns empty string on error; caller should check errno
+ * @note Limits output to MAX_ENTRIES (1000) for security
  */
 std::string generateListing(const std::string &dirPath,
                             const std::string &urlPath) {
-  // 1. Abrimos el directorio físico en el disco
   DIR *dir = opendir(dirPath.c_str());
   if (!dir) {
-    // Si falla, el llamador (StaticFileHandler) decidirá qué error enviar
-    // (403/404)
     return "";
   }
-  // 2. Preparamos el buffer de texto para el HTML
-  std::ostringstream html;
 
-  // Escapar urlPath para HTML
+  std::ostringstream html;
   std::string safeUrlPath = escapeHtml(urlPath);
 
-  // Cabecera HTML + CSS moderno (dark theme)
+  // HTML header with modern dark theme CSS
   html << "<!DOCTYPE html>\n"
        << "<html>\n"
        << "<head>\n"
@@ -140,9 +141,8 @@ std::string generateListing(const std::string &dirPath,
        << "        <th class=\"size\">Size</th>\n"
        << "      </tr>\n";
 
-  // 3. Generamos el enlace "../" para subir de nivel (si no estamos en raíz)
+  // Parent directory link (if not at root)
   if (urlPath != "/" && !urlPath.empty()) {
-    // Encontrar directorio padre
     std::string parentPath = urlPath;
     if (parentPath[parentPath.size() - 1] == '/')
       parentPath.erase(parentPath.size() - 1);
@@ -152,6 +152,7 @@ std::string generateListing(const std::string &dirPath,
       parentPath = "/";
     else
       parentPath = parentPath.substr(0, lastSlash + 1);
+
     html << "      <tr class=\"dir\">\n"
          << "        <td><a href=\"" << parentPath
          << "\"><span class=\"icon\">⬆️</span> ../</a></td>\n"
@@ -159,30 +160,30 @@ std::string generateListing(const std::string &dirPath,
          << "        <td class=\"size\">-</td>\n"
          << "      </tr>\n";
   }
-  // 4. El bucle principal: leer entradas del directorio
+
+  // Read directory entries
   struct dirent *entry;
   int entryCount = 0;
-  const int MAX_ENTRIES = 1000; // Límite por seguridad
+  const int MAX_ENTRIES = 1000;
 
-  // Iterar por los archivos del directorio
   while ((entry = readdir(dir)) != NULL && entryCount < MAX_ENTRIES) {
     std::string name = entry->d_name;
-    // Saltar . y .. (ya manejamos .. manualmente arriba)
+
+    // Skip . and .. (parent handled above)
     if (name == "." || name == "..")
       continue;
 
-    // Construir path completo para poder hacer stat()
+    // Get file metadata
     std::string fullPath = dirPath;
     if (fullPath[fullPath.size() - 1] != '/')
       fullPath += "/";
     fullPath += name;
 
-    // 5. Obtener metadatos con stat() para obtener información del archivo
     struct stat fileStat;
     if (stat(fullPath.c_str(), &fileStat) == 0) {
       bool isDirectory = S_ISDIR(fileStat.st_mode);
 
-      // Formatear la fecha de modificación en formato legible
+      // Format modification date
       char dateBuf[64];
       struct tm *timeinfo = localtime(&fileStat.st_mtime);
       if (timeinfo)
@@ -190,13 +191,11 @@ std::string generateListing(const std::string &dirPath,
       else
         std::strcpy(dateBuf, "-");
 
-      // 6. Formatear la fecha de modificación y el tamaño (Convertir bytes a
-      // KB/MB)
+      // Format file size
       std::string sizeStr;
-      if (isDirectory)
+      if (isDirectory) {
         sizeStr = "-";
-      else {
-        // Convertir bytes a KB/MB
+      } else {
         if (fileStat.st_size < 1024) {
           std::ostringstream oss;
           oss << fileStat.st_size << " B";
@@ -212,17 +211,16 @@ std::string generateListing(const std::string &dirPath,
         }
       }
 
-      // Preparar nombre para mostrar -> Añadir '/' visual a directorios
+      // Prepare display name (escaped, with / for directories)
       std::string displayName = escapeHtml(name);
       if (isDirectory)
         displayName += "/";
 
-      // 7. Generar el enlace seguro y la URL codificada
+      // URL-encode filename for link
       std::string urlEncodedName = urlEncode(name);
 
-      // Determinar icono basado en tipo de archivo
+      // Determine icon based on file type/extension
       std::string icon = isDirectory ? "📁" : "📄";
-      // Extensiones comunes
       if (!isDirectory) {
         size_t dotPos = name.rfind('.');
         if (dotPos != std::string::npos) {
@@ -256,10 +254,10 @@ std::string generateListing(const std::string &dirPath,
       entryCount++;
     }
   }
-  // 8. Limpieza final: cerramos el directorio
+
   closedir(dir);
 
-  // Si llegamos al límite, mostrar advertencia
+  // Show warning if entry limit reached
   if (entryCount >= MAX_ENTRIES) {
     html << "    <tr>\n"
          << "      <td colspan=\"3\" style=\"color: #666; font-style: "
@@ -268,10 +266,10 @@ std::string generateListing(const std::string &dirPath,
          << "    </tr>\n";
   }
 
-  // Cerrar HTML
+  // Close HTML
   html << "    </table>\n"
        << "    <footer>\n"
-       << "      webserv/1.0 \xC2\xB7 Autoindex generado din\xC3\xA1micamente\n"
+       << "      webserv/1.0 · Autoindex\n"
        << "    </footer>\n"
        << "  </div>\n"
        << "</body>\n"
@@ -281,10 +279,17 @@ std::string generateListing(const std::string &dirPath,
 }
 
 /**
- * @brief Escapa caracteres especiales de HTML.
+ * @brief Escapes HTML special characters
  *
- * Función que convierte caracteres peligrosos en entidades.
- * Esto evita XSS al mostrar nombres de archivos que contienen <script>.
+ * Prevents XSS attacks by converting:
+ * - & → &amp;
+ * - < → &lt;
+ * - > → &gt;
+ * - " → &quot;
+ * - ' → &#39;
+ *
+ * @param input Raw string
+ * @return HTML-safe string
  */
 std::string escapeHtml(const std::string &input) {
   std::string output;
@@ -315,43 +320,29 @@ std::string escapeHtml(const std::string &input) {
 }
 
 /**
- * @brief Codifica un string para ser usado en una URL.
+ * @brief URL-encodes a string for use in href attributes
  *
- * Esta función hace lo contrario a urlDecode: recibe un string real y genera
- * una versión segura para URL. Necesario para poner links correctos en el
- * autoindex.
+ * Converts special characters to %XX format per RFC 3986.
+ * Safe characters (alphanumeric, -, _, ., ~) pass through.
+ * Spaces become %20.
  *
- * Convierte nombres de archivo a formato URL seguro:
- * - letras/números -> iguales
- * - espacio -> %20
- * - caracteres raros -> %XX
+ * @param input Raw filename or path segment
+ * @return URL-encoded string
  *
- * Ejemplo: My File#.txt -> My%20File%23.txt
+ * @note Example: "My File#.txt" → "My%20File%23.txt"
  */
 std::string urlEncode(const std::string &input) {
   std::ostringstream encoded;
   for (size_t i = 0; i < input.size(); ++i) {
     unsigned char c = input[i];
 
-    // Caracteres seguros (RFC 3986)
+    // Safe characters (RFC 3986)
     if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
       encoded << c;
     } else if (c == ' ') {
-      // Como esta función solo se usa para autoindex / paths, el espacio
-      // siempre es %20
       encoded << "%20";
     } else {
-      /*
-      Vamos bit a bit para generar el %XX.
-
-      🧠 Recordatorio: ¿qué es un byte?
-      Un unsigned char tiene 8 bits: [hhhh][llll]
-          hhhh -> 4 bits altos (high nibble)
-          llll -> 4 bits bajos (low nibble)
-
-      (c >> 4) -> Desplaza 4 bits a la derecha para obtener el nibble alto.
-      (c & 0x0F) -> Máscara para obtener los 4 bits bajos.
-      */
+      // Encode as %XX (hex)
       encoded << '%' << std::hex << std::uppercase << (int)(c >> 4)
               << (int)(c & 0x0F);
     }

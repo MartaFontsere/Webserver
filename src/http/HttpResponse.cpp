@@ -2,19 +2,61 @@
 #include <ctime>
 #include <sstream>
 
+/**
+ * @file HttpResponse.cpp
+ * @brief HTTP response construction and serialization
+ *
+ * This module handles the creation and formatting of HTTP responses.
+ * It provides methods to:
+ * - Set status code and message
+ * - Add headers and cookies
+ * - Set response body
+ * - Generate built-in error pages with modern styling
+ * - Build the final response string for sending
+ *
+ * Response structure follows RFC 9110:
+ * ```
+ * HTTP/1.1 200 OK\r\n
+ * Server: webserv/1.0\r\n
+ * Date: Mon, 01 Jan 2024 12:00:00 GMT\r\n
+ * Content-Type: text/html\r\n
+ * Content-Length: 42\r\n
+ * \r\n
+ * <body content>
+ * ```
+ *
+ * @see RequestHandler for response generation
+ * @see StaticFileHandler for file serving
+ */
+
 // ==================== CONSTRUCTORS ====================
 
+/**
+ * @brief Default constructor
+ *
+ * Initializes a response with 200 OK status and HTTP/1.1 version.
+ */
 HttpResponse::HttpResponse()
     : _statusCode(200), _statusMessage("OK"), _httpVersion("HTTP/1.1"),
       _cgiPending(false) {}
 
+/**
+ * @brief Destructor
+ */
 HttpResponse::~HttpResponse() {}
 
 // ==================== STATIC HELPERS ====================
 
 /**
  * @brief Generates current date-time in HTTP format (RFC 9110)
+ *
  * Format: "Day, DD Mon YYYY HH:MM:SS GMT"
+ * Example: "Mon, 15 Jan 2024 14:30:00 GMT"
+ *
+ * @return Date string in HTTP format
+ *
+ * @note Uses gmtime (UTC/GMT) as required by RFC
+ * @note The Date header is mandatory in HTTP responses
  */
 static std::string getHttpDate() {
   time_t currentTime;
@@ -24,15 +66,15 @@ static std::string getHttpDate() {
   strftime(buffer, 80, "%a, %d %b %Y %H:%M:%S GMT", timeInfo);
   return std::string(buffer);
 }
-/*
-Esto es el header HTTP Date: que indica cuándo el servidor generó la respuesta.
-Usa gmtime (UTC/GMT) porque el RFC lo exige. El header Date: es obligatorio
-según el RFC de HTTP.
-*/
 
 /**
  * @brief Maps HTTP status code to standard reason phrase
- * @note Public static method - usable from other modules (e.g., CGIHandler)
+ *
+ * @param code HTTP status code (e.g., 200, 404, 500)
+ * @return Standard reason phrase for the code
+ *
+ * @note Public static method - can be called from other modules (e.g.,
+ * CGIHandler)
  */
 std::string HttpResponse::getHttpStatusMessage(int code) {
   switch (code) {
@@ -57,6 +99,9 @@ std::string HttpResponse::getHttpStatusMessage(int code) {
   case 413:
     return "Request Entity Too Large";
   case 500:
+    return "Internal Server Error";
+  case 501:
+    return "Not Implemented";
   default:
     return "Internal Server Error";
   }
@@ -64,19 +109,46 @@ std::string HttpResponse::getHttpStatusMessage(int code) {
 
 // ==================== SETTERS ====================
 
+/**
+ * @brief Sets the HTTP status code and message
+ *
+ * @param code HTTP status code (e.g., 200, 404)
+ * @param message Status message (e.g., "OK", "Not Found")
+ */
 void HttpResponse::setStatus(int code, const std::string &message) {
   _statusCode = code;
   _statusMessage = message;
 }
 
+/**
+ * @brief Sets or updates a response header
+ *
+ * @param key Header name (e.g., "Content-Type")
+ * @param value Header value (e.g., "text/html")
+ */
 void HttpResponse::setHeader(const std::string &key, const std::string &value) {
   _headers[key] = value;
 }
 
+/**
+ * @brief Adds a Set-Cookie header
+ *
+ * @param cookie Complete cookie string (e.g., "session=abc123; HttpOnly")
+ *
+ * @note Multiple cookies can be added; each generates a separate Set-Cookie
+ * header
+ */
 void HttpResponse::setCookie(const std::string &cookie) {
   _setCookies.push_back(cookie);
 }
 
+/**
+ * @brief Sets the response body and updates Content-Length
+ *
+ * @param body Response body content
+ *
+ * @note Automatically calculates and sets Content-Length header
+ */
 void HttpResponse::setBody(const std::string &body) {
   _body = body;
   std::ostringstream oss;
@@ -84,20 +156,49 @@ void HttpResponse::setBody(const std::string &body) {
   _headers["Content-Length"] = oss.str();
 }
 
+/**
+ * @brief Returns the current status code
+ *
+ * @return HTTP status code
+ */
 int HttpResponse::getStatusCode() const { return _statusCode; }
 
+/**
+ * @brief Sets the CGI pending flag
+ *
+ * @param pending true if response is waiting for CGI to complete
+ */
 void HttpResponse::setCGIPending(bool pending) { _cgiPending = pending; }
 
+/**
+ * @brief Checks if response is waiting for CGI
+ *
+ * @return true if CGI execution is pending
+ */
 bool HttpResponse::isCGIPending() const { return _cgiPending; }
 
 // ==================== ERROR HANDLING ====================
 
+/**
+ * @brief Generates a styled error page for the given status code
+ *
+ * Creates a modern, dark-themed HTML error page with:
+ * - Gradient background
+ * - Card-style layout
+ * - Appropriate icon and message
+ * - Back to dashboard link
+ *
+ * @param code HTTP error code (400, 403, 404, 405, 413, 500)
+ *
+ * @note Sets Content-Type to text/html
+ * @note Sets X-Content-Type-Options: nosniff for security
+ */
 void HttpResponse::setErrorResponse(int code) {
   _httpVersion = "HTTP/1.1";
   _statusCode = code;
   _statusMessage = getHttpStatusMessage(code);
 
-  // CSS común para todas las páginas de error (dark theme)
+  // Common CSS for all error pages (dark theme)
   std::string css =
       "<style>"
       "*{box-sizing:border-box;margin:0;padding:0}"
@@ -164,6 +265,14 @@ void HttpResponse::setErrorResponse(int code) {
             "<p>The uploaded file exceeds the maximum size limit (10MB).</p>" +
             foot;
     break;
+  case 501:
+    _body = head +
+            "<div class=\"code\">501</div>"
+            "<div class=\"icon\">🚧</div>"
+            "<h1>Not Implemented</h1>"
+            "<p>This feature is not supported by the server.</p>" +
+            foot;
+    break;
   case 500:
   default:
     _body = head +
@@ -184,133 +293,55 @@ void HttpResponse::setErrorResponse(int code) {
 
 // ==================== RESPONSE BUILDER ====================
 
+/**
+ * @brief Builds the complete HTTP response string
+ *
+ * Constructs the response in this order:
+ * 1. Status line: "HTTP/1.1 200 OK\r\n"
+ * 2. Server header: "Server: webserv/1.0\r\n"
+ * 3. Date header: RFC-formatted timestamp
+ * 4. User-set headers from _headers map
+ * 5. Content-Length (if not already set)
+ * 6. Set-Cookie headers (if any)
+ * 7. Blank line separator
+ * 8. Body content
+ *
+ * @return Complete HTTP response ready to send
+ *
+ * @note Headers are output in alphabetical order (std::map behavior)
+ */
 std::string HttpResponse::buildResponse() const {
   std::ostringstream oss;
 
-  // Status line
+  // Step 1: Status line
   oss << _httpVersion << " " << _statusCode << " " << _statusMessage << "\r\n";
 
-  // Automatic headers (RFC-compliant)
+  // Step 2-3: Automatic headers (RFC-compliant)
   oss << "Server: webserv/1.0\r\n";
   oss << "Date: " << getHttpDate() << "\r\n";
 
-  // User-set headers
+  // Step 4: User-set headers
   for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
        it != _headers.end(); ++it) {
     oss << it->first << ": " << it->second << "\r\n";
   }
 
-  // Automatic Content-Length if not manually set
+  // Step 5: Automatic Content-Length if not manually set
   if (_headers.find("Content-Length") == _headers.end()) {
     oss << "Content-Length: " << _body.size() << "\r\n";
   }
 
-  // Set-Cookie headers
+  // Step 6: Set-Cookie headers
   for (std::vector<std::string>::const_iterator it = _setCookies.begin();
        it != _setCookies.end(); ++it) {
     oss << "Set-Cookie: " << *it << "\r\n";
   }
 
-  // Mandatory blank line + body
+  // Step 7: Mandatory blank line separating headers from body
   oss << "\r\n";
+
+  // Step 8: Body
   oss << _body;
 
   return oss.str();
 }
-
-/*
-Contexto: qué debe tener una respuesta HTTP
-
-    Una respuesta HTTP siempre sigue este formato:
-        <HTTP-VERSION> <STATUS-CODE> <STATUS-MESSAGE>\r\n
-        Header-Name: value\r\n
-        Header-Name: value\r\n
-        ...\r\n
-        \r\n
-        <body>
-
-Explicación detallada de buildResponse()
-
-std::string HttpResponse::buildResponse() const
-{
-    std::ostringstream oss;
-
-std::ostringstream oss;
-    Es un stream en memoria que te permite ir escribiendo texto como si fuera un
-std::cout, pero acabará convertido en un std::string.
-
-    Es la forma más limpia (y compatible con C++98) de crear strings grandes
-concatenando muchas partes.
-
-Status Line
-    oss << _httpVersion << " " << _statusCode << " " << _statusMessage <<
-"\r\n";
-
-    Ejemplo que puede producir:
-        HTTP/1.1 200 OK\r\n
-
-Headers
-    for (std::map<std::string, std::string>::const_iterator it =
-_headers.begin(); it != _headers.end();
-     ++it)
-    {
-        oss << it->first << ": " << it->second << "\r\n";
-    }
-
-    Recorres todos los headers almacenados en _headers, que es:
-        std::map<std::string, std::string>
-
-    Cada header se escribe del tipo:
-        Content-Type: text/html\r\n
-        Content-Length: 42\r\n
-
-    Importante:
-        Usas un map → los headers siempre salen en orden alfabético (es normal).
-
-Línea en blanco obligatoria
-    oss << "\r\n";
-
-    Esta línea separa los headers del body.
-
-    En HTTP, una línea vacía (CR LF) es la que indica:
-
-    ➡️ “Ya he terminado de listar headers; lo que viene ahora es el cuerpo”
-
-    Si no la pones, el navegador NO SABE dónde empieza el body, y puede
-interpretar que el body es otro header → respuesta inválida.
-
-Body
-    oss << _body;
-
-    Aquí metes:
-        HTML
-        JSON
-        texto
-        lo que corresponda según el tipo de contenido
-
-El body NO lleva \r\n obligatorio al final.
-Solo se escribe tal cual.
-
-Convertir todo a string
-    return oss.str();
-
-    Esto transforma todo lo que concatenaste en el ostringstream en un único
-std::string que luego enviarás al socket.
-
-    Este string es exactamente el que _writeBuffer luego enviará al socket.
-*/
-
-/*
-Estado actual de HttpResponse (8.1.26):
-
-  ✅ Content-Length: calculado automáticamente en setBody()
-  ✅ Date: añadido automáticamente en buildResponse() (RFC 9110)
-  ✅ Server: añadido automáticamente en buildResponse()
-  ✅ Connection: keep-alive lo gestiona RequestHandler::_applyConnectionHeader()
-  ✅ Content-Type dinámico: lo gestiona StaticFileHandler (donde pertenece)
-  ✅ getHttpStatusMessage(): helper público para traducir códigos a mensajes
-
-Posibles mejoras futuras (no críticas para el proyecto):
-  🔹 Chunked encoding (Transfer-Encoding: chunked) para streaming
-  🔹 Validación especial para 204/304 (no deberían tener body)
-*/
