@@ -10,22 +10,25 @@
 #include "http/HttpResponse.hpp"
 #include <string>
 
+/**
+ * @brief CGI orchestrator - coordinates detection, environment, and execution
+ */
 class CGIHandler {
 public:
   CGIHandler();
   ~CGIHandler();
 
-  // Original synchronous handle (kept for backwards compatibility)
+  /** @brief Synchronous CGI execution (blocks until complete) */
   HttpResponse handle(const HttpRequest &request,
                       const LocationConfig &location,
                       const std::string &serverName, int serverPort);
 
-  // NEW: Async handle - forks CGI but doesn't wait, returns pipe FD and PID
+  /** @brief Async CGI execution - forks but doesn't wait */
   CGIAsyncResult handleAsync(const HttpRequest &request,
                              const LocationConfig &location,
                              const std::string &serverName, int serverPort);
 
-  // NEW: Build response from completed CGI output
+  /** @brief Build HTTP response from completed CGI output */
   HttpResponse buildResponseFromCGIOutput(const std::string &cgiOutput);
 
 private:

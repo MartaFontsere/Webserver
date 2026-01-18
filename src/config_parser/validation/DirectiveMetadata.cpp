@@ -23,9 +23,7 @@
  * 2
  */
 const DirectiveRule DirectiveMetadata::rules[] = {
-    // NOTE: Review argument types with team after real implementation testingL
-
-    // SERVER CONTEXT
+    // Server context directives
     {"listen",
      CTX_SERVER,
      1,
@@ -138,31 +136,30 @@ const DirectiveRule DirectiveMetadata::rules[] = {
      1,
      {ARG_NUMBER, ARG_STR, ARG_STR, ARG_STR, ARG_STR},
      true}
-
-    // ========== BONUS: Cookies & Sessions (comentadas para más adelante) poner
-    // los 5 arg type, ahora solo hay uno, riesgo de crashh==========
-    // Session management
+    // ========== BONUS: Cookies & Sessions (commented for future) ==========
+    // Note: If enabled, each entry needs 5 argType values to match struct
+    //
+    // Session management:
     // {"session_timeout",    CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
-    // ARG_NUMBER, true}, //Tiempo de vida de la sesión en segundos.
-    // {"session_name",       CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1, ARG_STR,
-    // true}, //Nombre del identificador de sesión (cookie).
-    // {"session_path",       CTX_HTTP|CTX_SERVER,              1, 1, ARG_PATH,
-    // true}, //Directorio para almacenar datos de sesión.
-
-    // Cookie configuration
-    // {"cookie_domain",      CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1, ARG_HOST,
-    // true}, //Define el dominio para las cookies (ej: .example.com para
-    // subdominios).
-    // {"cookie_path",        CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1, ARG_PATH,
-    // true}, //Ruta donde la cookie es válida.
+    //    {ARG_NUMBER,...}, true}  // Session lifetime in seconds
+    // {"session_name",       CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
+    //    {ARG_STR,...}, true}     // Session identifier (cookie name)
+    // {"session_path",       CTX_HTTP|CTX_SERVER,              1, 1,
+    //    {ARG_PATH,...}, true}    // Directory to store session data
+    //
+    // Cookie configuration:
+    // {"cookie_domain",      CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
+    //    {ARG_HOST,...}, true}    // Domain for cookies (e.g., .example.com)
+    // {"cookie_path",        CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
+    //    {ARG_PATH,...}, true}    // Path where cookie is valid
     // {"cookie_max_age",     CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
-    // ARG_NUMBER, true}, //Tiempo de vida de la cookie en segundos.
-    // {"cookie_secure",      CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1, ARG_BOOL,
-    // true}, //Cookie solo se envía por conexiones seguras (HTTPS).
-    // {"cookie_httponly",    CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1, ARG_BOOL,
-    // true}, //La cookie NO es accesible desde JavaScript (seguridad).
-    // {"cookie_samesite",    CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1, ARG_STR,
-    // true} //Protección CSRF (Cross-Site Request Forgery).
+    //    {ARG_NUMBER,...}, true}  // Cookie lifetime in seconds
+    // {"cookie_secure",      CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
+    //    {ARG_BOOL,...}, true}    // Cookie only via HTTPS
+    // {"cookie_httponly",    CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
+    //    {ARG_BOOL,...}, true}    // Cookie not accessible via JavaScript
+    // {"cookie_samesite",    CTX_HTTP|CTX_SERVER|CTX_LOCATION, 1, 1,
+    //    {ARG_STR,...}, true}     // CSRF protection (Strict/Lax/None)
 };
 
 /**

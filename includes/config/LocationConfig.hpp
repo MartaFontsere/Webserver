@@ -40,7 +40,7 @@ public:
   const std::string &getPattern() const;
   bool isMethodAllowed(const std::string &method) const;
   bool isUploadEnabled() const;
-  const std::string &getUploadPath() const; // ruta relativa al root
+  const std::string &getUploadPath() const;
   bool hasAlias() const;
   const std::string &getAlias() const;
   bool getAutoindex() const;

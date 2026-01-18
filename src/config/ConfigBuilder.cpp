@@ -316,7 +316,7 @@ void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock,
  * - Simple directives: Direct extraction with helpers
  * - Complex directives: Delegated to specialized parsers
  *
- * Directives processed (12 total):
+ * Directives processed (13 total):
  * 1. pattern (from block name)
  * 2. root (single value)
  * 3. index (multiple values)
@@ -325,9 +325,10 @@ void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock,
  * 6. cgi_path (multiple values)
  * 7. allow_methods (multiple values)
  * 8. upload_path (single value)
- * 9. autoindex (special: string → bool)
- * 10. return (special: code + URL with validation)
- * 11. error_page (special: multiple directives → map)
+ * 9. alias (single value - alternative path mapping)
+ * 10. autoindex (special: string → bool)
+ * 11. return (special: code + URL with validation)
+ * 12. error_page (special: multiple directives → map)
  *
  * Method modularity:
  * - Simple directives: Inline setters with helpers (~8 lines)
@@ -411,8 +412,15 @@ void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock,
  * 2. Create empty vector for storing LocationConfig objects
  * 3. For each nested block:
  *    - Convert to LocationConfig using buildLocation()
+ *    - Inherit missing values from server (root, index, body size, error pages)
  *    - Add to locations vector
  * 4. Set complete vector in ServerConfig
+ *
+ * Inheritance behavior:
+ * - root: If not defined in location, inherits from server
+ * - index: If not defined in location, inherits from server
+ * - client_max_body_size: If location uses default, inherits from server
+ * - error_pages: Merged - location pages override server pages for same codes
  *
  * Nested structure:
  *   server {
@@ -430,14 +438,6 @@ void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock,
  * @note Reuses buildLocation() for each location (modular design)
  * @note Server can have 0 locations (empty vector is valid)
  */
-
-/*
-Mejora:
- Se ha modificado la función para que si location no tiene definidos el root,
-index, client_max_body_size, o error_pages, los herede automáticamente del
-bloque server
-*/
-
 void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock,
                                         ServerConfig &server) {
   std::vector<BlockParser> nestedBlocks = serverBlock.getNestedBlocks();
@@ -451,10 +451,10 @@ void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock,
     if (loc.getIndex().empty()) {
       loc.setIndex(server.getIndex());
     }
-    // Herencia de client_max_body_size:
-    // Si location no definió explícitamente (usa el default 1MB) y el server
-    // tiene un límite distinto, hereda del server. Esto permite que el server
-    // defina un límite global que todas las locations heredan.
+    // client_max_body_size inheritance:
+    // If location didn't explicitly define it (uses default 1MB) and the server
+    // has a different limit, inherit from server. This allows the server to
+    // define a global limit that all locations inherit.
     static const size_t DEFAULT_BODY_SIZE = 1 * 1024 * 1024;
     if (loc.getMaxBodySize() == DEFAULT_BODY_SIZE &&
         server.getClientMaxBodySize() != 0) {

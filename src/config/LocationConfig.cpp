@@ -9,7 +9,6 @@
  * block within a server configuration. Location blocks define how the
  * server handles requests matching specific URI patterns.
  *
- * Configuration structure:
  *   location [pattern] {
  *       root ./www;
  *       index index.html;
@@ -21,9 +20,10 @@
  *       return 301 /new-location;
  *       upload_path ./uploads;
  *       client_max_body_size 1048576;
+ *       alias /other/path;
  *   }
  *
- * Managed data (12 attributes):
+ * Managed data (13 attributes):
  * - Pattern matching (URI pattern for this location)
  * - Static file serving (root, index, autoindex)
  * - HTTP methods (GET, POST, DELETE allowed)
@@ -31,6 +31,7 @@
  * - Error handling (custom error pages per status code)
  * - Redirects (HTTP redirects with status code)
  * - File uploads (upload directory and size limits)
+ * - Alias (alternative path mapping)
  *
  * Design decisions:
  * - Class instead of struct (encapsulation, validation-ready)
@@ -64,32 +65,21 @@
  * - _errorPages = {} (empty map, server defaults will apply)
  * - _returnCode = 0 (no redirect configured)
  * - _returnUrl = "" (no redirect)
- * - _bodySize = -1 (no limit)
+ * - _maxBodySize = 1MB (same as nginx default)
  * - _pattern = "" (must be set from location block name)
  * - _uploadPath = "" (uploads disabled by default)
+ * - _alias = "" (no alias configured)
  * - _autoindex = false (directory listing disabled by default)
  *
- * Constructor initialization list only includes primitives because:
- * - STL containers (string, vector, map) initialize to empty automatically
- * - Primitives (int, size_t, bool) contain garbage without initialization
+ * Body size inheritance logic:
+ * - If config has client_max_body_size → use that value
+ * - If not defined in location → inherit from server
+ * - If not in server either → use this default (1MB)
  *
  * @note Called by ConfigBuilder when creating new location configurations
- * @note All STL members auto-initialize to empty (not in initialization
- * list)
+ * @note All STL members auto-initialize to empty (not in initialization list)
+ * @note DEFAULT_MAX_BODY_SIZE = 1MB matches nginx behavior
  */
-
-/*
-Cambio de body size de -1 a 1048576 (1MB). Este es el valor por defecto igual
-que nginx. Si el usuario quiere otro límite, lo define explícitamente en la
-configuración con client_max_body_size.
-
-De este modo:
-- Si config tiene client_max_body_size → usa ese valor
-- Si no está definido en location → hereda del server
-- Si tampoco está en server → usa este default (1MB)
-*/
-
-// Default: 1MB (igual que nginx)
 static const size_t DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 
 LocationConfig::LocationConfig()

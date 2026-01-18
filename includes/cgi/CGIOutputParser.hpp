@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 
+/**
+ * @brief CGI output parser - extracts headers, cookies, and body from raw
+ * output
+ */
 class CGIOutputParser {
 private:
   std::map<std::string, std::string> _headers;
@@ -17,6 +21,7 @@ public:
   CGIOutputParser();
   ~CGIOutputParser();
 
+  /** @brief Parse raw CGI output into headers and body */
   void parse(const std::string &rawOutput);
 
   std::map<std::string, std::string> getHeaders() const;

@@ -9,15 +9,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/**
- * @brief Result of async CGI execution containing pipe FD and child PID
- */
+/** @brief Result of async CGI execution */
 struct CGIAsyncResult {
-  int pipeFd;     // Pipe to read CGI output (already non-blocking)
+  int pipeFd;     // Pipe to read CGI output (non-blocking)
   pid_t childPid; // PID of forked CGI process
   bool success;   // true if fork succeeded
 };
 
+/**
+ * @brief CGI process executor - handles fork, exec, and pipe I/O
+ */
 class CGIExecutor {
 private:
   int _pipeIn[2];
@@ -28,17 +29,16 @@ public:
   CGIExecutor();
   ~CGIExecutor();
 
-  // Original synchronous execute (for backwards compatibility)
+  /** @brief Synchronous execution - blocks until CGI completes */
   std::string execute(const std::string &executable,
                       const std::string &scriptPath, char **envp,
                       const std::string &requestBody);
 
-  // NEW: Async execute - forks but doesn't wait, returns pipe FD
+  /** @brief Async execution - forks but doesn't wait */
   CGIAsyncResult executeAsync(const std::string &executable,
                               const std::string &scriptPath, char **envp,
                               const std::string &requestBody);
 
-  // NEW: Set file descriptor to non-blocking
   static void setNonBlocking(int fd);
 
 private:

@@ -1,12 +1,11 @@
 #pragma once
 
-#include <cstddef> // para size_t
+#include <cstddef>
 #include <poll.h>
 #include <vector>
 
 /**
- * @brief Gestiona el vector de estructuras pollfd y la llamada al sistema
- * poll().
+ * @brief Manages pollfd vector and poll() system call
  */
 class PollManager {
 private:
@@ -21,12 +20,12 @@ public:
   void updateEvents(int fd, short events);
   void updateEventsByIndex(size_t index, short events);
 
+  /** @brief Block until events occur or timeout (returns event count) */
   int wait(int timeoutMs);
 
   const std::vector<struct pollfd> &getPollFds() const;
   short getRevents(size_t index) const;
   int getFd(size_t index) const;
   size_t getSize() const;
-
   void clear();
 };

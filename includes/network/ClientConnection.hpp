@@ -7,40 +7,18 @@
 #include <ctime>
 #include <netinet/in.h>
 #include <string>
-#include <sys/types.h> // pid_t
+#include <sys/types.h>
 #include <vector>
 
-/**
- * @brief Estado del proceso CGI asociado a esta conexión
- */
+/** @brief CGI process state for this connection */
 enum CGIState {
-  CGI_NONE,    // No hay CGI en ejecución
-  CGI_RUNNING, // CGI fork() ejecutado, esperando output
-  CGI_DONE     // CGI terminó, respuesta lista para enviar
+  CGI_NONE,    // No CGI running
+  CGI_RUNNING, // CGI fork() executed, waiting for output
+  CGI_DONE     // CGI finished, response ready to send
 };
 
 /**
- * @class ClientConnection
- * @brief Representa una conexión individual con un cliente.
- *
- * ¿Por qué la necesitamos?
- * Cuando tu servidor recibe una conexión (accept()), obtiene un nuevo file
- * descriptor (FD) que representa a ese cliente específico. Pero el servidor
- * puede tener muchos clientes conectados al mismo tiempo. → Por tanto,
- * necesitamos una forma clara de guardar y gestionar la información de cada
- * cliente: su FD, su estado (si está leyendo o escribiendo), lo que ha enviado,
- * lo que hay que responderle, etc.
- *
- * La clase ClientConnection sirve justo para eso: encapsula todo lo que pasa
- * con un cliente concreto dentro de un objeto. Así evitamos caos y código
- * duplicado dentro del servidor.
- *
- * Responsabilidades:
- * 1. Buffering: Acumular datos recibidos del socket (_rawRequest).
- * 2. Parsing: Delegar el parseo progresivo a HttpRequest.
- * 3. CGI: Gestionar ejecución asíncrona de scripts CGI.
- * 4. Respuesta: Utilizar RequestHandler para generar la respuesta.
- * 5. Envío: Gestionar el envío asíncrono de la respuesta al socket.
+ * @brief Individual client connection - manages request/response lifecycle
  */
 class ClientConnection {
 public:
@@ -51,61 +29,59 @@ public:
   int getFd() const;
   std::string getIp() const;
 
-  bool readRequest();    // lee datos del cliente
-  bool processRequest(); // crea HttpResponse basado en HttpRequest
-  bool sendResponse();   // envía respuesta
+  /** @brief Read data from client socket into buffer */
+  bool readRequest();
+  /** @brief Process buffered request and generate response */
+  bool processRequest();
+  /** @brief Send response data to client */
+  bool sendResponse();
   bool isClosed() const;
 
-  // nuevo: encolar respuesta y vaciar buffer progresivamente
-  bool flushWrite();            // intenta enviar bytes pendientes (usa send())
-  bool hasPendingWrite() const; // true si queda data por enviar
+  /** @brief Attempt to send pending write buffer (non-blocking) */
+  bool flushWrite();
+  bool hasPendingWrite() const;
   void markClosed();
   bool isRequestComplete() const;
   const HttpRequest &getHttpRequest() const;
 
-  // timeout helpers
+  // Timeout helpers
   time_t getLastActivity() const;
-  void updateActivity(); // Actualiza _lastActivity al tiempo actual
+  void updateActivity();
   bool isTimedOut(time_t now, int timeoutSec) const;
 
-  // preparar para la próxima request cuando hay keep-alive
+  // Keep-alive support
   void resetForNextRequest();
-  bool checkForNextRequest(); // Comprobar si hay otra request en el buffer
+  bool checkForNextRequest();
 
-  // ====== CGI Non-blocking API ======
+  // CGI non-blocking API
   CGIState getCGIState() const;
   int getCGIPipeFd() const;
   pid_t getCGIPid() const;
-
-  void startCGI(int pipeFd, pid_t pid); // Iniciar tracking de CGI
-  bool readCGIOutput();           // Leer datos del pipe CGI (non-blocking)
-  void finishCGI(int exitStatus); // CGI terminó, preparar respuesta
+  void startCGI(int pipeFd, pid_t pid);
+  bool readCGIOutput();
+  void finishCGI(int exitStatus);
   const std::string &getCGIBuffer() const;
-  void setCGIResponse(
-      const std::string &responseStr); // Set write buffer from CGI output
+  void setCGIResponse(const std::string &responseStr);
 
 private:
-  int _clientFd;     // file descriptor del socket del cliente
-  sockaddr_in _addr; // dirección IP y puerto del cliente
-  bool _closed;      // indica si la conexión está cerrada
+  int _clientFd;
+  sockaddr_in _addr;
+  bool _closed;
 
-  // lectura/parseo
-  std::string _rawRequest; // buffer con los datos RAW recibidos del socket
+  std::string _rawRequest;
   HttpRequest _httpRequest;
 
-  //  salida (write buffering)
-  std::string _writeBuffer; // Los datos pendientes de enviar
-  size_t _writeOffset;  // bytes ya enviados desde el inicio de _writeBuffer.
-  time_t _lastActivity; // timestamp del último recv/send exitoso.
+  std::string _writeBuffer;
+  size_t _writeOffset;
+  time_t _lastActivity;
   bool _requestComplete;
   std::vector<ServerConfig> _servCandidateConfigs;
 
   HttpResponse _httpResponse;
   RequestHandler _requestHandler;
 
-  // ====== CGI State ======
   CGIState _cgiState;
-  int _cgiPipeFd;         // Pipe para leer output del CGI (-1 si no hay)
-  pid_t _cgiPid;          // PID del proceso CGI (0 si no hay)
-  std::string _cgiBuffer; // Buffer para acumular output del CGI
+  int _cgiPipeFd;
+  pid_t _cgiPid;
+  std::string _cgiBuffer;
 };

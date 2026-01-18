@@ -11,10 +11,8 @@
 #include <vector>
 
 /**
- * @brief Encapsula un socket de escucha del servidor.
- *
- * Se encarga de la creación, configuración (setsockopt, non-blocking),
- * bind y listen de un socket asociado a un puerto.
+ * @brief Listening socket wrapper - handles bind, listen, and non-blocking
+ * setup
  */
 class ServerSocket {
 private:
@@ -27,6 +25,7 @@ public:
   ServerSocket(int port);
   ~ServerSocket();
 
+  /** @brief Create socket, bind to port, and start listening */
   bool init();
   int getFd() const;
   int getPort() const;

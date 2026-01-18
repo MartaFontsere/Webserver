@@ -161,7 +161,7 @@ bool Server::init() {
  *
  * @return Map: port number → vector of ServerConfig for that port
  */
-std::map<int, std::vector<ServerConfig>> Server::groupConfigsByPort() {
+std::map<int, std::vector<ServerConfig> > Server::groupConfigsByPort() {
   std::map<int, ConfigVector> configsByPort;
   for (size_t i = 0; i < _servConfigsList.size(); ++i) {
     configsByPort[_servConfigsList[i].getListen()].push_back(

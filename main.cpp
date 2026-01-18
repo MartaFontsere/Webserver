@@ -3,174 +3,122 @@
 #include "core/Server.hpp"
 #include <csignal>
 
-// podemos cambiar el tipo de variable a volatile sig_atomic_t para que sea más
-// seguro:
-// sig_atomic_t: Es un tipo de dato que garantiza que se puede leer/escribir en
-// una sola operación de CPU (evita problemas si la señal llega justo cuando
-// estás leyendo la variable). volatile: Le dice al compilador "no optimices
-// esta variable, puede cambiar en cualquier momento fuera de tu control".
-// Aunque bool funciona el 99% de las veces, sig_atomic_t es el tipo estándar
-// para esto.
+/**
+ * @file main.cpp
+ * @brief Webserver entry point - Configuration loading and signal handling
+ *
+ * This is the main entry point for the nginx-style web server.
+ * It handles:
+ * - Command line argument parsing (config file path)
+ * - Configuration file parsing and validation
+ * - Signal handling for graceful shutdown (SIGINT, SIGTERM)
+ * - Server initialization and main loop execution
+ *
+ * Usage:
+ *   ./webServer              # Uses default config (tests/configs/default.conf)
+ *   ./webServer config.conf  # Uses specified config file
+ *
+ * Signal handling:
+ * - SIGINT (Ctrl+C): Triggers graceful shutdown
+ * - SIGTERM (kill): Triggers graceful shutdown
+ *
+ * The server shuts down cleanly by setting g_running = false,
+ * which breaks the poll() loop and allows proper resource cleanup.
+ */
 
-volatile sig_atomic_t g_running =
-    true; // Variable global para controlar el bucle principal y
-          // determinar si el servidor debe continuar ejecutándose.
-          // sig_atomic_t es un tipo de dato que garantiza que se puede
-          // leer/escribir en una sola operación de CPU (evita problemas si la
-          // señal llega justo cuando estás leyendo la variable). Este tipo de
-          // variable es el estándar de seguridad para manejar variables
-          // modificadas por señales del sistema operativo.
+/**
+ * @brief Global flag for graceful shutdown
+ *
+ * This variable is set to false by the signal handler to indicate
+ * that the server should stop its main loop and shut down cleanly.
+ *
+ * Why global? The signal() API requires handlers with signature void(*)(int),
+ * so there's no way to pass context. A global volatile sig_atomic_t is the
+ * POSIX-standard way to communicate between signal handlers and main code.
+ *
+ * Thread safety:
+ * - sig_atomic_t guarantees atomic read/write operations
+ * - volatile prevents compiler optimization that could cache the value
+ */
+volatile sig_atomic_t g_running = true;
 
-/*
-Justificación del uso de una variable global:
-
-Limitación Técnica de signal(): "La función signal() de la librería estándar de
-C solo acepta funciones con una firma fija (void (*)(int)). Esto significa que
-el manejador de señales no puede recibir un puntero a mi clase Server ni acceder
-a variables locales de main."
-
-Necesidad de Comunicación: "Para que el servidor se detenga de forma 'limpia'
-(graceful shutdown) y ejecute sus destructores (cerrando sockets y liberando
-memoria), necesito que el manejador de señales comunique la orden de parada al
-bucle principal de poll. La única forma estándar y segura de compartir este
-estado entre un signal handler y el programa principal es mediante una variable
-global."
-
-Excepción de Networking: "En proyectos de red como este o IRC, esta es la única
-excepción permitida y recomendada para garantizar la gestión limpia de recursos
-exigida por el subject."
-*/
-
+/**
+ * @brief Signal handler for SIGINT and SIGTERM
+ *
+ * Called by the OS when the process receives a termination signal.
+ * Sets g_running to false to trigger graceful shutdown.
+ *
+ * What this does NOT do:
+ * - Does not call exit()
+ * - Does not close sockets directly
+ * - Does not free memory
+ *
+ * The actual cleanup happens when the main loop exits and destructors run.
+ *
+ * @param signum Signal number received (SIGINT=2, SIGTERM=15)
+ */
 void signalHandler(int signum) {
   if (signum == SIGINT)
-    std::cout << "       \nCtrl+C recibido\n";
+    std::cout << "\n[Signal] SIGINT (Ctrl+C) received" << std::endl;
   else if (signum == SIGTERM)
-    std::cout << "       \nSIGTERM recibido\n";
+    std::cout << "\n[Signal] SIGTERM received" << std::endl;
+
   g_running = false;
-  std::cout << "\n🛑 Signal received, shutting down gracefully..." << std::endl;
+  std::cout << "[Info] 🛑 Shutting down gracefully..." << std::endl;
 }
 
-/*
-Manejador de señales para manejar Ctrl+C y otros. Los signal handlers solo
-pueden trabajar con cosas muy simples -> Variables globales o estáticas
-
-Esta función se ejecuta automáticamente cuando el proceso recibe una señal del
-sistema operativo.
-
-Ejemplos:
-Ctrl + C → SIGINT
-kill <pid> → SIGTERM
-
-signum es el número de la señal recibida (SIGINT, SIGTERM, etc.).
-
-Por qué se ignora? (void)signum; -> Porque no se usa.
-Evita un warning del compilador por parámetro no usado.
-  #Ahora lo uso para identificar el tipo de señal recibida e imprimirlo por
-terminal
-
-La línea clave es g_running = false; Al cambiar el estado global, le dice al
-servidor, sal del bucle principal cuando puedas (es el bucle que mantiene el
-servidor funcionando).
-
-No mata el proceso.
-No hace exit().
-No cierra sockets aquí.
-
-👉 Solo avisa.
-
-Qué pasa cuando haces Ctrl+C
-  El SO manda SIGINT
-  Se ejecuta signalHandler
-  g_running = false
-  El while termina
-  Sales del loop
-  Cierras sockets
-  Limpias memoria
-  El programa termina ordenadamente
-
-🎯 Shutdown limpio
-
-Por qué signalHandler tiene ese parámetro aunque no lo uses?
-
-  Cuando registras un handler así:
-    signal(SIGINT, signalHandler);
-
-  le estás diciendo al sistema operativo:
-    “Cuando llegue una señal, llama a esta función”
-  La firma está definida por POSIX / C estándar
-  No puedes cambiar la firma, aunque no uses el parámetro.
-*/
-
+/**
+ * @brief Main entry point
+ *
+ * Execution flow:
+ * 1. Parse command line args (use default config if none provided)
+ * 2. Parse and validate configuration file
+ * 3. Build ServerConfig objects from parsed config
+ * 4. Register signal handlers for graceful shutdown
+ * 5. Initialize server sockets
+ * 6. Run main poll() loop until shutdown signal
+ * 7. Clean up resources and exit
+ *
+ * @param argc Argument count
+ * @param argv Argument vector (argv[1] = config file path)
+ * @return 0 on success, 1 on error
+ */
 int main(int argc, char **argv) {
+  // Step 1: Get config file path
   std::string configPath;
   if (argc == 1)
-    configPath = "test.conf";
+    configPath = "tests/configs/default.conf";
   else
     configPath = argv[1];
 
   try {
+    // Step 2-3: Parse config and build server configurations
     BlockParser root = parseAndValidateConfig(configPath);
     ConfigBuilder builder;
     std::vector<ServerConfig> servConfigsList =
         builder.buildFromBlockParser(root);
 
-    std::cout << "✅ Configuration loaded: " << servConfigsList.size()
+    std::cout << "[Info] ✅ Configuration loaded: " << servConfigsList.size()
               << " server(s)" << std::endl;
 
+    // Step 4: Create server and register signal handlers
     Server server(servConfigsList);
-
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
+    // Step 5: Initialize listening sockets
     if (!server.init()) {
       return 1;
     }
 
+    // Step 6: Run main event loop
     server.run();
+
   } catch (std::exception &e) {
-    std::cerr << "❌ Config error: " << e.what() << std::endl;
+    std::cerr << "❌ [Error] Config error: " << e.what() << std::endl;
     return 1;
   }
 
+  // Step 7: Cleanup happens automatically via RAII destructors
   return 0;
 }
-
-/* ANTIGUO MAIN:
-#include "../includes/config/ConfigBuilder.hpp"
-#include "../includes/config_parser/parser/UtilsConfigParser.hpp"
-#include "Server.hpp"
-
-int main(int argc, char **argv)
-{
-    std::string configPath;
-    if (argc == 1)
-        configPath = "test.conf";
-    else
-        configPath = argv[1];
-
-    Server server("8080");
-    try
-    {
-        BlockParser root = parseAndValidateConfig(configPath);
-        ConfigBuilder builder;
-        std::vector<ServerConfig> servers = builder.buildFromBlockParser(root);
-
-        std::cout << "✅ Configuration loaded: " << servers.size() << "
-server(s)" << std::endl;
-
-        if (!server.init())
-        {
-            return 1;
-        }
-
-        server.run();
-    }
-    catch (std::exception &e)
-    {
-        std::cerr << "❌ Config error: " << e.what() << std::endl;
-        return 1;
-    }
-
-    return 0;
-}
-*/
