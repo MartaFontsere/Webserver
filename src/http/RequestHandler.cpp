@@ -115,6 +115,16 @@ RequestHandler::handleRequest(const HttpRequest &request,
   if (CGIDetector::isCGIRequest(request.getPath(), location.getCgiExts())) {
     CGIHandler cgiHandler;
 
+    // Check if script file exists BEFORE attempting execution
+    std::string scriptPath =
+        CGIDetector::resolveScriptPath(request.getPath(), location.getRoot());
+    if (access(scriptPath.c_str(), F_OK) != 0) {
+      std::cout << "⚠️ [Warning] CGI script not found: " << scriptPath
+                << std::endl;
+      _sendError(404, response, *matchedConfig, request, &location);
+      return response;
+    }
+
     // Extract server name from Host header
     std::string serverName = request.getOneHeader("Host");
     size_t colonPos = serverName.find(':');

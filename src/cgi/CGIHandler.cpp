@@ -349,8 +349,11 @@ CGIAsyncResult CGIHandler::handleAsync(const HttpRequest &request,
   // PHASE 3: Determine executable (using CGIDetector static method)
   std::string executable = CGIDetector::getCGIExecutable(
       scriptPath, location.getCgiPaths(), location.getCgiExts());
-  if (executable.empty()) {
-    return failResult;
+
+  // Security check: No interpreter configured OR script doesn't exist on disk
+  if (executable.empty() || access(scriptPath.c_str(), F_OK) != 0) {
+    std::cerr << "❌ [Error] CGI script not found: " << scriptPath << std::endl;
+    return failResult; // Caller should return 404
   }
 
   // PHASE 4: Build environment

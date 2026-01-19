@@ -30,6 +30,10 @@ echo
 echo
 "$BASE_DIR"/test_chunked.sh
 echo
+"$BASE_DIR"/test_pipelining.sh
+echo
+"$BASE_DIR"/test_bonus.sh
+echo
 "$BASE_DIR"/test_parser_robustness.sh
 echo
 echo "--- RUNNING LEGACY TESTS ---"

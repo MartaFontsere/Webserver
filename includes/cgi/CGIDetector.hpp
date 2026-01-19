@@ -19,7 +19,7 @@ public:
   /** @brief Find executable for script based on extension */
   static std::string getCGIExecutable(const std::string &scriptPath,
                                       const std::vector<std::string> &cgiPaths,
-                                      const std::vector<std::string> &cgiExts);
+                                      const std::vector<std::string> &cgiExsts);
 
   static std::string resolveScriptPath(const std::string &uri,
                                        const std::string &root);

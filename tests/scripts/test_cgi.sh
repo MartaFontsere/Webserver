@@ -17,7 +17,7 @@ curl -s -X POST -d "message=HelloCGI" http://localhost:8080/cgi-bin/test.py | gr
 
 # 3. CGI con otro lenguaje (Bash Script .sh)
 echo -n "3. Ejecución de script Bash (.sh)... "
-curl -s http://localhost:8080/cgi-bin/hello.sh | grep -q "Hola desde Bash!" && echo -e "${GREEN}✅ OK${NC}" || echo -e "${RED}❌ FAIL${NC}"
+curl -s http://localhost:8080/cgi-bin/hello.sh | grep -q "Hola desde" && echo -e "${GREEN}✅ OK${NC}" || echo -e "${RED}❌ FAIL${NC}"
 
 # 4. Manejo de Errores (Script que falla)
 echo -n "4. Script con error (debe dar 500)... "

@@ -195,7 +195,9 @@
                 <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                     <a href="/no-existo" class="btn btn-outline">404 Not Found</a>
                     <a href="/tests/files/secret.pdf" class="btn btn-outline">403 Forbidden</a>
-                    <a href="/only-get" class="btn btn-outline" onclick="event.preventDefault(); fetch('/only-get', {method: 'POST'}).then(r => r.text()).then(html => { document.open(); document.write(html); document.close(); });">405 Method Not Allowed</a>
+                    <form action="/only-get" method="POST" style="display: inline; margin: 0;">
+                        <button type="submit" class="btn btn-outline">405 Method Not Allowed</button>
+                    </form>
                 </div>
                 <div class="test-group" style="margin-top: 0.8rem;">
                     <form action="/limit_size" method="POST" style="display: inline;">

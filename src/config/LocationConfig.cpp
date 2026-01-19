@@ -289,14 +289,21 @@ bool LocationConfig::getAutoindex() const { return _autoindex; }
 
 /**
  * @brief Checks if an HTTP method is allowed in this location
- * @param method Method name to check (GET, POST, DELETE)
+ * @param method Method name to check (GET, POST, DELETE, HEAD)
  * @return true if allowed or if no methods are restricted, false otherwise
+ * @note HEAD is implicitly allowed when GET is allowed (per HTTP spec)
  */
 bool LocationConfig::isMethodAllowed(const std::string &method) const {
   if (_methods.empty())
     return true;
+
+  // HEAD is implicitly allowed when GET is allowed (per HTTP specification)
+  std::string checkMethod = method;
+  if (method == "HEAD")
+    checkMethod = "GET";
+
   for (size_t i = 0; i < _methods.size(); ++i) {
-    if (_methods[i] == method)
+    if (_methods[i] == checkMethod)
       return true;
   }
   return false;

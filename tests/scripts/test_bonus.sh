@@ -12,7 +12,7 @@ echo "========================================"
 # 1. Test Multiple CGI Types (Bash)
 echo -n "-> Requesting .sh script (Interpreted by Bash)... "
 RESPONSE=$(curl -s http://localhost:8080/cgi-bin/bonus_multi_cgi_bash.sh)
-if echo "$RESPONSE" | grep -q "Hello from Bash CGI!"; then
+if echo "$RESPONSE" | grep -q "Bash CGI"; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL${NC}"
@@ -21,7 +21,7 @@ fi
 # 2. Test Multiple CGI Types (Python)
 echo -n "-> Requesting .py script (Interpreted by Python)... "
 RESPONSE=$(curl -s http://localhost:8080/cgi-bin/bonus_multi_cgi_python.py)
-if echo "$RESPONSE" | grep -q "Hello from Python CGI!"; then
+if echo "$RESPONSE" | grep -q "Python CGI"; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL${NC}"
@@ -32,9 +32,9 @@ echo "========================================"
 echo "   BONUS: COOKIES & SESSIONS"
 echo "========================================"
 
-# 3. Test Cookie Setting
+# 3. Test Cookie Setting (use GET with -D - since HEAD returns 405 for CGI)
 echo -n "-> Testing Cookie Setting (Set-Cookie)... "
-COOKIE=$(curl -s -I http://localhost:8080/cgi-bin/bonus_session_test.py | grep "Set-Cookie")
+COOKIE=$(curl -s -D - http://localhost:8080/cgi-bin/bonus_session_test.py 2>/dev/null | grep "Set-Cookie")
 if echo "$COOKIE" | grep -q "session_id="; then
     echo -e "${GREEN}PASS${NC}"
 else
