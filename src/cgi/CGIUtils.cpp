@@ -12,15 +12,18 @@
  * Key design decisions:
  * - std::stringstream instead of itoa/sprintf (not standard in C++98)
  * - Manual character-by-character copying instead of strcpy (C++ purity)
- * - Free functions instead of static class methods (more idiomatic for utilities)
+ * - Free functions instead of static class methods (more idiomatic for
+ * utilities)
  * - const correctness enforced (const& parameters when not modifying)
  *
  * @note All functions are compatible with C++98 standard
- * @see RFC 3875 (CGI/1.1) for HTTP header to environment variable conversion rules
+ * @see RFC 3875 (CGI/1.1) for HTTP header to environment variable conversion
+ * rules
  */
 
 /**
- * @brief Converts integer to string (C++98 compatible alternative to std::to_string)
+ * @brief Converts integer to string (C++98 compatible alternative to
+ * std::to_string)
  *
  * Uses std::stringstream for conversion since std::to_string was introduced
  * in C++11. This implementation is type-safe and locale-aware.
@@ -39,11 +42,10 @@
  * @return String representation of the integer
  */
 
-std::string intToString(int value)
-{
-    std::stringstream stringResult;
-    stringResult << value;
-    return stringResult.str();
+std::string intToString(int value) {
+  std::stringstream stringResult;
+  stringResult << value;
+  return stringResult.str();
 }
 
 /**
@@ -70,15 +72,13 @@ std::string intToString(int value)
  *       edge case where '?' is at position 0
  */
 
-std::string extractQueryString(const std::string &uri)
-{
-    size_t questPos = uri.find('?');
-    if (questPos != std::string::npos)
-    {
-        std::string result = uri.substr(questPos + 1);
-        return result;
-    }
-    return "";
+std::string extractQueryString(const std::string &uri) {
+  size_t questPos = uri.find('?');
+  if (questPos != std::string::npos) {
+    std::string result = uri.substr(questPos + 1);
+    return result;
+  }
+  return "";
 }
 
 /**
@@ -107,19 +107,17 @@ std::string extractQueryString(const std::string &uri)
  * @see headerToEnvName() for single header conversion logic
  */
 
-std::map<std::string, std::string> convertHeadersToEnv(
-    const std::map<std::string, std::string> &headers)
-{
-    std::map<std::string, std::string> group;
+std::map<std::string, std::string>
+convertHeadersToEnv(const std::map<std::string, std::string> &headers) {
+  std::map<std::string, std::string> group;
 
-    std::map<std::string, std::string>::const_iterator it;
-    for (it = headers.begin(); it != headers.end(); ++it)
-    {
-        std::string envName = headerToEnvName(it->first);
-        group[envName] = it->second;
-    }
+  std::map<std::string, std::string>::const_iterator it;
+  for (it = headers.begin(); it != headers.end(); ++it) {
+    std::string envName = headerToEnvName(it->first);
+    group[envName] = it->second;
+  }
 
-    return group;
+  return group;
 }
 
 /**
@@ -141,25 +139,25 @@ std::map<std::string, std::string> convertHeadersToEnv(
  *   "X-Custom-Header"→ "HTTP_X_CUSTOM_HEADER"
  *   "Host"           → "HTTP_HOST"
  *
- * @param headerName Original HTTP header name (case-insensitive in HTTP, but preserved)
+ * @param headerName Original HTTP header name (case-insensitive in HTTP, but
+ * preserved)
  * @return CGI environment variable name (uppercase with HTTP_ prefix)
  *
- * @note Special CGI variables (Content-Type, Content-Length) should NOT use this
- *       function - they become CONTENT_TYPE and CONTENT_LENGTH without HTTP_ prefix
+ * @note Special CGI variables (Content-Type, Content-Length) should NOT use
+ * this function - they become CONTENT_TYPE and CONTENT_LENGTH without HTTP_
+ * prefix
  * @see RFC 3875 section 4.1.18 (Protocol-Specific Meta-Variables)
  */
 
-std::string headerToEnvName(const std::string &headerName)
-{
-    std::string result;
-    for (int i = 0; i < (int)headerName.length(); i++)
-    {
-        if (headerName[i] == '-')
-            result += '_';
-        else
-            result += headerName[i];
-    }
-    return "HTTP_" + toUpperCase(result);
+std::string headerToEnvName(const std::string &headerName) {
+  std::string result;
+  for (int i = 0; i < (int)headerName.length(); i++) {
+    if (headerName[i] == '-')
+      result += '_';
+    else
+      result += headerName[i];
+  }
+  return "HTTP_" + toUpperCase(result);
 }
 
 /**
@@ -187,12 +185,11 @@ std::string headerToEnvName(const std::string &headerName)
  * @note std::toupper is locale-dependent; assumes ASCII in CGI context
  */
 
-std::string toUpperCase(const std::string &str)
-{
-    std::string result;
-    for (int i = 0; i < (int)str.length(); i++)
-        result += std::toupper(str[i]);
-    return result;
+std::string toUpperCase(const std::string &str) {
+  std::string result;
+  for (int i = 0; i < (int)str.length(); i++)
+    result += std::toupper(str[i]);
+  return result;
 }
 
 /**
@@ -228,11 +225,9 @@ std::string toUpperCase(const std::string &str)
  * @see CGIEnvironment::toEnvArray() for primary use case
  */
 
-void stringToCString(const std::string &source, char *dest)
-{
-    for (size_t i = 0; i < source.size(); ++i)
-    {
-        dest[i] = source[i];
-    }
-    dest[source.size()] = '\0';
+void stringToCString(const std::string &source, char *dest) {
+  for (size_t i = 0; i < source.size(); ++i) {
+    dest[i] = source[i];
+  }
+  dest[source.size()] = '\0';
 }

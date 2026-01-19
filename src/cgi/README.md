@@ -349,14 +349,14 @@ test_scripts/
 
 ## 🔍 Technical Decisions
 
-### 1. No `chdir()` to script directory
-**Decision:** Use full path in `argv[1]`
+### 1. `chdir()` to script directory
+**Decision:** Change working directory before execve()
 
 **Reasons:**
-- Universal for PHP, Python, Bash, any interpreter
-- Simpler (no path parsing)
-- Safer (script cannot escape directory)
-- RFC 3875 does not require chdir()
+- Scripts that use relative paths work correctly
+- Consistent with real web server behavior
+- Child process changes to script directory before exec
+- argv[1] becomes just the filename (not full path)
 
 ### 2. 4096 byte buffer
 **Decision:** Fixed 4KB size for `read()`

@@ -3,11 +3,12 @@
 
 /**
  * @file CGIOutputParser.cpp
- * @brief CGI output parsing - separates HTTP headers from body (RFC 3875 compliant)
+ * @brief CGI output parsing - separates HTTP headers from body (RFC 3875
+ * compliant)
  *
  * This module parses the raw output from CGI scripts, which follows the CGI
- * response format defined in RFC 3875. CGI scripts output HTTP-like responses
- * with headers and body separated by a blank line (\r\n\r\n).
+ * response format defined in RFC 3875. CGI scripts output HTTP-like
+ * responses with headers and body separated by a blank line (\r\n\r\n).
  *
  * CGI output format (RFC 3875 section 6):
  *   Header-Name: Header-Value\r\n
@@ -49,12 +50,10 @@
  *
  * The object is not usable until parse() is called with raw CGI output.
  *
- * @note _statusCode is initialized to 0 as sentinel value (invalid HTTP code)
+ * @note _statusCode is initialized to 0 as sentinel value (invalid HTTP
+ * code)
  */
-CGIOutputParser::CGIOutputParser()
-{
-    _statusCode = 0;
-}
+CGIOutputParser::CGIOutputParser() { _statusCode = 0; }
 
 /**
  * @brief Destructor
@@ -64,11 +63,10 @@ CGIOutputParser::CGIOutputParser()
  * - _body is std::string (automatically destroyed)
  * - _statusCode is primitive int (no cleanup needed)
  *
- * @note Destructor is empty due to RAII principle (automatic resource management)
+ * @note Destructor is empty due to RAII principle (automatic resource
+ * management)
  */
-CGIOutputParser::~CGIOutputParser()
-{
-}
+CGIOutputParser::~CGIOutputParser() {}
 
 /**
  * @brief Parses raw CGI output into headers and body
@@ -77,7 +75,7 @@ CGIOutputParser::~CGIOutputParser()
  * HTTP separator ("\r\n\r\n") and parses headers into a key-value map.
  *
  * Parsing algorithm:
- * 
+ *
  * STEP 1: Split headers from body
  *   - Find "\r\n\r\n" (double CRLF = blank line)
  *   - Everything before → headers section
@@ -128,44 +126,63 @@ CGIOutputParser::~CGIOutputParser()
  * @param rawOutput Complete output from CGI script (headers + body)
  *
  * @note Assumes rawOutput contains "\r\n\r\n" separator (standard CGI format)
- * @note Trailing \r cleanup is necessary because getline behavior varies by platform
+ * @note Trailing \r cleanup is necessary because getline behavior varies by
+ * platform
  * @warning Does not validate header format - assumes well-formed CGI output
  */
-void CGIOutputParser::parse(const std::string &rawOutput)
-{
-    // STEP 1: Split headers from body using double CRLF separator
-    size_t pos = rawOutput.find("\r\n\r\n");
-
-    std::string headersSection = rawOutput.substr(0, pos);
-    std::string bodySection = rawOutput.substr(pos + 4);
-
-    _body = bodySection;
-    // STEP 2: Parse headers line by line
-    std::istringstream stream(headersSection);
-    std::string line;
-
-    while (std::getline(stream, line))
-    {
-        // Clean trailing \r (getline may leave it depending on platform)
-        if (line[line.size() - 1] == '\r')
-            line.erase(line.size() - 1, 1);
-        // Split "Key: Value" at colon
-        size_t colonPos = line.find(":");
-        std::string keyLine = line.substr(0, colonPos);
-        std::string valueLine = line.substr(colonPos + 2);
-        _headers[keyLine] = valueLine;
+void CGIOutputParser::parse(const std::string &rawOutput) {
+  // STEP 1: Split headers from body using double CRLF separator
+  size_t pos = rawOutput.find("\r\n\r\n");
+  if (pos == std::string::npos) {
+    // Fallback to \n\n if \r\n\r\n is not found
+    pos = rawOutput.find("\n\n");
+    if (pos == std::string::npos) {
+      _body = rawOutput;
+      return;
     }
+    _body = rawOutput.substr(pos + 2);
+  } else {
+    _body = rawOutput.substr(pos + 4);
+  }
+  std::string headersSection = rawOutput.substr(0, pos);
+  // STEP 2: Parse headers line by line
+  std::istringstream stream(headersSection);
+  std::string line;
+
+  while (std::getline(stream, line)) {
+    // Clean trailing \r (getline may leave it depending on platform)
+    if (line[line.size() - 1] == '\r')
+      line.erase(line.size() - 1, 1);
+    // Split "Key: Value" at colon
+    size_t colonPos = line.find(":");
+    if (colonPos == std::string::npos)
+      continue;
+    std::string keyLine = line.substr(0, colonPos);
+    std::string valueLine = line.substr(colonPos + 1);
+    // Trim leading whitespace from value
+    size_t firstNotSpace = valueLine.find_first_not_of(" \t");
+    if (firstNotSpace != std::string::npos)
+      valueLine = valueLine.substr(firstNotSpace);
+
+    // Special handling for Set-Cookie (can have multiple)
+    if (toUpperCase(keyLine) == "SET-COOKIE") {
+      _setCookies.push_back(valueLine);
+    } else {
+      _headers[keyLine] = valueLine;
+    }
+  }
 }
 
 /**
  * @brief Extracts HTTP status code from "Status" header
  *
  * Searches for the "Status" header in parsed headers and extracts the numeric
- * status code (first 3 characters). Returns 200 (OK) if no Status header present.
+ * status code (first 3 characters). Returns 200 (OK) if no Status header
+ * present.
  *
  * Status header format (RFC 3875 section 6.3.3):
  *   Status: nnn reason-phrase
- *   
+ *
  *   Examples:
  *     Status: 200 OK
  *     Status: 404 Not Found
@@ -205,20 +222,19 @@ void CGIOutputParser::parse(const std::string &rawOutput)
  * @note Always returns 200 if no "Status" header present (RFC 3875 compliant)
  * @note Uses stringstream for string-to-int conversion (C++98 compatible)
  */
-int CGIOutputParser::getStatusCode() const
-{
-    std::map<std::string, std::string>::const_iterator it = _headers.find("Status");
-    if (it != _headers.end())
-    {
-        std::string statusValue = it->second;
-        std::string codeStr = statusValue.substr(0, 3); // Extract first 3 chars
-        std::stringstream ss(codeStr);
-        int code;
-        ss >> code;
+int CGIOutputParser::getStatusCode() const {
+  std::map<std::string, std::string>::const_iterator it =
+      _headers.find("Status");
+  if (it != _headers.end()) {
+    std::string statusValue = it->second;
+    std::string codeStr = statusValue.substr(0, 3); // Extract first 3 chars
+    std::stringstream ss(codeStr);
+    int code;
+    ss >> code;
 
-        return code;
-    }
-    return 200; // Default status per RFC 3875
+    return code;
+  }
+  return 200; // Default status per RFC 3875
 }
 
 /**
@@ -240,9 +256,12 @@ int CGIOutputParser::getStatusCode() const
  * @note Returns copy of _headers (not reference) - caller can modify safely
  * @note Header names are case-sensitive as stored by CGI script
  */
-std::map<std::string, std::string> CGIOutputParser::getHeaders() const
-{
-    return _headers;
+std::map<std::string, std::string> CGIOutputParser::getHeaders() const {
+  return _headers;
+}
+
+std::vector<std::string> CGIOutputParser::getSetCookies() const {
+  return _setCookies;
 }
 
 /**
@@ -262,7 +281,4 @@ std::map<std::string, std::string> CGIOutputParser::getHeaders() const
  * @note Returns copy of _body (not reference) - caller can modify safely
  * @note Body may be empty if script outputs only headers
  */
-std::string CGIOutputParser::getBody() const
-{
-    return _body;
-}
+std::string CGIOutputParser::getBody() const { return _body; }

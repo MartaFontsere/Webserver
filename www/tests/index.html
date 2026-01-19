@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webserv 42 - Dashboard de Pruebas</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --primary: #38bdf8;
+            --success: #22c55e;
+            --error: #ef4444;
+        }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container { max-width: 1000px; width: 100%; }
+        header { text-align: center; margin-bottom: 3rem; }
+        h1 { font-size: 2.5rem; color: var(--primary); margin-bottom: 0.5rem; }
+        p.subtitle { color: var(--muted); font-size: 1.1rem; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        .card {
+            background-color: var(--card);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid #334155;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .card:hover { transform: translateY(-4px); border-color: var(--primary); }
+        h2 { font-size: 1.25rem; margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+        
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background-color: var(--primary);
+            color: var(--bg);
+            text-decoration: none;
+            border-radius: 0.4rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        
+        input, textarea {
+            width: 100%;
+            padding: 0.5rem;
+            margin: 0.5rem 0;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            border-radius: 0.4rem;
+            box-sizing: border-box;
+        }
+        
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 1rem;
+            background: #334155;
+            color: var(--muted);
+        }
+        
+        .test-group { margin-bottom: 1rem; }
+        .test-group label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Webserv 42</h1>
+            <p class="subtitle">Panel de Control para Pruebas Exhaustivas</p>
+        </header>
+
+        <!-- MANDATORY SECTION -->
+        <div style="margin-bottom: 1.5rem;">
+            <h2 style="color: var(--primary); font-size: 1.5rem; margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>📋</span> Mandatory
+            </h2>
+            <div style="height: 2px; background: linear-gradient(90deg, var(--primary), transparent); width: 100%;"></div>
+        </div>
+        <div class="grid">
+            <!-- 1. Autoindex (Directorios) -->
+            <div class="card">
+                <h2>🗂️ Autoindex (Directorios)</h2>
+                <p>Comprueba que el servidor genera listados automáticos para directorios.</p>
+                
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 0.3rem;">Directorios de prueba:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/files/" class="btn btn-outline">/files/</a>
+                    <a href="/tests/files/subdir/" class="btn btn-outline">/subdir/</a>
+                    <a href="/uploads/" class="btn btn-outline">/uploads/</a>
+                </div>
+
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin: 0.8rem 0 0.3rem;">Casos especiales:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/public/" class="btn btn-outline">Con index.html</a>
+                    <a href="/tests/private/" class="btn btn-outline">Sin autoindex</a>
+                </div>
+
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 1.8rem; line-height: 1.4;">
+                    💡 <strong>Prioridad:</strong> El servidor primero busca un archivo índice, si no existe y autoindex está ON genera el listado, si no devuelve 403 Forbidden.
+                </p>
+            </div>
+
+            <!-- 2. GET (Archivos Estáticos) -->
+            <div class="card">
+                <h2>📂 GET (Archivos Estáticos)</h2>
+                <p>Verifica que el servidor sirve diferentes tipos de archivos correctamente.</p>
+                
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 0.3rem;">Tipos de archivo:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/files/test.html" target="_blank" class="btn btn-outline">HTML</a>
+                    <a href="/tests/files/styles.css" target="_blank" class="btn btn-outline">CSS</a>
+                    <a href="/tests/files/document1.txt" target="_blank" class="btn btn-outline">TXT</a>
+                    <a href="/tests/files/gato.png" target="_blank" class="btn btn-outline">PNG</a>
+                    <a href="/tests/files/en.subject.webserver.pdf" target="_blank" class="btn btn-outline">PDF</a>
+                </div>
+                
+                <label style="font-size: 0.75rem; color: var(--muted); display: block; margin: 0.8rem 0 0.3rem;">URL encoding:</label>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/tests/files/file%20with%20spaces.txt" target="_blank" class="btn btn-outline">Espacios</a>
+                    <a href="/tests/files/file%23with%23hashes.txt" target="_blank" class="btn btn-outline">Hashes #</a>
+                </div>
+                
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 1.8rem; line-height: 1.4;">
+                    💡 <strong>Tip:</strong> El servidor asigna el Content-Type según la extensión (.html → text/html, .png → image/png, etc).
+                </p>
+            </div>
+
+
+            <!-- 2. POST (CGI) -->
+            <div class="card">
+                <h2>⚙️ POST (CGI)</h2>
+                <p>Envía datos a un script de Python para procesarlos.</p>
+                <form action="/cgi-bin/post_echo.py" method="POST">
+                    <label>Nombre:</label>
+                    <input type="text" name="user_name" placeholder="Tu nombre...">
+                    <label>Mensaje:</label>
+                    <textarea name="user_message" rows="2" placeholder="Escribe algo..."></textarea>
+                    <button type="submit" class="btn">Enviar a CGI (Python)</button>
+                </form>
+            </div>
+
+            <!-- 3. POST (Upload) -->
+            <div class="card">
+                <h2>📤 POST (Upload)</h2>
+                <p>Sube archivos directamente a la carpeta <code>/uploads</code>.</p>
+                <form onsubmit="uploadFile(event)" action="/uploads" method="POST" enctype="multipart/form-data">
+                    <input type="file" name="file_to_upload" accept=".txt,.pdf,.png,.jpg,.jpeg,.gif">
+                    <button type="submit" class="btn">Subir Archivo</button>
+                </form>
+                <p id="upload-status" style="font-size: 0.8rem; margin-top: 0.5rem; min-height: 1.2rem;"></p>
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.8rem; line-height: 1.2;">
+                    💡 <strong>Tip:</strong> Puedes encontrar archivos de prueba en <code>www/tests/sample_files/</code>. El navegador recordará la carpeta que elijas.
+                </p>
+            </div>
+
+            <!-- 4. DELETE -->
+            <div class="card" id="delete-card">
+                <h2>🗑️ DELETE</h2>
+                <p>Elimina archivos de la carpeta <code>/uploads</code>.</p>
+                <div class="test-group" id="delete-controls">
+                    <select id="delete-filename" class="btn btn-outline" style="width: 100%; text-align: left; margin-bottom: 0.5rem; background: #1e293b;">
+                        <option value="">Cargando archivos...</option>
+                    </select>
+                    <button id="delete-btn" onclick="deleteFile()" class="btn btn-danger" style="background: #ef4444; width: 100%;">Eliminar Archivo</button>
+                </div>
+                <p id="delete-empty-msg" style="display: none; color: var(--muted); font-style: italic;">No hay archivos en /uploads para eliminar.</p>
+                <p id="delete-status" style="font-size: 0.8rem; margin-top: 0.5rem; min-height: 1.2rem;"></p>
+            </div>
+
+            <!-- 4. ERRORES HTTP -->
+            <div class="card">
+                <h2>⚠️ Errores HTTP</h2>
+                <p>Fuerza errores para verificar la robustez y las páginas personalizadas.</p>
+                <div class="test-group" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <a href="/no-existo" class="btn btn-outline">404 Not Found</a>
+                    <a href="/tests/files/secret.pdf" class="btn btn-outline">403 Forbidden</a>
+                    <form action="/only-get" method="POST" style="display: inline; margin: 0;">
+                        <button type="submit" class="btn btn-outline">405 Method Not Allowed</button>
+                    </form>
+                </div>
+                <div class="test-group" style="margin-top: 0.8rem;">
+                    <form action="/limit_size" method="POST" style="display: inline;">
+                        <input type="hidden" name="data" value="Este texto es demasiado largo para el limite de 10 bytes">
+                        <button type="submit" class="btn btn-outline">413 Payload Too Large</button>
+                    </form>
+                </div>
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 1.5rem; line-height: 1.4;">
+                    💡 <strong>Nota:</strong> El 404 usa una página personalizada vía <code>error_page</code> en la config. Los demás usan el fallback del servidor.
+                </p>
+            </div>
+
+            <!-- 5. REDIRECCIONES -->
+            <div class="card">
+                <h2>🔗 Redirecciones (301)</h2>
+                <p>Prueba que el servidor puede redirigir a otra URL automáticamente.</p>
+                <div class="test-group">
+                    <a href="/google" target="_blank" class="btn btn-outline">Ir a http://localhost:8080/google</a>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1.3rem;">
+                    Al pedir esto, el servidor responde con <code>301 Moved Permanently</code>, indicando la nueva URL. El navegador sigue automáticamente la redirección a <code>www.google.com</code>.
+                </p>
+            </div>
+
+            <!-- 6. VIRTUAL HOSTING -->
+            <div class="card">
+                <h2>🌐 Virtual Hosting</h2>
+                <p>Comprueba que un mismo puerto puede servir diferentes sitios según el header <code>Host:</code></p>
+                <div class="test-group">
+                    <label style="font-weight: bold; color: var(--primary);">Ejecutar en terminal:</label>
+                    <code style="display: block; background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; margin: 0.5rem 0;">curl http://localhost:8080/</code>
+                    <p style="font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0 0.75rem 0;">→ Devuelve la landing page (Host: localhost)</p>
+                    <code style="display: block; background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; margin: 0.5rem 0;">curl -H "Host: example.com" http://localhost:8080/</code>
+                    <p style="font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0;">→ Devuelve la página del virtual host (Host: example.com)</p>
+                </div>
+            </div>
+
+            <!-- 7. MÚLTIPLES PUERTOS -->
+            <div class="card">
+                <h2>🔌 Múltiples Puertos</h2>
+                <p>Confirma que el servidor escucha en más de un puerto simultáneamente.</p>
+                <div class="test-group">
+                    <a href="http://localhost:9090/" target="_blank" class="btn btn-outline">Ir a Puerto 9090</a>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    El puerto 9090 tiene su propia configuración y contenido.
+                </p>
+            </div>
+        </div>
+
+        <!-- BONUS SECTION -->
+        <div style="margin: 3rem 0 1.5rem 0;">
+            <h2 style="color: var(--success); font-size: 1.5rem; margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>⭐</span> Bonus
+            </h2>
+            <div style="height: 2px; background: linear-gradient(90deg, var(--success), transparent); width: 100%;"></div>
+        </div>
+        <div class="grid">
+            <!-- BONUS 1: MÚLTIPLES TIPOS CGI -->
+            <div class="card">
+                <h2>🔧 Múltiples Tipos CGI</h2>
+                <p>Prueba que el servidor puede ejecutar CGI en distintos lenguajes.</p>
+                <div class="test-group">
+                    <a href="/cgi-bin/bonus_multi_cgi_python.py" class="btn btn-outline">Ejecutar Python CGI</a>
+                </div>
+                <div class="test-group">
+                    <a href="/cgi-bin/bonus_multi_cgi_bash.sh" class="btn btn-outline">Ejecutar Bash CGI</a>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    El servidor detecta la extensión (.py, .sh) y usa el intérprete correcto.
+                </p>
+            </div>
+
+            <!-- BONUS 2: SESIONES & COOKIES -->
+            <div class="card">
+                <h2>🍪 Sesiones & Cookies</h2>
+                <p>Verifica la persistencia de datos mediante cookies.</p>
+                <div class="test-group">
+                    <a href="/cgi-bin/bonus_session_test.py" class="btn btn-outline">Probar Sesiones (Python CGI)</a>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--muted); margin-top: 1rem;">
+                    Cada refresh incrementa el contador de visitas gracias a las cookies.
+                </p>
+            </div>
+        </div>
+        
+        <footer style="margin-top: 4rem; text-align: center; color: var(--muted); font-size: 0.8rem;">
+            Webserver 42 Project - Exhaustive Testing Suite
+        </footer>
+    </div>
+    <script>
+        // ========================================
+        // UPLOAD - Subida de archivos via AJAX
+        // ========================================
+        async function uploadFile(event) {
+            event.preventDefault();
+            const form = event.target;
+            const fileInput = form.querySelector('input[type="file"]');
+            const status = document.getElementById('upload-status');
+            
+            if (!fileInput.files.length) {
+                status.textContent = '❌ Por favor, selecciona un archivo primero';
+                status.style.color = '#ef4444';
+                return;
+            }
+
+            const formData = new FormData(form);
+            try {
+                status.textContent = '⏳ Subiendo...';
+                status.style.color = '#94a3b8';
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    status.textContent = '✅ ¡Archivo subido con éxito!';
+                    status.style.color = '#22c55e';
+                    form.reset();
+                    await updateFileList(); // Sincronizar el desplegable de borrar
+                } else {
+                    status.textContent = '❌ Error: ' + response.status + ' ' + response.statusText;
+                    status.style.color = '#ef4444';
+                }
+            } catch (error) {
+                status.textContent = '❌ Error de red o conexión';
+                status.style.color = '#ef4444';
+            }
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+
+        // ========================================
+        // UPDATE FILE LIST - Sincronizar dropdown
+        // ========================================
+        async function updateFileList() {
+            const select = document.getElementById('delete-filename');
+            const controls = document.getElementById('delete-controls');
+            const emptyMsg = document.getElementById('delete-empty-msg');
+            const deleteBtn = document.getElementById('delete-btn');
+
+            try {
+                const response = await fetch('/uploads/');
+                if (!response.ok) throw new Error('No se pudo obtener la lista');
+                
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Extraer enlaces que no sean el de volver atrás (../)
+                const links = Array.from(doc.querySelectorAll('a'))
+                    .map(a => a.getAttribute('href'))
+                    .filter(href => href && href !== '/' && href !== '../' && !href.startsWith('?'));
+
+                select.innerHTML = '';
+                
+                if (links.length === 0) {
+                    controls.style.display = 'none';
+                    emptyMsg.style.display = 'block';
+                } else {
+                    controls.style.display = 'block';
+                    emptyMsg.style.display = 'none';
+                    
+                    // Opción por defecto
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = "";
+                    defaultOpt.textContent = "-- Selecciona un archivo --";
+                    defaultOpt.disabled = true;
+                    defaultOpt.selected = true;
+                    select.appendChild(defaultOpt);
+
+                    links.forEach(link => {
+                        const filename = decodeURIComponent(link);
+                        const option = document.createElement('option');
+                        option.value = filename;
+                        option.textContent = filename;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error actualizando lista:', error);
+                select.innerHTML = '<option value="">Error al cargar archivos</option>';
+                deleteBtn.disabled = true;
+            }
+        }
+
+        // ========================================
+        // DELETE - Borrado de archivos via AJAX
+        // ========================================
+        async function deleteFile() {
+            const select = document.getElementById('delete-filename');
+            const filename = select.value;
+            const status = document.getElementById('delete-status');
+            
+            if (!filename) {
+                status.textContent = '⚠️ Selecciona un archivo primero';
+                status.style.color = '#f59e0b';
+                return;
+            }
+
+            if (!confirm(`¿Estás seguro de que quieres eliminar "${filename}"?`)) return;
+
+            try {
+                const response = await fetch('/uploads/' + filename, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    status.textContent = '✅ Archivo eliminado correctamente';
+                    status.style.color = '#22c55e';
+                    await updateFileList(); // Esto reseteará el select a la opción por defecto
+                } else {
+                    status.textContent = '❌ Error: ' + response.status + ' ' + response.statusText;
+                    status.style.color = '#ef4444';
+                }
+            } catch (error) {
+                status.textContent = '❌ Error de red o conexión';
+                status.style.color = '#ef4444';
+            }
+            
+            // Limpiar mensaje después de 3 segundos
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+
+        // ========================================
+        // INIT - Cargar lista al iniciar la página
+        // ========================================
+        document.addEventListener('DOMContentLoaded', updateFileList);
+    </script>
+</body>
+</html>

@@ -1,11 +1,13 @@
 #include "../../includes/config/ConfigBuilder.hpp"
 /**
  * @file ConfigBuilder.cpp
- * @brief Configuration builder - Converts BlockParser tree to usable ServerConfig/LocationConfig
+ * @brief Configuration builder - Converts BlockParser tree to usable
+ * ServerConfig/LocationConfig
  *
- * This module orchestrates the conversion from parsed configuration (BlockParser tree)
- * to typed, structured configuration objects (ServerConfig and LocationConfig).
- * It bridges the gap between syntax parsing and runtime configuration.
+ * This module orchestrates the conversion from parsed configuration
+ * (BlockParser tree) to typed, structured configuration objects
+ * (ServerConfig and LocationConfig). It bridges the gap between syntax
+ * parsing and runtime configuration.
  *
  * Conversion pipeline:
  *   BlockParser (generic tree of blocks/directives)
@@ -15,7 +17,8 @@
  *   ServerConfig + LocationConfig (typed structures ready for use)
  *
  * Architecture (3 layers):
- * 1. Generic helpers (getDirectiveValue, getDirectiveValues, getDirectiveValueAsInt)
+ * 1. Generic helpers (getDirectiveValue, getDirectiveValues,
+ * getDirectiveValueAsInt)
  * 2. Specialized parsers (parseAutoindex, parseReturn, parseErrorPages)
  * 3. Builders (buildLocation, buildServer, buildFromBlockParser)
  *
@@ -28,7 +31,8 @@
  *
  * Error handling strategy:
  * - Missing directives: Use defaults (empty strings, empty vectors, 0)
- * - Malformed directives: Skip silently (validation done by SemanticValidator)
+ * - Malformed directives: Skip silently (validation done by
+ * SemanticValidator)
  * - Invalid conversions: Return 0 or empty (graceful degradation)
  *
  * @note Stateless class - no member variables, all state is method-local
@@ -50,9 +54,7 @@
  *
  * @note Empty constructor because class is stateless
  */
-ConfigBuilder::ConfigBuilder()
-{
-}
+ConfigBuilder::ConfigBuilder() {}
 
 /**
  * @brief Destructor - No cleanup needed for stateless class
@@ -63,9 +65,7 @@ ConfigBuilder::ConfigBuilder()
  *
  * @note Empty destructor because class owns no resources
  */
-ConfigBuilder::~ConfigBuilder()
-{
-}
+ConfigBuilder::~ConfigBuilder() {}
 
 /**
  * @brief Extracts first value of a directive by name
@@ -92,21 +92,18 @@ ConfigBuilder::~ConfigBuilder()
  * @note Returns empty string for missing/empty directives (safe default)
  * @note Case-sensitive directive name matching
  */
-std::string ConfigBuilder::getDirectiveValue(const BlockParser &block, const std::string &directiveName)
-{
-    std::vector<DirectiveToken> directives = block.getDirectives();
+std::string ConfigBuilder::getDirectiveValue(const BlockParser &block,
+                                             const std::string &directiveName) {
+  std::vector<DirectiveToken> directives = block.getDirectives();
 
-    for (size_t i = 0; i < directives.size(); ++i)
-    {
-        if (directives[i].name == directiveName)
-        {
-            if (!directives[i].values.empty())
-            {
-                return directives[i].values[0];
-            }
-        }
+  for (size_t i = 0; i < directives.size(); ++i) {
+    if (directives[i].name == directiveName) {
+      if (!directives[i].values.empty()) {
+        return directives[i].values[0];
+      }
     }
-    return "";
+  }
+  return "";
 }
 
 /**
@@ -130,30 +127,30 @@ std::string ConfigBuilder::getDirectiveValue(const BlockParser &block, const std
  * @return Vector of all directive values, or empty vector if not found
  *
  * @note Returns empty vector for missing directives (safe default)
- * @note Returns all values (different from getDirectiveValue which returns only first)
+ * @note Returns all values (different from getDirectiveValue which returns only
+ * first)
  */
-std::vector<std::string> ConfigBuilder::getDirectiveValues(const BlockParser &block, const std::string &directiveName)
-{
-    std::vector<DirectiveToken> directives = block.getDirectives();
+std::vector<std::string>
+ConfigBuilder::getDirectiveValues(const BlockParser &block,
+                                  const std::string &directiveName) {
+  std::vector<DirectiveToken> directives = block.getDirectives();
 
-    for (size_t i = 0; i < directives.size(); ++i)
-    {
-        if (directives[i].name == directiveName)
-        {
-            if (!directives[i].values.empty())
-            {
-                return directives[i].values;
-            }
-        }
+  for (size_t i = 0; i < directives.size(); ++i) {
+    if (directives[i].name == directiveName) {
+      if (!directives[i].values.empty()) {
+        return directives[i].values;
+      }
     }
-    return std::vector<std::string>();
+  }
+  return std::vector<std::string>();
 }
 
 /**
  * @brief Extracts directive value and converts to integer
  *
  * Convenience method that combines getDirectiveValue() with string-to-int
- * conversion. Used for numeric directives like "listen", "client_max_body_size".
+ * conversion. Used for numeric directives like "listen",
+ * "client_max_body_size".
  *
  * Conversion process:
  * 1. Extract first value as string
@@ -176,15 +173,14 @@ std::vector<std::string> ConfigBuilder::getDirectiveValues(const BlockParser &bl
  * @note Uses stringToInt() from UtilsConfig for conversion
  * @note Returns 0 as default (may be valid value - caller should validate)
  */
-int ConfigBuilder::getDirectiveValueAsInt(const BlockParser &block, const std::string &directiveName)
-{
-    std::string directive = getDirectiveValue(block, directiveName);
-    if (!directive.empty())
-    {
-        int value = stringToInt(directive);
-        return value;
-    }
-    return 0;
+int ConfigBuilder::getDirectiveValueAsInt(const BlockParser &block,
+                                          const std::string &directiveName) {
+  std::string directive = getDirectiveValue(block, directiveName);
+  if (!directive.empty()) {
+    int value = stringToInt(directive);
+    return value;
+  }
+  return 0;
 }
 
 /**
@@ -204,13 +200,13 @@ int ConfigBuilder::getDirectiveValueAsInt(const BlockParser &block, const std::s
  * @note Modifies location in-place via setAutoindex()
  * @note Defaults to false for any value other than "on"
  */
-void ConfigBuilder::parseAutoindex(const BlockParser &locationBlock, LocationConfig &location)
-{
-    std::string autoindexValue = getDirectiveValue(locationBlock, "autoindex");
-    if (autoindexValue == "on")
-        location.setAutoindex(true);
-    else
-        location.setAutoindex(false);
+void ConfigBuilder::parseAutoindex(const BlockParser &locationBlock,
+                                   LocationConfig &location) {
+  std::string autoindexValue = getDirectiveValue(locationBlock, "autoindex");
+  if (autoindexValue == "on")
+    location.setAutoindex(true);
+  else
+    location.setAutoindex(false);
 }
 
 /**
@@ -237,24 +233,21 @@ void ConfigBuilder::parseAutoindex(const BlockParser &locationBlock, LocationCon
  * @note Modifies location in-place via setReturnCode() and setReturnUrl()
  * @note returnCode=0 is used as sentinel (no redirect configured)
  */
-void ConfigBuilder::parseReturn(const BlockParser &locationBlock, LocationConfig &location)
-{
-    std::vector<std::string> returnValues = getDirectiveValues(locationBlock, "return");
-    if (returnValues.size() >= 2)
-    {
-        int valueInt = 0;
-        valueInt = stringToInt(returnValues[0]);
-        location.setReturnCode(valueInt);
-        location.setReturnUrl(returnValues[1]);
-    }
-    else if (returnValues.size() == 1)
-    {
-        int valueInt = 0;
-        valueInt = stringToInt(returnValues[0]);
-        location.setReturnCode(valueInt);
-    }
-    else
-        location.setReturnCode(0);
+void ConfigBuilder::parseReturn(const BlockParser &locationBlock,
+                                LocationConfig &location) {
+  std::vector<std::string> returnValues =
+      getDirectiveValues(locationBlock, "return");
+  if (returnValues.size() >= 2) {
+    int valueInt = 0;
+    valueInt = stringToInt(returnValues[0]);
+    location.setReturnCode(valueInt);
+    location.setReturnUrl(returnValues[1]);
+  } else if (returnValues.size() == 1) {
+    int valueInt = 0;
+    valueInt = stringToInt(returnValues[0]);
+    location.setReturnCode(valueInt);
+  } else
+    location.setReturnCode(0);
 }
 
 /**
@@ -296,23 +289,20 @@ void ConfigBuilder::parseReturn(const BlockParser &locationBlock, LocationConfig
  * @note Handles multiple error_page directives (accumulates all in map)
  * @note Skips malformed directives without crashing
  */
-void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock, LocationConfig &location)
-{
-    std::vector<DirectiveToken> directives = locationBlock.getDirectives();
-    std::map<int, std::string> errorMap;
-    for (size_t i = 0; i < directives.size(); ++i)
-    {
-        if (directives[i].name == "error_page")
-        {
-            if (directives[i].values.size() >= 2)
-            {
-                int code = stringToInt(directives[i].values[0]);
-                std::string path = directives[i].values[1];
-                errorMap[code] = path;
-            }
-        }
+void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock,
+                                            LocationConfig &location) {
+  std::vector<DirectiveToken> directives = locationBlock.getDirectives();
+  std::map<int, std::string> errorMap;
+  for (size_t i = 0; i < directives.size(); ++i) {
+    if (directives[i].name == "error_page") {
+      if (directives[i].values.size() >= 2) {
+        int code = stringToInt(directives[i].values[0]);
+        std::string path = directives[i].values[1];
+        errorMap[code] = path;
+      }
     }
-    location.setErrorPages(errorMap);
+  }
+  location.setErrorPages(errorMap);
 }
 
 /**
@@ -326,7 +316,7 @@ void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock, Lo
  * - Simple directives: Direct extraction with helpers
  * - Complex directives: Delegated to specialized parsers
  *
- * Directives processed (12 total):
+ * Directives processed (13 total):
  * 1. pattern (from block name)
  * 2. root (single value)
  * 3. index (multiple values)
@@ -335,9 +325,10 @@ void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock, Lo
  * 6. cgi_path (multiple values)
  * 7. allow_methods (multiple values)
  * 8. upload_path (single value)
- * 9. autoindex (special: string → bool)
- * 10. return (special: code + URL with validation)
- * 11. error_page (special: multiple directives → map)
+ * 9. alias (single value - alternative path mapping)
+ * 10. autoindex (special: string → bool)
+ * 11. return (special: code + URL with validation)
+ * 12. error_page (special: multiple directives → map)
  *
  * Method modularity:
  * - Simple directives: Inline setters with helpers (~8 lines)
@@ -348,26 +339,35 @@ void ConfigBuilder::locationParseErrorPages(const BlockParser &locationBlock, Lo
  *
  * @note Creates new LocationConfig (not modifying existing)
  * @note All directives optional (uses defaults if missing)
- * @see parseAutoindex(), parseReturn(), locationParseErrorPages() for complex cases
+ * @see parseAutoindex(), parseReturn(), locationParseErrorPages() for complex
+ * cases
  */
-LocationConfig ConfigBuilder::buildLocation(const BlockParser &locationBlock)
-{
-    LocationConfig location;
+LocationConfig ConfigBuilder::buildLocation(const BlockParser &locationBlock) {
+  LocationConfig location;
 
-    location.setPattern(locationBlock.getName());
-    location.setRoot(getDirectiveValue(locationBlock, "root"));
-    location.setIndex(getDirectiveValues(locationBlock, "index"));
-    location.setBodySize(getDirectiveValueAsInt(locationBlock, "client_max_body_size"));
-    location.setCgiExts(getDirectiveValues(locationBlock, "cgi_ext"));
-    location.setCgiPaths(getDirectiveValues(locationBlock, "cgi_path"));
-    location.setMethods(getDirectiveValues(locationBlock, "allow_methods"));
-    location.setUploadPath(getDirectiveValue(locationBlock, "upload_path"));
+  std::string name = locationBlock.getName();
+  if (name.find("location ") == 0) {
+    name = name.substr(9);
+  }
+  location.setPattern(name);
+  location.setRoot(getDirectiveValue(locationBlock, "root"));
+  location.setIndex(getDirectiveValues(locationBlock, "index"));
+  std::string bodySizeStr =
+      getDirectiveValue(locationBlock, "client_max_body_size");
+  if (!bodySizeStr.empty()) {
+    location.setMaxBodySize(static_cast<size_t>(stringToInt(bodySizeStr)));
+  }
+  location.setCgiExts(getDirectiveValues(locationBlock, "cgi_ext"));
+  location.setCgiPaths(getDirectiveValues(locationBlock, "cgi_path"));
+  location.setMethods(getDirectiveValues(locationBlock, "allow_methods"));
+  location.setUploadPath(getDirectiveValue(locationBlock, "upload_path"));
+  location.setAlias(getDirectiveValue(locationBlock, "alias"));
 
-    parseAutoindex(locationBlock, location);
-    parseReturn(locationBlock, location);
-    locationParseErrorPages(locationBlock, location);
+  parseAutoindex(locationBlock, location);
+  parseReturn(locationBlock, location);
+  locationParseErrorPages(locationBlock, location);
 
-    return location;
+  return location;
 }
 
 /**
@@ -379,41 +379,48 @@ LocationConfig ConfigBuilder::buildLocation(const BlockParser &locationBlock)
  * @param serverBlock BlockParser of server to extract from
  * @param server ServerConfig to modify (passed by reference)
  *
- * @note Duplicate of locationParseErrorPages (could be refactored to generic helper)
+ * @note Duplicate of locationParseErrorPages (could be refactored to generic
+ * helper)
  * @see locationParseErrorPages() for detailed documentation
  */
-void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock, ServerConfig &server)
-{
-    std::vector<DirectiveToken> directives = serverBlock.getDirectives();
-    std::map<int, std::string> errorMap;
-    for (size_t i = 0; i < directives.size(); ++i)
-    {
-        if (directives[i].name == "error_page")
-        {
-            if (directives[i].values.size() >= 2)
-            {
-                int code = stringToInt(directives[i].values[0]);
-                std::string path = directives[i].values[1];
-                errorMap[code] = path;
-            }
-        }
+void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock,
+                                          ServerConfig &server) {
+  std::vector<DirectiveToken> directives = serverBlock.getDirectives();
+  std::map<int, std::string> errorMap;
+  for (size_t i = 0; i < directives.size(); ++i) {
+    if (directives[i].name == "error_page") {
+      if (directives[i].values.size() >= 2) {
+        int code = stringToInt(directives[i].values[0]);
+        std::string path = directives[i].values[1];
+        errorMap[code] = path;
+      }
     }
-    server.setErrorPages(errorMap);
+  }
+  server.setErrorPages(errorMap);
 }
 
 /**
- * @brief Parses all location blocks within a server and builds LocationConfig vector
+ * @brief Parses all location blocks within a server and builds LocationConfig
+ * vector
  *
  * Extracts nested location blocks from server, converts each to LocationConfig,
- * and stores them in the server's location vector. This enables request routing.
+ * and stores them in the server's location vector. This enables request
+ * routing.
  *
  * Process:
  * 1. Get nested blocks from server (these are location blocks)
  * 2. Create empty vector for storing LocationConfig objects
  * 3. For each nested block:
  *    - Convert to LocationConfig using buildLocation()
+ *    - Inherit missing values from server (root, index, body size, error pages)
  *    - Add to locations vector
  * 4. Set complete vector in ServerConfig
+ *
+ * Inheritance behavior:
+ * - root: If not defined in location, inherits from server
+ * - index: If not defined in location, inherits from server
+ * - client_max_body_size: If location uses default, inherits from server
+ * - error_pages: Merged - location pages override server pages for same codes
  *
  * Nested structure:
  *   server {
@@ -422,7 +429,8 @@ void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock, Server
  *       location /admin { ... } ← nestedBlocks[2]
  *   }
  *
- * Result: server._locations = [LocationConfig1, LocationConfig2, LocationConfig3]
+ * Result: server._locations = [LocationConfig1, LocationConfig2,
+ * LocationConfig3]
  *
  * @param serverBlock BlockParser of server containing location blocks
  * @param server ServerConfig to modify (passed by reference)
@@ -430,18 +438,42 @@ void ConfigBuilder::serverParseErrorPages(const BlockParser &serverBlock, Server
  * @note Reuses buildLocation() for each location (modular design)
  * @note Server can have 0 locations (empty vector is valid)
  */
-void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock, ServerConfig &server)
-{
-    std::vector<BlockParser> nestedBlocks = serverBlock.getNestedBlocks();
-    std::vector<LocationConfig> locations;
+void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock,
+                                        ServerConfig &server) {
+  std::vector<BlockParser> nestedBlocks = serverBlock.getNestedBlocks();
+  std::vector<LocationConfig> locations;
 
-    for (size_t i = 0; i < nestedBlocks.size(); i++)
-    {
-        LocationConfig loc = buildLocation(nestedBlocks[i]);
-        locations.push_back(loc);
+  for (size_t i = 0; i < nestedBlocks.size(); i++) {
+    LocationConfig loc = buildLocation(nestedBlocks[i]);
+    if (loc.getRoot().empty()) {
+      loc.setRoot(server.getRoot());
+    }
+    if (loc.getIndex().empty()) {
+      loc.setIndex(server.getIndex());
+    }
+    // client_max_body_size inheritance:
+    // If location didn't explicitly define it (uses default 1MB) and the server
+    // has a different limit, inherit from server. This allows the server to
+    // define a global limit that all locations inherit.
+    static const size_t DEFAULT_BODY_SIZE = 1 * 1024 * 1024;
+    if (loc.getMaxBodySize() == DEFAULT_BODY_SIZE &&
+        server.getClientMaxBodySize() != 0) {
+      loc.setMaxBodySize(server.getClientMaxBodySize());
     }
 
-    server.setLocations(locations);
+    // Merge error pages: location error pages override server ones
+    std::map<int, std::string> mergedErrors = server.getErrorPages();
+    const std::map<int, std::string> &locErrors = loc.getErrorPages();
+    for (std::map<int, std::string>::const_iterator it = locErrors.begin();
+         it != locErrors.end(); ++it) {
+      mergedErrors[it->first] = it->second;
+    }
+    loc.setErrorPages(mergedErrors);
+
+    locations.push_back(loc);
+  }
+
+  server.setLocations(locations);
 }
 
 /**
@@ -473,21 +505,21 @@ void ConfigBuilder::serverParseLocation(const BlockParser &serverBlock, ServerCo
  * @see serverParseErrorPages() for error_page handling
  * @see serverParseLocation() for location block processing
  */
-ServerConfig ConfigBuilder::buildServer(const BlockParser &serverBlock)
-{
-    ServerConfig server;
+ServerConfig ConfigBuilder::buildServer(const BlockParser &serverBlock) {
+  ServerConfig server;
 
-    server.setListen(getDirectiveValueAsInt(serverBlock, "listen"));
-    server.setHost(getDirectiveValue(serverBlock, "host"));
-    server.setServerNames(getDirectiveValues(serverBlock, "server_name"));
-    server.setRoot(getDirectiveValue(serverBlock, "root"));
-    server.setIndex(getDirectiveValues(serverBlock, "index"));
-    server.setClientMaxBodySize(getDirectiveValueAsInt(serverBlock, "client_max_body_size"));
+  server.setListen(getDirectiveValueAsInt(serverBlock, "listen"));
+  server.setHost(getDirectiveValue(serverBlock, "host"));
+  server.setServerNames(getDirectiveValues(serverBlock, "server_name"));
+  server.setRoot(getDirectiveValue(serverBlock, "root"));
+  server.setIndex(getDirectiveValues(serverBlock, "index"));
+  server.setClientMaxBodySize(
+      getDirectiveValueAsInt(serverBlock, "client_max_body_size"));
 
-    serverParseErrorPages(serverBlock, server);
-    serverParseLocation(serverBlock, server);
+  serverParseErrorPages(serverBlock, server);
+  serverParseLocation(serverBlock, server);
 
-    return server;
+  return server;
 }
 
 /**
@@ -530,22 +562,19 @@ ServerConfig ConfigBuilder::buildServer(const BlockParser &serverBlock)
  * @note This is the ONLY public method needed to convert full config
  * @see buildServer() for individual server conversion
  */
-std::vector<ServerConfig> ConfigBuilder::buildFromBlockParser(const BlockParser &root)
-{
-    std::vector<BlockParser> rootBlocks = root.getNestedBlocks();
-    std::vector<ServerConfig> servers;
-    for (size_t i = 0; i < rootBlocks.size(); i++)
-    {
-        if (rootBlocks[i].getName() == "http")
-        {
-            std::vector<BlockParser> serverBlocks = rootBlocks[i].getNestedBlocks();
-            for (size_t j = 0; j < serverBlocks.size(); j++)
-            {
-                ServerConfig srv = buildServer(serverBlocks[j]);
-                servers.push_back(srv);
-            }
-        }
+std::vector<ServerConfig>
+ConfigBuilder::buildFromBlockParser(const BlockParser &root) {
+  std::vector<BlockParser> rootBlocks = root.getNestedBlocks();
+  std::vector<ServerConfig> servers;
+  for (size_t i = 0; i < rootBlocks.size(); i++) {
+    if (rootBlocks[i].getName() == "http") {
+      std::vector<BlockParser> serverBlocks = rootBlocks[i].getNestedBlocks();
+      for (size_t j = 0; j < serverBlocks.size(); j++) {
+        ServerConfig srv = buildServer(serverBlocks[j]);
+        servers.push_back(srv);
+      }
     }
+  }
 
-    return servers;
+  return servers;
 }

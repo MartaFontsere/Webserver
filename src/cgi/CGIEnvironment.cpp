@@ -3,21 +3,25 @@
 
 /**
  * @file CGIEnvironment.cpp
- * @brief CGI environment variable preparation and management (RFC 3875 compliant)
+ * @brief CGI environment variable preparation and management (RFC 3875
+ * compliant)
  *
- * This module prepares all environment variables required by CGI scripts according
- * to RFC 3875 (Common Gateway Interface specification). It handles approximately
- * 20+ variables including:
+ * This module prepares all environment variables required by CGI scripts
+ * according to RFC 3875 (Common Gateway Interface specification). It
+ * handles approximately 20+ variables including:
  * - Server metadata (GATEWAY_INTERFACE, SERVER_SOFTWARE, SERVER_PROTOCOL)
  * - Server configuration (SERVER_NAME, SERVER_PORT)
- * - Request metadata (REQUEST_METHOD, QUERY_STRING, CONTENT_TYPE, CONTENT_LENGTH)
+ * - Request metadata (REQUEST_METHOD, QUERY_STRING, CONTENT_TYPE,
+ * CONTENT_LENGTH)
  * - Script information (SCRIPT_NAME, SCRIPT_FILENAME)
- * - HTTP headers converted to HTTP_* format (HTTP_HOST, HTTP_USER_AGENT, etc.)
+ * - HTTP headers converted to HTTP_* format (HTTP_HOST, HTTP_USER_AGENT,
+ * etc.)
  *
  * Memory management:
- * The class converts std::map to char** for execve() system call compatibility.
- * Memory is manually allocated with new/delete (C++98 style, not malloc/free)
- * and must be explicitly freed after execve() to prevent leaks.
+ * The class converts std::map to char** for execve() system call
+ * compatibility. Memory is manually allocated with new/delete (C++98 style,
+ * not malloc/free) and must be explicitly freed after execve() to prevent
+ * leaks.
  *
  * Key design decisions:
  * - Uses std::map for easy access and extension
@@ -32,17 +36,16 @@
 /**
  * @brief Default constructor
  *
- * Initializes an empty CGIEnvironment object. The _envVars map is automatically
- * initialized by std::map default constructor (empty map).
+ * Initializes an empty CGIEnvironment object. The _envVars map is
+ * automatically initialized by std::map default constructor (empty map).
  *
- * Environment variables are populated later via prepare() method, which must
- * be called before toEnvArray().
+ * Environment variables are populated later via prepare() method, which
+ * must be called before toEnvArray().
  *
- * @note Constructor is empty because std::map handles its own initialization
+ * @note Constructor is empty because std::map handles its own
+ * initialization
  */
-CGIEnvironment::CGIEnvironment()
-{
-}
+CGIEnvironment::CGIEnvironment() {}
 
 /**
  * @brief Destructor
@@ -50,18 +53,19 @@ CGIEnvironment::CGIEnvironment()
  * Cleans up the CGIEnvironment object. The _envVars std::map is automatically
  * destroyed by its own destructor (RAII principle).
  *
- * Important: This destructor does NOT free the char** array created by toEnvArray().
- * That memory must be freed explicitly using freeEnvArray() after execve() call.
+ * Important: This destructor does NOT free the char** array created by
+ * toEnvArray(). That memory must be freed explicitly using freeEnvArray() after
+ * execve() call.
  *
- * @warning Caller must call freeEnvArray() on any char** created by toEnvArray()
+ * @warning Caller must call freeEnvArray() on any char** created by
+ * toEnvArray()
  * @note Destructor is empty because std::map handles its own cleanup
  */
-CGIEnvironment::~CGIEnvironment()
-{
-}
+CGIEnvironment::~CGIEnvironment() {}
 
 /**
- * @brief Prepares all CGI environment variables from request and server configuration
+ * @brief Prepares all CGI environment variables from request and server
+ * configuration
  *
  * Populates _envVars map with approximately 20 environment variables required
  * by CGI scripts according to RFC 3875. Variables are grouped into categories:
@@ -84,7 +88,8 @@ CGIEnvironment::~CGIEnvironment()
  *
  * === SCRIPT INFORMATION (from path resolution) ===
  * - SCRIPT_NAME      → URI path to script (e.g., "/cgi-bin/script.php")
- * - SCRIPT_FILENAME  → Complete filesystem path (e.g., "./www/cgi-bin/script.php")
+ * - SCRIPT_FILENAME  → Complete filesystem path (e.g.,
+ * "./www/cgi-bin/script.php")
  *
  * === HTTP HEADERS (all request headers) ===
  * All HTTP headers are converted to CGI format via convertHeadersToEnv():
@@ -118,34 +123,39 @@ CGIEnvironment::~CGIEnvironment()
  * @note Uses intToString() for numeric conversions (C++98 compatible)
  * @see RFC 3875 section 4.1 for complete variable specifications
  */
-void CGIEnvironment::prepare(const Request &req, const std::string &scriptPath,
-                const std::string &scriptName, const std::string &serverName,
-                int serverPort)
-{
-    // Convert all HTTP headers to CGI format (HTTP_* variables)
-    std::map<std::string, std::string> httpEnvVars = convertHeadersToEnv(req.getHeaders());
-    std::map<std::string, std::string>::const_iterator it;
-    for (it = httpEnvVars.begin(); it != httpEnvVars.end(); ++it)
-    {
-        _envVars[it->first] = it->second;
-    }
-    // CGI/1.1 specification constants
-    _envVars["GATEWAY_INTERFACE"] = "CGI/1.1";
-    _envVars["SERVER_SOFTWARE"] = "webserv/1.0";
-    _envVars["SERVER_PROTOCOL"] = "HTTP/1.1";
-    _envVars["REDIRECT_STATUS"] = "200";
-    // Server configuration variables
-    _envVars["SERVER_NAME"] = serverName;
-    _envVars["SERVER_PORT"] = intToString(serverPort);
-    // Request metadata
-    _envVars["REQUEST_METHOD"] = req.getMethod();
-    _envVars["QUERY_STRING"] = extractQueryString(req.getURI());
-    // Script information
-    _envVars["SCRIPT_NAME"] = scriptName;
-    _envVars["SCRIPT_FILENAME"] = scriptPath;
-    // Request body information
-    _envVars["CONTENT_TYPE"] = req.getHeader("Content-Type");
-    _envVars["CONTENT_LENGTH"] = intToString(req.getBody().size());
+void CGIEnvironment::prepare(const HttpRequest &request,
+                             const std::string &scriptPath,
+                             const std::string &scriptName,
+                             const std::string &serverName, int serverPort) {
+  // Convert all HTTP headers to CGI format (HTTP_* variables)
+  std::map<std::string, std::string> httpEnvVars =
+      convertHeadersToEnv(request.getHeaders());
+  std::map<std::string, std::string>::const_iterator it;
+  for (it = httpEnvVars.begin(); it != httpEnvVars.end(); ++it) {
+    _envVars[it->first] = it->second;
+  }
+  // CGI/1.1 specification constants
+  _envVars["GATEWAY_INTERFACE"] = "CGI/1.1";
+  _envVars["SERVER_SOFTWARE"] = "webserv/1.0";
+  _envVars["SERVER_PROTOCOL"] = "HTTP/1.1";
+  _envVars["REDIRECT_STATUS"] = "200";
+  // Server configuration variables
+  _envVars["SERVER_NAME"] = serverName;
+  _envVars["SERVER_PORT"] = intToString(serverPort);
+  // Request metadata
+  _envVars["REQUEST_METHOD"] = request.getMethod();
+  _envVars["QUERY_STRING"] =
+      request.getQuery(); // HttpRequest already extracts query string
+  // Script information
+  _envVars["SCRIPT_NAME"] = scriptName;
+  _envVars["SCRIPT_FILENAME"] = scriptPath;
+
+  // Manual header lookup since HttpRequest doesn't have getHeader(key)
+  std::map<std::string, std::string> headers = request.getHeaders();
+  if (headers.count("Content-Type")) {
+    _envVars["CONTENT_TYPE"] = headers["Content-Type"];
+  }
+  _envVars["CONTENT_LENGTH"] = intToString(request.getBody().size());
 }
 
 /**
@@ -193,25 +203,22 @@ void CGIEnvironment::prepare(const Request &req, const std::string &scriptPath,
  * @note Array size is _envVars.size() + 1 (for NULL terminator)
  * @see freeEnvArray() for memory cleanup
  */
-char **CGIEnvironment::toEnvArray() const
-{
-    size_t count =  _envVars.size();
-    size_t index = 0;
+char **CGIEnvironment::toEnvArray() const {
+  size_t count = _envVars.size();
+  size_t index = 0;
 
-    char **env = new char*[count + 1];
+  char **env = new char *[count + 1];
 
-    std::map<std::string, std::string>::const_iterator it;
-    for (it = _envVars.begin(); it != _envVars.end(); ++it)
-    {
-        std::string envLine = it->first + "=" + it->second;
-        int envLineLength = envLine.size();
-        env[index] = new char[envLineLength + 1];
-        stringToCString(envLine, env[index]);
-        index++;
-    }
-    env[count] = NULL;
-    return env;  
-
+  std::map<std::string, std::string>::const_iterator it;
+  for (it = _envVars.begin(); it != _envVars.end(); ++it) {
+    std::string envLine = it->first + "=" + it->second;
+    int envLineLength = envLine.size();
+    env[index] = new char[envLineLength + 1];
+    stringToCString(envLine, env[index]);
+    index++;
+  }
+  env[count] = NULL;
+  return env;
 }
 
 /**
@@ -251,13 +258,11 @@ char **CGIEnvironment::toEnvArray() const
  * @warning Do NOT call on stack-allocated or other memory not from toEnvArray()
  * @note Uses delete[] (matching new[] allocation in toEnvArray)
  */
-void CGIEnvironment::freeEnvArray(char **env) const
-{
-    for (int i = 0; env[i]; i++)
-    {
-        delete[] env[i];
-    }
-    delete[] env;
+void CGIEnvironment::freeEnvArray(char **env) const {
+  for (int i = 0; env[i]; i++) {
+    delete[] env[i];
+  }
+  delete[] env;
 }
 
 /**
@@ -266,8 +271,9 @@ void CGIEnvironment::freeEnvArray(char **env) const
  * Looks up a specific variable in the _envVars map by key. Returns empty
  * string if variable doesn't exist. Used primarily for testing and debugging.
  *
- * Uses const_iterator for const correctness (method is const, cannot modify _envVars).
- * Cannot use operator[] because it's non-const (would insert key if missing).
+ * Uses const_iterator for const correctness (method is const, cannot modify
+ * _envVars). Cannot use operator[] because it's non-const (would insert key if
+ * missing).
  *
  * Examples:
  *   getVar("REQUEST_METHOD")  → "GET"
@@ -280,14 +286,13 @@ void CGIEnvironment::freeEnvArray(char **env) const
  * @note Returns empty string instead of throwing exception for simplicity
  * @note Uses find() instead of operator[] for const correctness
  */
-std::string CGIEnvironment::getVar(const std::string &key) const
-{
-    std::map<std::string, std::string>::const_iterator it;
-    it = _envVars.find(key);
-    if (it != _envVars.end())
-        return it->second;
-    else
-        return "";
+std::string CGIEnvironment::getVar(const std::string &key) const {
+  std::map<std::string, std::string>::const_iterator it;
+  it = _envVars.find(key);
+  if (it != _envVars.end())
+    return it->second;
+  else
+    return "";
 }
 
 /**
@@ -300,7 +305,7 @@ std::string CGIEnvironment::getVar(const std::string &key) const
  * Output example:
  *   === CGI ENVIRONMENT VARIABLES ===
  *   CONTENT_LENGTH = 0
- *   CONTENT_TYPE = 
+ *   CONTENT_TYPE =
  *   GATEWAY_INTERFACE = CGI/1.1
  *   HTTP_HOST = localhost:8080
  *   HTTP_USER_AGENT = curl/7.64.1
@@ -317,13 +322,11 @@ std::string CGIEnvironment::getVar(const std::string &key) const
  * @note For debugging/testing only - should not be called in production
  * @note Output is alphabetically sorted by std::map (automatically)
  */
-void CGIEnvironment::printAll() const
-{
+void CGIEnvironment::printAll() const {
 
-    std::cout << "=== CGI ENVIRONMENT VARIABLES ===" << std::endl;
-    std::map<std::string, std::string>::const_iterator it;
-    for (it = _envVars.begin(); it != _envVars.end(); ++it)
-    {
-        std::cout << it->first << " = " << it->second << std::endl;
-    }
+  std::cout << "=== CGI ENVIRONMENT VARIABLES ===" << std::endl;
+  std::map<std::string, std::string>::const_iterator it;
+  for (it = _envVars.begin(); it != _envVars.end(); ++it) {
+    std::cout << it->first << " = " << it->second << std::endl;
+  }
 }

@@ -3,6 +3,7 @@
 
 #include <string>
 
+/** @brief Value type validators for directive arguments */
 bool isValidNumber(const std::string &value);
 bool isValidPort(const std::string &value);
 bool isValidPath(const std::string &value);

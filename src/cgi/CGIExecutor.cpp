@@ -33,7 +33,7 @@
  * 5. Return captured output to caller
  *
  * Key design decisions:
- * - No chdir(): Uses absolute paths in argv[1] (universal for all CGI types)
+ * - chdir() to script directory: Required for scripts using relative paths
  * - 4KB buffer: POSIX page size (optimal for read/write operations)
  * - Ordered pipe closing: Parent closes unused ends immediately
  * - Zombie prevention: waitpid() after reading output
@@ -55,9 +55,7 @@
  *
  * @note Constructor is empty because initialization happens in execute()
  */
-CGIExecutor::CGIExecutor()
-{
-}
+CGIExecutor::CGIExecutor() {}
 
 /**
  * @brief Destructor
@@ -69,9 +67,7 @@ CGIExecutor::CGIExecutor()
  *
  * @note Destructor is empty because all cleanup is handled in execute()
  */
-CGIExecutor::~CGIExecutor()
-{
-}
+CGIExecutor::~CGIExecutor() {}
 
 /**
  * @brief Creates two pipes for bidirectional communication with child process
@@ -92,15 +88,21 @@ CGIExecutor::~CGIExecutor()
  * - Child uses: _pipeIn[0] (stdin), _pipeOut[1] (stdout)
  * - Parent uses: _pipeIn[1] (write data), _pipeOut[0] (read results)
  *
- * @throws std::runtime_error if pipe() syscall fails (e.g., too many open files)
+ * @throws std::runtime_error if pipe() syscall fails (e.g., too many open
+ * files)
  *
  * @note Called at the beginning of execute() before fork()
  * @note Pipes are unidirectional - each direction requires separate pipe
  */
-void CGIExecutor::setupPipes()
-{
-    pipe(_pipeIn);
-    pipe(_pipeOut);
+void CGIExecutor::setupPipes() {
+  if (pipe(_pipeIn) == -1) {
+    std::cerr << "❌ [Error] pipe() failed for stdin: " << strerror(errno)
+              << std::endl;
+  }
+  if (pipe(_pipeOut) == -1) {
+    std::cerr << "❌ [Error] pipe() failed for stdout: " << strerror(errno)
+              << std::endl;
+  }
 }
 
 /**
@@ -150,10 +152,13 @@ void CGIExecutor::setupPipes()
  *                                         "name=world");
  *   output contains HTTP headers + HTML body from script
  *
- * @param executable Path to CGI interpreter (e.g., "/usr/bin/php-cgi", "/usr/bin/python3")
+ * @param executable Path to CGI interpreter (e.g., "/usr/bin/php-cgi",
+ * "/usr/bin/python3")
  * @param scriptPath Complete filesystem path to script file
- * @param envp NULL-terminated array of environment variables (from CGIEnvironment::toEnvArray())
- * @param requestBody POST/PUT body data to send to script's stdin (empty for GET)
+ * @param envp NULL-terminated array of environment variables (from
+ * CGIEnvironment::toEnvArray())
+ * @param requestBody POST/PUT body data to send to script's stdin (empty for
+ * GET)
  * @return Complete output from CGI script (headers + body)
  *
  * @throws std::runtime_error if fork() fails
@@ -162,28 +167,38 @@ void CGIExecutor::setupPipes()
  */
 std::string CGIExecutor::execute(const std::string &executable,
                                  const std::string &scriptPath, char **envp,
-                                 const std::string &requestBody)
-{
-    setupPipes();
+                                 const std::string &requestBody) {
+  setupPipes();
 
-    _childPid = fork();
+  _childPid = fork();
 
-    if (_childPid < 0)
-        throw std::runtime_error("Failed to fork CGI process");
+  if (_childPid < 0) {
+    std::cerr << "❌ [Error] fork() failed: " << strerror(errno) << std::endl;
+    throw std::runtime_error("Failed to fork CGI process");
+  }
 
-    if (_childPid == 0)
-        executeChild(executable, scriptPath, envp); // Never returns (execve or exit)
-    // Parent process continues here
-    close(_pipeIn[0]);  // Parent doesn't read from stdin pipe
-    close(_pipeOut[1]); // Parent doesn't write to stdout pipe
+  if (_childPid == 0)
+    executeChild(executable, scriptPath,
+                 envp); // Never returns (execve or exit)
+  // Parent process continues here
+  close(_pipeIn[0]);  // Parent doesn't read from stdin pipe
+  close(_pipeOut[1]); // Parent doesn't write to stdout pipe
 
-    writeToChild(requestBody);
-    close(_pipeIn[1]); // Signal EOF to child (important for script termination)
-    std::string output = readChildOutput();
-    close(_pipeOut[0]);          // Done reading from child
-    waitpid(_childPid, NULL, 0); // Reap child process (prevent zombie)
+  writeToChild(requestBody);
+  close(_pipeIn[1]); // Signal EOF to child (important for script termination)
+  std::string output = readChildOutput();
+  close(_pipeOut[0]); // Close read pipe after getting output
 
-    return output;
+  int status;
+  // Wait for child process to terminate to prevent zombie processes
+  waitpid(_childPid, &status, 0);
+
+  // If script exited with error code (non-zero),
+  // throw exception so CGIHandler returns 500 Internal Server Error
+  if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+    throw std::runtime_error("CGI script exited with error");
+
+  return output;
 }
 
 /**
@@ -196,8 +211,8 @@ std::string CGIExecutor::execute(const std::string &executable,
  * I/O redirection process:
  * 1. dup2(_pipeIn[0], STDIN_FILENO) - Redirect stdin to read from parent's pipe
  *    → Now read(STDIN) reads from _pipeIn[0]
- * 2. dup2(_pipeOut[1], STDOUT_FILENO) - Redirect stdout to write to parent's pipe
- *    → Now write(STDOUT) writes to _pipeOut[1]
+ * 2. dup2(_pipeOut[1], STDOUT_FILENO) - Redirect stdout to write to parent's
+ * pipe → Now write(STDOUT) writes to _pipeOut[1]
  * 3. Close all unnecessary pipe ends (parent will use the others)
  *
  * Pipe closing (child perspective):
@@ -208,14 +223,13 @@ std::string CGIExecutor::execute(const std::string &executable,
  *
  * argv construction:
  *   argv[0] = executable path (e.g., "/usr/bin/php-cgi")
- *   argv[1] = script path (e.g., "./test_scripts/hello.php")
+ *   argv[1] = script filename only (e.g., "hello.php") after chdir()
  *   argv[2] = NULL (execve requirement)
  *
- * Why argv[1] is complete path (no chdir):
- * - Universal: Works for PHP, Python, Bash, any interpreter
- * - Simpler: No need to parse path and change directory
- * - Safer: Script can't escape intended directory
- * - RFC 3875: Doesn't mandate chdir() to script directory
+ * Working directory change:
+ * - Child process changes to script directory before exec
+ * - Allows scripts to use relative paths for file access
+ * - argv[1] becomes just the filename (not full path)
  *
  * execve() behavior:
  * - Success: Process image replaced, this function never returns
@@ -235,31 +249,46 @@ std::string CGIExecutor::execute(const std::string &executable,
  * @warning Do not add code after exit(1) - it will never execute
  */
 void CGIExecutor::executeChild(const std::string &executable,
-                               const std::string &scriptPath, char **envp)
-{
+                               const std::string &scriptPath, char **envp) {
+  // Redirect stdin/stdout to pipes
+  dup2(_pipeIn[0], STDIN_FILENO);   // Read POST data from parent
+  dup2(_pipeOut[1], STDOUT_FILENO); // Write output to parent
+  // Close all pipe file descriptors (no longer needed after dup2)
+  close(_pipeOut[1]);
+  close(_pipeIn[1]);
+  close(_pipeIn[0]);
+  close(_pipeOut[0]);
 
-    // Redirect stdin/stdout to pipes
-    dup2(_pipeIn[0], STDIN_FILENO);   // Read POST data from parent
-    dup2(_pipeOut[1], STDOUT_FILENO); // Write output to parent
-    // Close all pipe file descriptors (no longer needed after dup2)
-    close(_pipeOut[1]);
-    close(_pipeIn[1]);
-    close(_pipeIn[0]);
-    close(_pipeOut[0]);
-    // Prepare argv for execve
-    char **argv = new char *[3];
-    argv[0] = new char[executable.size() + 1];
-    stringToCString(executable, argv[0]);
-    argv[1] = new char[scriptPath.size() + 1];
-    stringToCString(scriptPath, argv[1]);
-    argv[2] = NULL;
-    // Replace process image with CGI interpreter
-    execve(argv[0], argv, envp);
-    // Only reached if execve fails
-    delete[] argv[0];
-    delete[] argv[1];
-    delete[] argv;
-    exit(1);
+  // Change to script directory (subject requirement: CGI should run in correct
+  // directory for relative path file access)
+  std::string scriptName = scriptPath; // Default: use full path
+  size_t lastSlash = scriptPath.find_last_of('/');
+  if (lastSlash != std::string::npos) {
+    std::string scriptDir = scriptPath.substr(0, lastSlash);
+    if (!scriptDir.empty()) {
+      chdir(scriptDir.c_str());
+      // After chdir, use only the filename (not full path)
+      scriptName = scriptPath.substr(lastSlash + 1);
+    }
+  }
+
+  // Prepare argv for execve
+  char **argv = new char *[3];
+  argv[0] = new char[executable.size() + 1];
+  stringToCString(executable, argv[0]);
+  argv[1] = new char[scriptName.size() + 1];
+  stringToCString(scriptName, argv[1]);
+  argv[2] = NULL;
+  // Replace process image with CGI interpreter
+  execve(argv[0], argv, envp);
+  // Only reached if execve fails
+  std::cerr << "❌ [Error] execve() failed: " << strerror(errno)
+            << " (executable: " << argv[0] << ", script: " << argv[1] << ")"
+            << std::endl;
+  delete[] argv[0];
+  delete[] argv[1];
+  delete[] argv;
+  exit(1);
 }
 
 /**
@@ -289,10 +318,13 @@ void CGIExecutor::executeChild(const std::string &executable,
  * @note Uses data.c_str() for direct buffer access (no copy)
  * @warning Parent MUST close _pipeIn[1] after this to signal EOF
  */
-void CGIExecutor::writeToChild(const std::string &data)
-{
-    if (!data.empty())
-        write(_pipeIn[1], data.c_str(), data.size());
+void CGIExecutor::writeToChild(const std::string &data) {
+  if (!data.empty()) {
+    if (write(_pipeIn[1], data.c_str(), data.size()) == -1) {
+      std::cerr << "❌ [Error] write() to child stdin failed: "
+                << strerror(errno) << std::endl;
+    }
+  }
 }
 
 /**
@@ -316,7 +348,8 @@ void CGIExecutor::writeToChild(const std::string &data)
  *
  * Why append(buffer, bytesRead) instead of +=:
  * - buffer is char array, may contain garbage after bytesRead position
- * - operator+= with char* reads until '\0' (undefined behavior with binary data)
+ * - operator+= with char* reads until '\0' (undefined behavior with binary
+ * data)
  * - append(buffer, count) safely copies exactly count bytes
  *
  * Example output (typical CGI response):
@@ -337,19 +370,112 @@ void CGIExecutor::writeToChild(const std::string &data)
  * @note Works with both text and binary output (uses append with size)
  * @note 4096 is POSIX standard, not arbitrary "magic number"
  */
-std::string CGIExecutor::readChildOutput()
-{
-    std::string result;
-    char buffer[4096]; // POSIX page size (optimal for system I/O)
+std::string CGIExecutor::readChildOutput() {
+  std::string result;
+  char buffer[4096]; // POSIX page size (optimal for system I/O)
 
-    while (true)
-    {
-        ssize_t bytesRead = read(_pipeOut[0], buffer, 4096);
+  while (true) {
+    ssize_t bytesRead = read(_pipeOut[0], buffer, 4096);
 
-        if (bytesRead <= 0)
-            break;                        // EOF (0) or error (-1)
-        result.append(buffer, bytesRead); // Append only actual bytes read
+    if (bytesRead < 0) {
+      std::cerr << "❌ [Error] read() from child stdout failed: "
+                << strerror(errno) << std::endl;
+      break;
+    }
+    if (bytesRead == 0)
+      break;                          // EOF (0)
+    result.append(buffer, bytesRead); // Append only actual bytes read
+  }
+
+  return result;
+}
+
+/**
+ * @brief Sets a file descriptor to non-blocking mode
+ *
+ * Uses fcntl() with O_NONBLOCK flag as permitted by the subject for macOS
+ * compatibility and also works on Linux.
+ *
+ * @param fd File descriptor to make non-blocking
+ */
+void CGIExecutor::setNonBlocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1) {
+    throw std::runtime_error("fcntl F_GETFL failed");
+  }
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    throw std::runtime_error("fcntl F_SETFL O_NONBLOCK failed");
+  }
+}
+
+/**
+ * @brief Async version of execute - forks CGI but doesn't wait for completion
+ *
+ * This method is designed for non-blocking CGI execution:
+ * 1. Creates pipes
+ * 2. Forks child process
+ * 3. Writes request body to child (blocking, but typically fast)
+ * 4. Makes output pipe non-blocking
+ * 5. Returns pipe FD and PID to caller
+ *
+ * The caller is responsible for:
+ * - Adding the pipe FD to poll()
+ * - Reading output when POLLIN is signaled
+ * - Calling waitpid(WNOHANG) to reap zombie process
+ *
+ * @return CGIAsyncResult with pipe FD and child PID
+ */
+CGIAsyncResult CGIExecutor::executeAsync(const std::string &executable,
+                                         const std::string &scriptPath,
+                                         char **envp,
+                                         const std::string &requestBody) {
+  CGIAsyncResult result;
+  result.pipeFd = -1;
+  result.childPid = 0;
+  result.success = false;
+
+  try {
+    setupPipes();
+
+    _childPid = fork();
+
+    if (_childPid < 0) {
+      // Fork failed
+      close(_pipeIn[0]);
+      close(_pipeIn[1]);
+      close(_pipeOut[0]);
+      close(_pipeOut[1]);
+      return result;
     }
 
-    return result;
+    if (_childPid == 0) {
+      // Child process
+      executeChild(executable, scriptPath, envp);
+      // Never returns
+    }
+
+    // Parent process
+    close(_pipeIn[0]);  // Parent doesn't read from stdin pipe
+    close(_pipeOut[1]); // Parent doesn't write to stdout pipe
+
+    // Write request body to child (this is blocking but typically fast)
+    writeToChild(requestBody);
+    close(_pipeIn[1]); // Signal EOF to child
+
+    // Make output pipe non-blocking for poll() integration
+    setNonBlocking(_pipeOut[0]);
+
+    result.pipeFd = _pipeOut[0];
+    result.childPid = _childPid;
+    result.success = true;
+
+    std::cout << "[CGI] Async fork OK (pid: " << _childPid
+              << ", pipe: " << _pipeOut[0] << ")\n";
+
+  } catch (const std::exception &e) {
+    std::cerr << "[CGI] Async execute error: " << e.what() << "\n";
+    result.success = false;
+  }
+
+  return result;
 }
