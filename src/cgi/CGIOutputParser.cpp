@@ -130,18 +130,23 @@ CGIOutputParser::~CGIOutputParser() {}
  * platform
  * @warning Does not validate header format - assumes well-formed CGI output
  */
-void CGIOutputParser::parse(const std::string &rawOutput) {
+void CGIOutputParser::parse(const std::string &rawOutput)
+{
   // STEP 1: Split headers from body using double CRLF separator
   size_t pos = rawOutput.find("\r\n\r\n");
-  if (pos == std::string::npos) {
+  if (pos == std::string::npos)
+  {
     // Fallback to \n\n if \r\n\r\n is not found
     pos = rawOutput.find("\n\n");
-    if (pos == std::string::npos) {
+    if (pos == std::string::npos)
+    {
       _body = rawOutput;
       return;
     }
     _body = rawOutput.substr(pos + 2);
-  } else {
+  }
+  else
+  {
     _body = rawOutput.substr(pos + 4);
   }
   std::string headersSection = rawOutput.substr(0, pos);
@@ -149,25 +154,28 @@ void CGIOutputParser::parse(const std::string &rawOutput) {
   std::istringstream stream(headersSection);
   std::string line;
 
-  while (std::getline(stream, line)) {
-    // Clean trailing \r (getline may leave it depending on platform)
+  while (std::getline(stream, line))
+  {
+
     if (line[line.size() - 1] == '\r')
       line.erase(line.size() - 1, 1);
-    // Split "Key: Value" at colon
+
     size_t colonPos = line.find(":");
     if (colonPos == std::string::npos)
       continue;
     std::string keyLine = line.substr(0, colonPos);
     std::string valueLine = line.substr(colonPos + 1);
-    // Trim leading whitespace from value
+
     size_t firstNotSpace = valueLine.find_first_not_of(" \t");
     if (firstNotSpace != std::string::npos)
       valueLine = valueLine.substr(firstNotSpace);
 
-    // Special handling for Set-Cookie (can have multiple)
-    if (toUpperCase(keyLine) == "SET-COOKIE") {
+    if (toUpperCase(keyLine) == "SET-COOKIE")
+    {
       _setCookies.push_back(valueLine);
-    } else {
+    }
+    else
+    {
       _headers[keyLine] = valueLine;
     }
   }
@@ -222,12 +230,14 @@ void CGIOutputParser::parse(const std::string &rawOutput) {
  * @note Always returns 200 if no "Status" header present (RFC 3875 compliant)
  * @note Uses stringstream for string-to-int conversion (C++98 compatible)
  */
-int CGIOutputParser::getStatusCode() const {
+int CGIOutputParser::getStatusCode() const
+{
   std::map<std::string, std::string>::const_iterator it =
       _headers.find("Status");
-  if (it != _headers.end()) {
+  if (it != _headers.end())
+  {
     std::string statusValue = it->second;
-    std::string codeStr = statusValue.substr(0, 3); // Extract first 3 chars
+    std::string codeStr = statusValue.substr(0, 3);
     std::stringstream ss(codeStr);
     int code;
     ss >> code;
@@ -256,11 +266,13 @@ int CGIOutputParser::getStatusCode() const {
  * @note Returns copy of _headers (not reference) - caller can modify safely
  * @note Header names are case-sensitive as stored by CGI script
  */
-std::map<std::string, std::string> CGIOutputParser::getHeaders() const {
+std::map<std::string, std::string> CGIOutputParser::getHeaders() const
+{
   return _headers;
 }
 
-std::vector<std::string> CGIOutputParser::getSetCookies() const {
+std::vector<std::string> CGIOutputParser::getSetCookies() const
+{
   return _setCookies;
 }
 
@@ -281,4 +293,7 @@ std::vector<std::string> CGIOutputParser::getSetCookies() const {
  * @note Returns copy of _body (not reference) - caller can modify safely
  * @note Body may be empty if script outputs only headers
  */
-std::string CGIOutputParser::getBody() const { return _body; }
+std::string CGIOutputParser::getBody() const
+{
+  return _body;
+}

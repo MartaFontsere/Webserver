@@ -8,9 +8,12 @@
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstring>
 
 /** @brief Result of async CGI execution */
-struct CGIAsyncResult {
+struct CGIAsyncResult
+{
   int pipeFd;     // Pipe to read CGI output (non-blocking)
   pid_t childPid; // PID of forked CGI process
   bool success;   // true if fork succeeded
@@ -19,7 +22,8 @@ struct CGIAsyncResult {
 /**
  * @brief CGI process executor - handles fork, exec, and pipe I/O
  */
-class CGIExecutor {
+class CGIExecutor
+{
 private:
   int _pipeIn[2];
   int _pipeOut[2];
